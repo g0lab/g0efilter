@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/florianl/go-nflog/v2"
+	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
