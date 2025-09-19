@@ -355,21 +355,21 @@ func StreamNfLog() error {
 	return StreamNfLogWithLogger(context.Background(), slog.Default())
 }
 
-func parseNflogConfig() (int, int) {
-	dfltBuf := 96
-	dfltQ := 50
+func parseNflogConfig() (uint32, uint32) {
+	dfltBuf := uint32(96)
+	dfltQ := uint32(50)
 
 	if v := strings.TrimSpace(os.Getenv("NFLOG_BUFSIZE")); v != "" {
-		n, err := strconv.Atoi(v)
+		n, err := strconv.ParseUint(v, 10, 32)
 		if err == nil && n > 0 {
-			dfltBuf = n
+			dfltBuf = uint32(n)
 		}
 	}
 
 	if v := strings.TrimSpace(os.Getenv("NFLOG_QTHRESH")); v != "" {
-		n, err := strconv.Atoi(v)
+		n, err := strconv.ParseUint(v, 10, 32)
 		if err == nil && n > 0 {
-			dfltQ = n
+			dfltQ = uint32(n)
 		}
 	}
 
@@ -573,8 +573,8 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 	config := nflog.Config{
 		Group:    0,
 		Copymode: nflog.CopyPacket,
-		Bufsize:  uint32(dfltBuf), // #nosec G115
-		QThresh:  uint32(dfltQ),   // #nosec G115
+		Bufsize:  dfltBuf,
+		QThresh:  dfltQ,
 	}
 
 	nf, err := nflog.Open(&config)

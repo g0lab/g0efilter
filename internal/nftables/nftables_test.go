@@ -368,11 +368,11 @@ func TestParseNflogConfig(t *testing.T) {
 
 			bufsize, qthresh := parseNflogConfig()
 
-			if bufsize != tt.expectedBufsize {
+			if int(bufsize) != tt.expectedBufsize {
 				t.Errorf("parseNflogConfig() bufsize = %d, want %d", bufsize, tt.expectedBufsize)
 			}
 
-			if qthresh != tt.expectedQthresh {
+			if int(qthresh) != tt.expectedQthresh {
 				t.Errorf("parseNflogConfig() qthresh = %d, want %d", qthresh, tt.expectedQthresh)
 			}
 		})
