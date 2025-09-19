@@ -205,9 +205,9 @@ func TestNopLogger(t *testing.T) {
 	logger.Println("test", "message")
 }
 
+//nolint:paralleltest // Cannot use t.Parallel() because newPoster modifies global defaultPoster
 func TestNewPoster(t *testing.T) {
 	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
-
 	var buf bytes.Buffer
 
 	zl := zerolog.New(&buf)
@@ -230,9 +230,11 @@ func TestNewPoster(t *testing.T) {
 	poster.Stop(100 * time.Millisecond)
 }
 
+// t unused but required for test signature.
+//
+//nolint:paralleltest,revive // Cannot use t.Parallel() because newPoster modifies global defaultPoster
 func TestPosterEnqueue(t *testing.T) {
 	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
-
 	var buf bytes.Buffer
 
 	zl := zerolog.New(&buf)
@@ -245,15 +247,15 @@ func TestPosterEnqueue(t *testing.T) {
 	// Should not block or panic
 }
 
+//nolint:paralleltest // Cannot use t.Parallel() because newPoster modifies global defaultPoster
 func TestPosterProbe(t *testing.T) {
 	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
-
 	tests := getPosterProbeTests()
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // Cannot use t.Parallel() because newPoster
+		// modifies global defaultPoster
 		t.Run(tt.name, func(t *testing.T) {
 			// Cannot use t.Parallel() because newPoster modifies global defaultPoster
-
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
 
@@ -767,6 +769,9 @@ func TestNew(t *testing.T) {
 	logger.Info("test message from New")
 }
 
+// t unused but required for test signature.
+//
+//nolint:paralleltest,revive // Cannot use t.Parallel() because newPoster modifies global defaultPoster
 func TestShutdown(t *testing.T) {
 	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
