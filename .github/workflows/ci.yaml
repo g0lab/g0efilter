@@ -9,6 +9,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GOLANGCI_LINT_VERSION: latest
 
@@ -17,19 +21,22 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     steps:
-      - name: Check out code
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Set up Go (from go.mod)
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           check-latest: true
+          cache: true
 
-      - name: go mod tidy
+      - name: go mod tidy check
         run: |
           go mod tidy
           git diff --exit-code
+
+      - name: go vet
+        run: go vet ./...
 
   test-and-lint:
     name: Test and Lint
@@ -38,11 +45,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.24.x']
+        go: ['1.24.x']   # add more if you want to test multiple versions
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -51,19 +57,11 @@ jobs:
           check-latest: true
           cache: true
 
-      - name: Cache Go build
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-gobuild-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-gobuild-${{ matrix.go }}-
-
       - name: Install dependencies
         run: go mod download
 
       - name: Run tests
-        run: go test ./... -coverprofile=coverage.txt
+        run: go test -race -covermode=atomic -coverprofile=coverage.txt ./...
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -74,6 +72,7 @@ jobs:
             ./...
 
       - name: Upload coverage to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
