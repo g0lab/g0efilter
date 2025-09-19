@@ -1,5 +1,5 @@
-[![g0efilter pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=g0efilter%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
-[![g0efilter-dashboard pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-dashboard.svg?label=g0efilter-dashboard%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-dashboard)
+[![docker pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=docker%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
+[![g0efilter CI](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/g0lab/g0efilter)](https://goreportcard.com/report/github.com/g0lab/g0efilter)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
