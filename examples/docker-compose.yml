@@ -13,7 +13,7 @@ services:
       - 8081:8081 # Dashboard port
     read_only: true
     env_file:
-      - .env.example
+      - .env
     cap_add:
       - NET_ADMIN # Required for nftable modification
 
@@ -28,7 +28,7 @@ services:
       - no-new-privileges
     read_only: true
     env_file:
-      - .env.dashboard.example
+      - .env.dashboard
     network_mode: "service:g0efilter"
 
   example-container:
