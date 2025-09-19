@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/internal/logging"
 )
 
 const actionRedirected = "REDIRECTED"

@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"g0efilter/internal/safeio"
+	"github.com/g0lab/g0efilter/internal/safeio"
 	"golang.org/x/sys/unix"
 )
 

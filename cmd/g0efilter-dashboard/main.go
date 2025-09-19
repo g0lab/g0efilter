@@ -12,8 +12,8 @@ import (
 	"strings"
 	"syscall"
 
-	"g0efilter/internal/dashboard"
-	"g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/internal/dashboard"
+	"github.com/g0lab/g0efilter/internal/logging"
 )
 
 const (

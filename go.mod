@@ -1,4 +1,4 @@
-module g0efilter
+module github.com/g0lab/g0efilter
 
 go 1.24.7
 

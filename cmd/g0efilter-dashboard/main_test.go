@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"g0efilter/internal/dashboard"
+	"github.com/g0lab/g0efilter/internal/dashboard"
 )
 
 const (
