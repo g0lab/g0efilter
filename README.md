@@ -29,7 +29,7 @@ The optional `g0efilter-dashboard` container runs a small web UI on **port 8081*
 
 Example Dashboard Screenshot:
 
-![g0efilter-dashboard-example](https://github.com/g0lab/g0efilter/blob/main/examples/images/g0efilter-dashboard-example.png)
+![g0efilter-dashboard-example](https://raw.githubusercontent.com/g0lab/g0efilter/main/examples/images/g0efilter-dashboard-example.png)
 
 
 ### Quick Start
