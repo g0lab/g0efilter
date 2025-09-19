@@ -18,14 +18,14 @@ You run g0efilter alongside your workloads, attach them to its network namespace
 * All IPs listed in the policy file bypass any redirection.
 * In SNI mode (default), traffic to ports 443 and 80 is redirected to local services which inspect the SNI/Host headers and forward or block based on the domains listed in the policy file. Traffic not matching any rule is explicitly blocked at the nftables layer (default action: block).
 
-### DNS filering behaviour
+### DNS filtering behaviour
 
 * All IPs listed in the policy file bypass any redirection.
-* In DNS mode, traffic to port 53 is redirected to a lightweight internal DNS service. This service only resolves domains that match those specified in the policy file. Domains part of the policy simply fail to resolve (no explicit nftables drop). This method can be bypassed if IPs directly connected to.
+* In DNS mode, traffic to port 53 is redirected to a lightweight internal DNS service. This service only resolves domains that match those specified in the policy file. Domains not part of the policy simply fail to resolve (no explicit nftables drop). This method can be bypassed if IPs are directly connected to.
 
 ### Dashboard component
 
-The optional `g0efilter-dashboard` container runs a small web UI on **port 8081** (by default). If `DASHBOARD_HOST` and `DASHBOARD_API` are set, the `g0efilter` will ship logs to the dashboard.
+The optional `g0efilter-dashboard` container runs a small web UI on **port 8081** (by default). If `DASHBOARD_HOST` and `DASHBOARD_API_KEY` are set, the `g0efilter` will ship logs to the dashboard.
 
 Example Dashboard Screenshot:
 
@@ -53,32 +53,35 @@ allowlist:
 
 ### g0efilter
 
-| Variable            | Description                                   | Default / Example       |
-| ------------------- | --------------------------------------------- | ----------------------- |
-| `LOG_LEVEL`         | Log level (INFO, DEBUG, etc.)                 | `INFO`                  |
-| `HOSTNAME`          | Hostname for logs                             | `host01`                |
-| `HTTP_PORT`         | Local HTTP port                               | `8080`                  |
-| `HTTPS_PORT`        | Local HTTPS port                              | `8443`                  |
-| `POLICY_PATH`       | Path to policy file inside container          | `/app/policy.yaml`      |
-| `FILTER_MODE`       | `sni` (TLS SNI) or `dns` (DNS name filtering) | `sni`                   |
-| `DNS_PORT`          | DNS listen port                               | `53`                    |
-| `DNS_UPSTREAMS`     | Upstream DNS servers                          | `127.0.0.11:53`         |
-| `DASHBOARD_HOST`    | Dashboard URL                                 | unset                   |
-| `DASHBOARD_API_KEY` | API key for dashboard                         | *(empty)*               |
-| `LOG_FILE`          | Optional path for persistent log file         | unset                   |
+| Variable            | Description                                        | Default             |
+| ------------------- | -------------------------------------------------- | ------------------- |
+| `LOG_LEVEL`         | Log level (INFO, DEBUG, etc.)                      | `INFO`              |
+| `LOG_FORMAT`        | Log output format (json, console)                  | `json`              |
+| `HOSTNAME`          | To identify which endpoint is sending the logs     | unset               |
+| `HTTP_PORT`         | Local HTTP port                                    | `8080`              |
+| `HTTPS_PORT`        | Local HTTPS port                                   | `8443`              |
+| `POLICY_PATH`       | Path to policy file inside container               | `/app/policy.yaml`  |
+| `FILTER_MODE`       | `sni` (TLS SNI) or `dns` (DNS name filtering)      | `sni`               |
+| `DNS_PORT`          | DNS listen port                                    | `53`                |
+| `DNS_UPSTREAMS`     | Upstream DNS servers (comma-separated)             | `127.0.0.11:53`     |
+| `DASHBOARD_HOST`    | Dashboard URL for log shipping                     | unset               |
+| `DASHBOARD_API_KEY` | API key for dashboard authentication               | unset               |
+| `LOG_FILE`          | Optional path for persistent log file              | unset               |
+| `NFLOG_BUFSIZE`     | Netfilter log buffer size                          | `96`                |
+| `NFLOG_QTHRESH`     | Netfilter log queue threshold                      | `50`                |
 
 ### g0efilter-dashboard
 
-| Variable       | Description                                                                                                                     | Default / Example             |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| `PORT`         | Address/port the dashboard listens on (HTTP UI + API). Can be just a port (`8081`) or address+port (`:8081` or `0.0.0.0:8081`). | `:8081`                       |
-| `API_KEY`      | API key used to authenticate incoming log data from the `g0efilter` container. Must match `DASHBOARD_API_KEY` in `g0efilter`.   | *(empty)*                     |
-| `LOG_LEVEL`    | Log level (`INFO`, `DEBUG`, etc.).                                                                                              | `INFO`                        |
-| `BUFFER_SIZE`  | In-memory buffer size for events. Controls how many events can be queued before dropping.                                       | `5000`                        |
-| `READ_LIMIT`   | Maximum number of events returned per read/API request.                                                                         | `500`                         |
-| `SSE_RETRY_MS` | Server-Sent Events (SSE) client retry interval in milliseconds.                                                                 | `2000`                        |
-| `RATE_RPS`     | Maximum average requests per second (rate-limit).                                                                               | `50`                          |
-| `RATE_BURST`   | Maximum burst size for rate-limiting (in requests).                                                                             | `100`                         |
+| Variable       | Description                                                                                                       | Default |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- | ------- |
+| `PORT`         | Address/port the dashboard listens on (HTTP UI + API). Can be just a port (`8081`) or address+port (`:8081`)     | `:8081` |
+| `API_KEY`      | API key used to authenticate incoming log data from the `g0efilter` container. Must match `DASHBOARD_API_KEY`    | unset   |
+| `LOG_LEVEL`    | Log level (`INFO`, `DEBUG`, etc.)                                                                                 | `INFO`  |
+| `BUFFER_SIZE`  | In-memory buffer size for events. Controls how many events can be queued before dropping                          | `5000`  |
+| `READ_LIMIT`   | Maximum number of events returned per read/API request                                                            | `500`   |
+| `SSE_RETRY_MS` | Server-Sent Events (SSE) client retry interval in milliseconds                                                    | `2000`  |
+| `RATE_RPS`     | Maximum average requests per second (rate-limit)                                                                  | `50`    |
+| `RATE_BURST`   | Maximum burst size for rate-limiting (in requests)                                                                | `100`   |
 
 
 ### Example docker-compose.yaml
@@ -101,7 +104,7 @@ services:
     env_file:
       - .env.example
     cap_add:
-      - NET_ADMIN # Required for nftable modification
+      - NET_ADMIN # Required for nftables modification
 
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:latest
