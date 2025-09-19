@@ -9,3 +9,25 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    labels: [ "dependencies", "github-actions" ]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels: [ "dependencies", "gomod" ]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels: [ "dependencies", "docker" ]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
