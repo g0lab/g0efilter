@@ -1,7 +1,7 @@
 // Package dashboard provides the embedded web UI and HTTP API server for ingesting and
 // viewing log events from g0efilter.
 //
-//nolint:tagliatelle,varnamelen,mnd,cyclop,funlen,gocognit,gocyclo,lll,noinlineerr
+//nolint:tagliatelle,funlen,lll,noinlineerr
 package dashboard
 
 import (
@@ -234,8 +234,6 @@ func (s *memStore) Clear(_ context.Context) error {
 }
 
 // Query returns latest items (DESC by ID).
-//
-//nolint:gocognit
 func (s *memStore) Query(_ context.Context, level, q string, sinceID int64, limit int) ([]LogEntry, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
@@ -253,98 +251,92 @@ func (s *memStore) Query(_ context.Context, level, q string, sinceID int64, limi
 	}
 
 	idx := (s.head - 1 + s.size) % s.size
-
 	seen := 0
+
 	for seen < s.count && len(out) < limit {
 		it := s.buf[idx]
 
-		// ID filter
-		if sinceID > 0 && it.ID <= sinceID {
+		if s.shouldSkipEntry(it, level, q, sinceID) {
 			seen++
-
-			if idx == 0 {
-				idx = s.size - 1
-			} else {
-				idx--
-			}
+			idx = s.prevIndex(idx)
 
 			continue
 		}
 
-		// Level filter
-		if level != "" && strings.ToUpper(it.Level) != level {
-			seen++
-
-			if idx == 0 {
-				idx = s.size - 1
-			} else {
-				idx--
-			}
-
-			continue
-		}
-
-		// q filter
-		if q != "" {
-			hay := strings.ToLower(strings.Join([]string{
-				it.Message,
-				string(it.Fields),
-			}, " "))
-			if !strings.Contains(hay, strings.ToLower(q)) {
-				seen++
-
-				if idx == 0 {
-					idx = s.size - 1
-				} else {
-					idx--
-				}
-
-				continue
-			}
-		}
-
-		// Inflate convenience fields
-		var m map[string]any
-
-		_ = json.Unmarshal(it.Fields, &m)
-		it.Action = strFrom(m, "action")
-		it.Protocol = strFrom(m, "protocol")
-		it.PolicyHit = strFrom(m, "policy_hit")
-		it.PayloadLen = intFrom(m, "payload_len")
-		it.TenantID = strFrom(m, "tenant_id")
-		it.SourceIP = strFrom(m, "source_ip")
-		it.SourcePort = intFrom(m, "source_port")
-		it.DestinationIP = strFrom(m, "destination_ip")
-		it.DestinationPort = intFrom(m, "destination_port")
-		it.SNI = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"), strFrom(m, "sni"), strFrom(m, "qname"))
-		it.HTTPHost = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"))
-		it.FlowID = strFrom(m, "flow_id")
-		it.Hostname = strFrom(m, "hostname")
-		it.Src = strFrom(m, "src")
-		it.Dst = strFrom(m, "dst")
-
-		if it.Protocol == "" {
-			comp := strings.ToLower(strFrom(m, "component"))
-			switch comp {
-			case "http", "sni":
-				it.Protocol = "TCP"
-			case "dns":
-				it.Protocol = "UDP"
-			}
-		}
-
+		// Enrich the entry with convenience fields
+		s.enrichLogEntry(&it)
 		out = append(out, it)
 
 		seen++
-
-		if idx == 0 {
-			idx = s.size - 1
-		} else {
-			idx--
-		}
+		idx = s.prevIndex(idx)
 	}
 
 	return out, nil
+}
+
+func (s *memStore) shouldSkipEntry(entry LogEntry, level, q string, sinceID int64) bool {
+	// ID filter
+	if sinceID > 0 && entry.ID <= sinceID {
+		return true
+	}
+
+	// Level filter
+	if level != "" && strings.ToUpper(entry.Level) != level {
+		return true
+	}
+
+	// Query filter
+	if q != "" {
+		hay := strings.ToLower(strings.Join([]string{
+			entry.Message,
+			string(entry.Fields),
+		}, " "))
+		if !strings.Contains(hay, strings.ToLower(q)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *memStore) prevIndex(idx int) int {
+	if idx == 0 {
+		return s.size - 1
+	}
+
+	return idx - 1
+}
+
+func (s *memStore) enrichLogEntry(it *LogEntry) {
+	var m map[string]any
+
+	_ = json.Unmarshal(it.Fields, &m)
+
+	it.Action = strFrom(m, "action")
+	it.Protocol = strFrom(m, "protocol")
+	it.PolicyHit = strFrom(m, "policy_hit")
+	it.PayloadLen = intFrom(m, "payload_len")
+	it.TenantID = strFrom(m, "tenant_id")
+	it.SourceIP = strFrom(m, "source_ip")
+	it.SourcePort = intFrom(m, "source_port")
+	it.DestinationIP = strFrom(m, "destination_ip")
+	it.DestinationPort = intFrom(m, "destination_port")
+	it.SNI = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"), strFrom(m, "sni"), strFrom(m, "qname"))
+	it.HTTPHost = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"))
+	it.FlowID = strFrom(m, "flow_id")
+	it.Hostname = strFrom(m, "hostname")
+	it.Src = strFrom(m, "src")
+	it.Dst = strFrom(m, "dst")
+
+	if it.Protocol == "" {
+		comp := strings.ToLower(strFrom(m, "component"))
+		switch comp {
+		case "http", "sni":
+			it.Protocol = "TCP"
+		case "dns":
+			it.Protocol = "UDP"
+		}
+	}
 }
 
 /* =========================
@@ -383,176 +375,218 @@ func ingestHandler(lg *slog.Logger, st *memStore, bus *broadcaster, rl *rateLimi
 	const maxBody = 1 << 20 // 1 MiB
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-
+		if !validateIngestRequest(w, r, rl) {
 			return
 		}
 
-		ip := remoteIP(r)
-		if !rl.allow(ip) {
-			http.Error(w, "rate limited", http.StatusTooManyRequests)
-
+		payloads, ok := parseRequestBody(w, r, maxBody)
+		if !ok {
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
-
-		defer func() { _ = r.Body.Close() }()
-
-		// Read full body
-		buf := new(bytes.Buffer)
-		_, _ = buf.ReadFrom(r.Body)
-
-		raw := buf.Bytes()
-		if len(raw) == 0 {
-			http.Error(w, "empty body", http.StatusBadRequest)
-
-			return
-		}
-
-		// Determine if array or object
-		payloads := make([]map[string]any, 0)
-		if b := bytes.TrimSpace(raw); len(b) > 0 && b[0] == '[' {
-			err := json.Unmarshal(b, &payloads)
-			if err != nil {
-				http.Error(w, "bad json array", http.StatusBadRequest)
-
-				return
-			}
-		} else {
-			var obj map[string]any
-
-			err := json.Unmarshal(raw, &obj)
-			if err != nil {
-				http.Error(w, "bad json", http.StatusBadRequest)
-
-				return
-			}
-
-			payloads = append(payloads, obj)
-		}
-
-		if len(payloads) == 0 {
-			http.Error(w, "no payload", http.StatusBadRequest)
-
-			return
-		}
-
-		results := make([]map[string]any, 0, len(payloads))
-
-		for _, in := range payloads {
-			level := toStr(in["level"])
-			msg := toStr(in["msg"])
-
-			// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
-			act := strings.ToUpper(strings.TrimSpace(toStr(in["action"])))
-			if act != "ALLOWED" && act != "BLOCKED" && act != actionRedirected {
-				// Skip quietly so _dashboard_probe etc. never show up
-				continue
-			}
-
-			if msg == "" || level == "" {
-				continue
-			}
-
-			// Time: prefer supplied "time" (RFC3339Nano) else server time
-			ts := time.Now().UTC()
-
-			if tval, ok := in["time"]; ok && tval != nil {
-				if tsStr, ok := tval.(string); ok && tsStr != "" {
-					if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
-						ts = t.UTC()
-					}
-				}
-			}
-
-			// Fields map: start with nested "fields" if provided
-			fieldsMap := map[string]any{}
-
-			if f, ok := in["fields"]; ok && f != nil {
-				if fm, ok := f.(map[string]any); ok {
-					for k, v := range fm {
-						fieldsMap[k] = v
-					}
-				}
-			}
-
-			// Copy normalized keys UI/backend care about
-			normKeys := []string{
-				"action", "component", "protocol", "policy_hit", "payload_len",
-				"reason", "tenant_id", "flow_id", "hostname",
-				"source_ip", "source_port", "destination_ip", "destination_port",
-				"src", "dst",
-				"http_host", "host", "sni", "qname", "qtype",
-			}
-			for _, k := range normKeys {
-				if v, ok := in[k]; ok && v != nil {
-					fieldsMap[k] = v
-				}
-			}
-
-			// Marshal fields to JSON for storage
-			fieldsRaw := json.RawMessage("null")
-
-			if len(fieldsMap) > 0 {
-				if b, err := json.Marshal(fieldsMap); err == nil {
-					fieldsRaw = json.RawMessage(b)
-				}
-			}
-
-			// Build log entry and ALSO enrich top-level fields
-			e := &LogEntry{
-				Time:     ts,
-				Level:    level,
-				Message:  msg,
-				Fields:   fieldsRaw,
-				RemoteIP: ip,
-
-				// Enriched top-level copies:
-				Action:          act,
-				Protocol:        toStr(in["protocol"]),
-				PolicyHit:       toStr(in["policy_hit"]),
-				PayloadLen:      toInt(in["payload_len"]),
-				TenantID:        toStr(in["tenant_id"]),
-				SourceIP:        toStr(in["source_ip"]),
-				SourcePort:      toInt(in["source_port"]),
-				DestinationIP:   toStr(in["destination_ip"]),
-				DestinationPort: toInt(in["destination_port"]),
-				SNI:             firstNonEmpty(toStr(in["http_host"]), toStr(in["host"]), toStr(in["sni"]), toStr(in["qname"])),
-				HTTPHost:        firstNonEmpty(toStr(in["http_host"]), toStr(in["host"])),
-			}
-			if e.Protocol == "" {
-				comp := strings.ToLower(toStr(in["component"]))
-				switch comp {
-				case "http", "sni":
-					e.Protocol = "TCP"
-				case "dns":
-					e.Protocol = "UDP"
-				}
-			}
-
-			// Store in memory
-			id, err := st.Insert(r.Context(), e)
-			if err != nil {
-				lg.Error("insert.failed", "err", err.Error())
-
-				continue
-			}
-
-			e.ID = id
-			results = append(results, map[string]any{"id": id, "status": "ok"})
-
-			// Push enriched event to SSE clients
-			if out, _ := json.Marshal(e); out != nil {
-				bus.send(out)
-			}
-		}
+		results := processPayloads(r.Context(), lg, st, bus, payloads, remoteIP(r))
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(results)
 	})
+}
+
+func validateIngestRequest(w http.ResponseWriter, r *http.Request, rl *rateLimiter) bool {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+
+		return false
+	}
+
+	ip := remoteIP(r)
+	if !rl.allow(ip) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+
+		return false
+	}
+
+	return true
+}
+
+func parseRequestBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]map[string]any, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+
+	defer func() { _ = r.Body.Close() }()
+
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(r.Body)
+
+	raw := buf.Bytes()
+	if len(raw) == 0 {
+		http.Error(w, "empty body", http.StatusBadRequest)
+
+		return nil, false
+	}
+
+	payloads := make([]map[string]any, 0)
+	if b := bytes.TrimSpace(raw); len(b) > 0 && b[0] == '[' {
+		err := json.Unmarshal(b, &payloads)
+		if err != nil {
+			http.Error(w, "bad json array", http.StatusBadRequest)
+
+			return nil, false
+		}
+	} else {
+		var obj map[string]any
+
+		err := json.Unmarshal(raw, &obj)
+		if err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+
+			return nil, false
+		}
+
+		payloads = append(payloads, obj)
+	}
+
+	if len(payloads) == 0 {
+		http.Error(w, "no payload", http.StatusBadRequest)
+
+		return nil, false
+	}
+
+	return payloads, true
+}
+
+func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *broadcaster, payloads []map[string]any, remoteIP string) []map[string]any {
+	results := make([]map[string]any, 0, len(payloads))
+
+	for _, in := range payloads {
+		if entry := processPayload(in, remoteIP); entry != nil {
+			if id, err := st.Insert(ctx, entry); err != nil {
+				lg.Error("insert.failed", "err", err.Error())
+			} else {
+				entry.ID = id
+				results = append(results, map[string]any{"id": id, "status": "ok"})
+
+				if out, err := json.Marshal(entry); err == nil && out != nil {
+					bus.send(out)
+				}
+			}
+		}
+	}
+
+	return results
+}
+
+func processPayload(in map[string]any, remoteIP string) *LogEntry {
+	level := toStr(in["level"])
+	msg := toStr(in["msg"])
+
+	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
+	act := strings.ToUpper(strings.TrimSpace(toStr(in["action"])))
+	if act != "ALLOWED" && act != "BLOCKED" && act != actionRedirected {
+		return nil // Skip quietly
+	}
+
+	if msg == "" || level == "" {
+		return nil
+	}
+
+	ts := parseTimestamp(in)
+	fieldsMap := buildFieldsMap(in)
+	fieldsRaw := marshalFields(fieldsMap)
+
+	entry := &LogEntry{
+		Time:     ts,
+		Level:    level,
+		Message:  msg,
+		Fields:   fieldsRaw,
+		RemoteIP: remoteIP,
+
+		// Enriched top-level copies:
+		Action:          act,
+		Protocol:        determineProtocol(in),
+		PolicyHit:       toStr(in["policy_hit"]),
+		PayloadLen:      toInt(in["payload_len"]),
+		TenantID:        toStr(in["tenant_id"]),
+		SourceIP:        toStr(in["source_ip"]),
+		SourcePort:      toInt(in["source_port"]),
+		DestinationIP:   toStr(in["destination_ip"]),
+		DestinationPort: toInt(in["destination_port"]),
+		SNI:             firstNonEmpty(toStr(in["http_host"]), toStr(in["host"]), toStr(in["sni"]), toStr(in["qname"])),
+		HTTPHost:        firstNonEmpty(toStr(in["http_host"]), toStr(in["host"])),
+	}
+
+	return entry
+}
+
+func parseTimestamp(in map[string]any) time.Time {
+	ts := time.Now().UTC()
+
+	if tval, ok := in["time"]; ok && tval != nil {
+		if tsStr, ok := tval.(string); ok && tsStr != "" {
+			if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
+				ts = t.UTC()
+			}
+		}
+	}
+
+	return ts
+}
+
+func buildFieldsMap(in map[string]any) map[string]any {
+	fieldsMap := map[string]any{}
+
+	// Start with nested "fields" if provided
+	if f, ok := in["fields"]; ok && f != nil {
+		if fm, ok := f.(map[string]any); ok {
+			for k, v := range fm {
+				fieldsMap[k] = v
+			}
+		}
+	}
+
+	// Copy normalized keys
+	normKeys := []string{
+		"action", "component", "protocol", "policy_hit", "payload_len",
+		"reason", "tenant_id", "flow_id", "hostname",
+		"source_ip", "source_port", "destination_ip", "destination_port",
+		"src", "dst",
+		"http_host", "host", "sni", "qname", "qtype",
+	}
+
+	for _, k := range normKeys {
+		if v, ok := in[k]; ok && v != nil {
+			fieldsMap[k] = v
+		}
+	}
+
+	return fieldsMap
+}
+
+func marshalFields(fieldsMap map[string]any) json.RawMessage {
+	fieldsRaw := json.RawMessage("null")
+
+	if len(fieldsMap) > 0 {
+		if b, err := json.Marshal(fieldsMap); err == nil {
+			fieldsRaw = json.RawMessage(b)
+		}
+	}
+
+	return fieldsRaw
+}
+
+func determineProtocol(in map[string]any) string {
+	if protocol := toStr(in["protocol"]); protocol != "" {
+		return protocol
+	}
+
+	comp := strings.ToLower(toStr(in["component"]))
+	switch comp {
+	case "http", "sni":
+		return "TCP"
+	case "dns":
+		return "UDP"
+	default:
+		return ""
+	}
 }
 
 func listLogsHandler(st *memStore, defaultLimit int) http.Handler {

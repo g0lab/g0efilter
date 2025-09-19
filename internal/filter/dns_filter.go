@@ -3,6 +3,7 @@ package filter
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strconv"
@@ -116,10 +117,41 @@ type dnsHandler struct {
 	timeout   time.Duration
 }
 
-//nolint:cyclop,gocognit,funlen
 func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	lg := handler.opts.Logger
 
+	remoteAddr, remotePort := handler.parseRemoteAddr(writer)
+	flowID := handler.emitSyntheticEvent(lg, writer, remoteAddr, remotePort)
+
+	if len(request.Question) == 0 {
+		handler.respondWithError(writer, request, dns.RcodeFormatError)
+
+		return
+	}
+
+	question := request.Question[0]
+	qname := strings.TrimSuffix(question.Name, ".")
+	qtype := question.Qtype
+
+	enforce := (qtype == dns.TypeA || qtype == dns.TypeAAAA)
+	allowed := allowedHost(qname, handler.allowlist)
+
+	if enforce && !allowed {
+		handler.handleBlockedEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+
+		return
+	}
+
+	if !enforce && !allowed {
+		handler.handleBlockedNonEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+
+		return
+	}
+
+	handler.handleAllowedRequest(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+}
+
+func (handler *dnsHandler) parseRemoteAddr(writer dns.ResponseWriter) (string, int) {
 	remoteAddr := ""
 	remotePort := 0
 
@@ -139,110 +171,126 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 		}
 	}
 
-	// Emit an early synthetic REDIRECTED for the incoming query to help correlate
-	// with kernel NFLOG entries and suppress duplicates. Use the listener/local
-	// address (proxy dst) when available, otherwise fall back to the first
-	// configured upstream (commonly 127.0.0.11:53).
-	flowID := ""
+	return remoteAddr, remotePort
+}
 
+func (handler *dnsHandler) emitSyntheticEvent(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	remoteAddr string,
+	remotePort int,
+) string {
+	if lg == nil {
+		return ""
+	}
+
+	dst := ""
+	if writer != nil && writer.LocalAddr() != nil {
+		dst = writer.LocalAddr().String()
+	}
+
+	if dst == "" && len(handler.upstreams) > 0 {
+		dst = handler.upstreams[0]
+	}
+
+	if dst != "" {
+		return EmitSyntheticUDP(lg, "dns", remoteAddr, remotePort, dst)
+	}
+
+	return ""
+}
+
+func (handler *dnsHandler) respondWithError(writer dns.ResponseWriter, request *dns.Msg, rcode int) {
+	message := new(dns.Msg)
+	message.SetReply(request)
+	message.Rcode = rcode
+	_ = writer.WriteMsg(message)
+}
+
+func (handler *dnsHandler) handleBlockedEnforcedType(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
 	if lg != nil {
-		dst := ""
-		if writer != nil && writer.LocalAddr() != nil {
-			dst = writer.LocalAddr().String()
-		}
-
-		if dst == "" && len(handler.upstreams) > 0 {
-			dst = handler.upstreams[0]
-		}
-
-		if dst != "" {
-			flowID = EmitSyntheticUDP(lg, "dns", remoteAddr, remotePort, dst)
-		}
+		lg.Info("dns.blocked",
+			"time", time.Now().UTC().Format(time.RFC3339Nano),
+			"component", "dns",
+			"action", "BLOCKED",
+			"qname", qname,
+			"qtype", typeString(qtype),
+			"source_ip", remoteAddr,
+			"source_port", remotePort,
+			"flow_id", flowID,
+			"note", "sinkhole",
+		)
 	}
 
-	if len(request.Question) == 0 {
-		message := new(dns.Msg)
-		message.SetReply(request)
-		message.Rcode = dns.RcodeFormatError
-		_ = writer.WriteMsg(message)
+	message := new(dns.Msg)
+	message.SetReply(request)
 
-		return
-	}
-
-	question := request.Question[0]
-	qname := strings.TrimSuffix(question.Name, ".") // policy uses normalizeDomain internally
-	qtype := question.Qtype
-
-	enforce := (qtype == dns.TypeA || qtype == dns.TypeAAAA)
-	allowed := allowedHost(qname, handler.allowlist)
-
-	// Enforced types blocked -> sinkhole
-	if enforce && !allowed {
-		if lg != nil {
-			lg.Info("dns.blocked",
-				"time", time.Now().UTC().Format(time.RFC3339Nano),
-				"component", "dns",
-				"action", "BLOCKED",
-				"qname", qname,
-				"qtype", typeString(qtype),
-				"source_ip", remoteAddr,
-				"source_port", remotePort,
-				"flow_id", flowID,
-				"note", "sinkhole",
-			)
-		}
-
-		message := new(dns.Msg)
-		message.SetReply(request)
-
-		switch qtype {
-		case dns.TypeA:
-			message.Answer = append(message.Answer, &dns.A{
-				Hdr: dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: defaultTTL},
-				A:   net.IPv4(0, 0, 0, 0),
-			})
-		case dns.TypeAAAA:
-			message.Answer = append(message.Answer, &dns.AAAA{
-				Hdr:  dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: defaultTTL},
-				AAAA: net.IPv6zero,
-			})
-		default:
-			message.Rcode = dns.RcodeNameError
-		}
-
-		_ = writer.WriteMsg(message)
-
-		return
-	}
-
-	// Non-enforced types blocked -> NXDOMAIN
-	if !enforce && !allowed {
-		if lg != nil {
-			lg.Info("dns.blocked",
-				"time", time.Now().UTC().Format(time.RFC3339Nano),
-				"component", "dns",
-				"action", "BLOCKED",
-				"qname", qname,
-				"qtype", typeString(qtype),
-				"source_ip", remoteAddr,
-				"source_port", remotePort,
-				"note", "nxdomain",
-				"flow_id", flowID,
-			)
-		}
-
-		message := new(dns.Msg)
-		message.SetReply(request)
+	switch qtype {
+	case dns.TypeA:
+		message.Answer = append(message.Answer, &dns.A{
+			Hdr: dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: defaultTTL},
+			A:   net.IPv4(0, 0, 0, 0),
+		})
+	case dns.TypeAAAA:
+		message.Answer = append(message.Answer, &dns.AAAA{
+			Hdr:  dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: defaultTTL},
+			AAAA: net.IPv6zero,
+		})
+	default:
 		message.Rcode = dns.RcodeNameError
-		_ = writer.WriteMsg(message)
-
-		return
 	}
 
-	// Allowed -> forward to upstreams
+	_ = writer.WriteMsg(message)
+}
+
+func (handler *dnsHandler) handleBlockedNonEnforcedType(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
+	if lg != nil {
+		lg.Info("dns.blocked",
+			"time", time.Now().UTC().Format(time.RFC3339Nano),
+			"component", "dns",
+			"action", "BLOCKED",
+			"qname", qname,
+			"qtype", typeString(qtype),
+			"source_ip", remoteAddr,
+			"source_port", remotePort,
+			"note", "nxdomain",
+			"flow_id", flowID,
+		)
+	}
+
+	handler.respondWithError(writer, request, dns.RcodeNameError)
+}
+
+func (handler *dnsHandler) handleAllowedRequest(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
 	resp, _, err := handler.forward(request)
 	if err != nil {
-		// SERVFAIL on upstream error
 		if lg != nil {
 			lg.Warn("dns.upstream_error",
 				"component", "dns",
@@ -255,16 +303,12 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 			)
 		}
 
-		message := new(dns.Msg)
-		message.SetReply(request)
-		message.Rcode = dns.RcodeServerFailure
-		_ = writer.WriteMsg(message)
+		handler.respondWithError(writer, request, dns.RcodeServerFailure)
 
 		return
 	}
 
 	if lg != nil {
-		// Log ALLOWED at Info so it's visible under normal operation and include flow_id when available
 		lg.Info("dns.allowed",
 			"time", time.Now().UTC().Format(time.RFC3339Nano),
 			"component", "dns",
