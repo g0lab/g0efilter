@@ -206,7 +206,7 @@ func TestNopLogger(t *testing.T) {
 }
 
 func TestNewPoster(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
 	var buf bytes.Buffer
 
@@ -231,7 +231,7 @@ func TestNewPoster(t *testing.T) {
 }
 
 func TestPosterEnqueue(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
 	var buf bytes.Buffer
 
@@ -246,13 +246,13 @@ func TestPosterEnqueue(t *testing.T) {
 }
 
 func TestPosterProbe(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
 	tests := getPosterProbeTests()
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tt.statusCode)
@@ -768,7 +768,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	t.Parallel()
+	// Cannot use t.Parallel() because newPoster modifies global defaultPoster
 
 	// Test shutdown with no default poster
 	Shutdown(100 * time.Millisecond)
