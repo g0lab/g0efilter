@@ -1,0 +1,24 @@
+version: "2"
+
+formatters:
+  enable:
+    - gci
+
+linters:
+  default: all
+  disable:
+    - wsl # Deprecated
+    - varnamelen # Too strict
+    - exhaustruct # Too strict
+    - mnd # Too strict
+
+  settings:
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          files:
+            - "$pkg:main"
+          allow:
+            - $gostd
+            - g0filter/internal/...

@@ -1,0 +1,41 @@
+services:
+  g0efilter:
+    image: docker.io/g0lab/g0efilter:latest
+    container_name: g0efilter
+    volumes:
+      - ./policy.yaml:/app/policy.yaml:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    # Ports opened here for attached containers
+    ports:
+      - 8081:8081 # Dashboard port
+    read_only: true
+    env_file:
+      - .env.example
+    cap_add:
+      - NET_ADMIN # Required for nftable modification
+
+  g0efilter-dashboard:
+    image: docker.io/g0lab/g0efilter-dashboard:latest
+    container_name: g0efilter-dashboard
+    # optional - custom user
+    # user: 1000:1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    env_file:
+      - .env.dashboard.example
+    network_mode: "service:g0efilter"
+
+  example-container:
+    image: alpine:latest
+    container_name: example-container
+    command: >
+      sh -c "apk add --no-cache curl && tail -f /dev/null"
+    depends_on:
+      - g0efilter
+    network_mode: "service:g0efilter"

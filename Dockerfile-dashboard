@@ -1,0 +1,13 @@
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /app
+
+ARG TARGETPLATFORM
+
+COPY ${TARGETPLATFORM}/g0efilter-dashboard /app/g0efilter-dashboard
+
+EXPOSE 8081
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/app/g0efilter-dashboard"]

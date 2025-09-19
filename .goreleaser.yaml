@@ -1,0 +1,66 @@
+version: 2
+
+project_name: g0efilter
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: g0efilter
+    main: ./cmd/g0efilter
+    binary: g0efilter
+    env: ["CGO_ENABLED=0"]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+  - id: g0efilter-dashboard
+    main: ./cmd/g0efilter-dashboard
+    binary: g0efilter-dashboard
+    env: ["CGO_ENABLED=0"]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+checksum:
+  name_template: "checksums.txt"
+
+dockers_v2:
+  - id: g0efilter
+    dockerfile: ./Dockerfile
+    images:
+      - docker.io/g0lab/g0efilter
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+  - id: g0efilter-dashboard
+    dockerfile: ./Dockerfile-dashboard
+    images:
+      - docker.io/g0lab/g0efilter-dashboard
+    tags:
+      - "{{ .Tag }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+
+release:
+  github:
+    owner: g0lab
+    name: g0efilter
+  draft: false          
+  prerelease: auto
