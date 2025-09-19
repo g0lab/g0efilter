@@ -6,6 +6,8 @@ services:
       - ./policy.yaml:/app/policy.yaml:ro
     cap_drop:
       - ALL
+    cap_add:
+      - NET_ADMIN # Required for nftable modification
     security_opt:
       - no-new-privileges
     # Ports opened here for attached containers
@@ -14,8 +16,6 @@ services:
     read_only: true
     env_file:
       - .env
-    cap_add:
-      - NET_ADMIN # Required for nftable modification
 
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:latest
