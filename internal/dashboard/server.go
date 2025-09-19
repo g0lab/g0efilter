@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"g0filter/internal/logging"
+	"g0efilter/internal/logging"
 )
 
 const actionRedirected = "REDIRECTED"

@@ -1,4 +1,4 @@
-module g0filter
+module g0efilter
 
 go 1.24.7
 

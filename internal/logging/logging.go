@@ -21,7 +21,7 @@ import (
 	"github.com/rs/zerolog/log"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 
-	"g0filter/internal/safeio"
+	"g0efilter/internal/safeio"
 )
 
 const (

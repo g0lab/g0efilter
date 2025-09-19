@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"g0filter/internal/filter"
-	"g0filter/internal/logging"
-	"g0filter/internal/nftables"
-	"g0filter/internal/policy"
+	"g0efilter/internal/filter"
+	"g0efilter/internal/logging"
+	"g0efilter/internal/nftables"
+	"g0efilter/internal/policy"
 )
 
 const (
