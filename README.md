@@ -2,6 +2,7 @@
 [![g0efilter-dashboard pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-dashboard.svg?label=g0efilter-dashboard%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-dashboard)
 [![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/g0lab/g0efilter)](https://goreportcard.com/report/github.com/g0lab/g0efilter)
+[![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
 
 g0efilter is a lightweight container designed to filter outbound (egress) traffic from other containers.
