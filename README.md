@@ -8,17 +8,21 @@
 > [!WARNING]
 > g0efilter is in active development and its configuration may change often.
 
-g0efilter is a lightweight container designed to filter outbound (egress) traffic from attached container workloads. Run g0efilter alongside your workloads and attach them to its network namespace to enforce a simple IP and domain allowlist policy. Using nftables, g0efilter allows traffic to specified IPs or CIDRs, or redirects outbound HTTP (port 80) and HTTPS (port 443) traffic to local services. These services inspect the HTTP Host header or the TLS SNI extension in the ClientHello and allow or block connections according to the defined policy.
+g0efilter is a lightweight container designed to filter outbound (egress) traffic from attached container workloads. Run g0efilter alongside your workloads and attach them to its network namespace to enforce a simple IP and domain allowlist policy.
 
 ### How it works
 
-* Attach containers to the g0efilter container using `network_mode: "service:g0efilter"` in Docker Compose.
-* All outbound connections from attached containers are intercepted by g0efilter.
-* A policy file defines which IPs, CIDRs, and domains are allowed; **all other traffic is blocked**.
-* An optional **g0efilter-dashboard** displays real-time traffic and enforcement actions.
-* Filtering behaviour depends on the selected mode: **sni** or **dns**.
+* Attach containers to g0efilter using `network_mode: "service:g0efilter"` in Docker Compose.
+* A policy file defines the allowed IPs/CIDRs and domains.
+* Using nftables, g0efilter (when in SNI filter mode) allows traffic to specified IPs/CIDRs or redirects outbound HTTP (port 80) and HTTPS (port 443) to local services.
+* These local services check the HTTP Host header or TLS SNI extension in the ClientHello and allow or block connections according to the policy.  
+* Filtering behaviour depends on the selected mode: sni (default) or dns.  
+* The optional g0efilter-dashboard displays real-time traffic and enforcement actions.
 
-**Note:** Attached containers share g0efilter’s network namespace. g0efilter listens on `HTTP_PORT` (default `8080`) and `HTTPS_PORT` (default `8443`) for inspection. Avoid binding these ports in attached containers, or change them via env vars.
+> [!NOTE]
+> Attached containers share g0efilter’s network namespace.  
+> g0efilter listens on `HTTP_PORT` (default `8080`) and `HTTPS_PORT` (default `8443`) for inspection.  
+> Avoid binding these ports in attached containers or change them via environment variables.
 
 ### SNI/Host Header filtering behaviour (default)
 
@@ -28,7 +32,7 @@ g0efilter is a lightweight container designed to filter outbound (egress) traffi
 ### DNS filtering behaviour
 
 * All IPs listed in the policy file bypass any redirection.
-* * In DNS mode, traffic to port 53 is redirected to an internal DNS server that only resolves domains that match the policy. Non-policy domains simply fail to resolve, but direct IP connections are allowed (no default deny), so this mode can be bypassed.
+* In DNS mode, traffic to port 53 is redirected to an internal DNS server that only resolves domains that match the policy. Non-policy domains simply fail to resolve, but direct IP connections are allowed (no default deny), so this mode can be bypassed.
 
 ### Dashboard container
 
