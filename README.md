@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
 [![Go Report Card](https://goreportcard.com/badge/g0lab/g0efilter)](https://goreportcard.com/report/g0lab/g0efilter)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/6221eed68e504016acd2ec9d951bc031)](https://app.codacy.com/gh/g0lab/g0efilter/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
 
 > [!WARNING]
@@ -106,6 +107,8 @@ services:
       - ./policy.yaml:/app/policy.yaml:ro
     cap_drop:
       - ALL
+    cap_add:
+      - NET_ADMIN # Required for nftables modification
     security_opt:
       - no-new-privileges
     # Host-exposed port for dashboard (dashboard runs in same netns)
@@ -114,8 +117,6 @@ services:
     read_only: true
     env_file:
       - .env
-    cap_add:
-      - NET_ADMIN # Required for nftables modification
 
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:latest

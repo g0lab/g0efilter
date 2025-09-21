@@ -7,10 +7,10 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN # Required for nftable modification
+      - NET_ADMIN # Required for nftables modification
     security_opt:
       - no-new-privileges
-    # Ports opened here for attached containers
+    # Host-exposed port for dashboard (dashboard runs in same netns)
     ports:
       - 8081:8081 # Dashboard port
     read_only: true
