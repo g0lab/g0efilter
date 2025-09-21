@@ -4,6 +4,7 @@ package logging
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+)
+
+var (
+	errNetworkError = errors.New("network error")
 )
 
 func TestParseLevel(t *testing.T) {
@@ -156,45 +161,6 @@ func getToZerologLevelTests() []struct {
 	}
 }
 
-func TestRetryLogger(t *testing.T) {
-	t.Parallel()
-
-	tests := getRetryLoggerTests()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			var testBuf bytes.Buffer
-
-			testZL := zerolog.New(&testBuf).With().Timestamp().Logger()
-			rl := &retryLogger{zl: testZL, lvl: tt.level}
-
-			// Test that Printf and Println don't panic
-			rl.Printf("test message %s", "arg")
-			rl.Println("test", "message")
-			// Just verify the methods don't panic - output format can vary
-		})
-	}
-}
-
-func getRetryLoggerTests() []struct {
-	name  string
-	level zerolog.Level
-} {
-	return []struct {
-		name  string
-		level zerolog.Level
-	}{
-		{"info level", zerolog.InfoLevel},
-		{"debug level", zerolog.DebugLevel},
-		{"warn level", zerolog.WarnLevel},
-		{"error level", zerolog.ErrorLevel},
-		{"trace level", zerolog.TraceLevel},
-		{"no level", zerolog.NoLevel},
-	}
-}
-
 func TestNopLogger(t *testing.T) {
 	t.Parallel()
 
@@ -272,7 +238,7 @@ func TestPosterProbe(t *testing.T) {
 			poster := newPoster(server.URL, "test-key", zl, false)
 			defer poster.Stop(100 * time.Millisecond)
 
-			err := poster.Probe()
+			err := poster.Probe(context.Background())
 
 			if tt.expectError && err == nil {
 				t.Error("Probe() expected error, got nil")
@@ -886,5 +852,69 @@ func TestLogToTerminal(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "test message") {
 		t.Logf("Terminal log output: %s", output)
+	}
+}
+
+func TestShouldRetry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		resp     *http.Response
+		err      error
+		expected bool
+	}{
+		{"network error", nil, errNetworkError, true},
+		{"500 server error", &http.Response{StatusCode: http.StatusInternalServerError}, nil, true},
+		{"502 bad gateway", &http.Response{StatusCode: http.StatusBadGateway}, nil, true},
+		{"503 service unavailable", &http.Response{StatusCode: http.StatusServiceUnavailable}, nil, true},
+		{"429 rate limited", &http.Response{StatusCode: http.StatusTooManyRequests}, nil, true},
+		{"200 success", &http.Response{StatusCode: http.StatusOK}, nil, false},
+		{"400 client error", &http.Response{StatusCode: http.StatusBadRequest}, nil, false},
+		{"404 not found", &http.Response{StatusCode: http.StatusNotFound}, nil, false},
+		{"nil response", nil, nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := shouldRetry(tt.resp, tt.err)
+			if result != tt.expected {
+				t.Errorf("shouldRetry() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExponentialBackoffWithJitter(t *testing.T) {
+	t.Parallel()
+
+	minWait := 1 * time.Second
+	maxWait := 30 * time.Second
+
+	tests := []struct {
+		name    string
+		attempt int
+		minWant time.Duration
+		maxWant time.Duration
+	}{
+		{"first attempt", 0, minWait, minWait},
+		{"second attempt", 1, minWait, 2 * time.Second},
+		{"third attempt", 2, 2 * time.Second, 4 * time.Second},
+		{"large attempt", 10, maxWait / 2, maxWait}, // Should be capped at max
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := exponentialBackoffWithJitter(tt.attempt, minWait, maxWait)
+
+			if result < tt.minWant/2 || result > tt.maxWant {
+				t.Errorf("exponentialBackoffWithJitter(%d) = %v, want between %v and %v",
+					tt.attempt, result, tt.minWant/2, tt.maxWant)
+			}
+		})
 	}
 }

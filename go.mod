@@ -6,7 +6,6 @@ require (
 	github.com/florianl/go-nflog/v2 v2.1.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/google/gopacket v1.1.19
-	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/miekg/dns v1.1.68
 	github.com/rs/zerolog v1.34.0
 	golang.org/x/net v0.44.0
@@ -15,9 +14,7 @@ require (
 )
 
 require (
-	github.com/fatih/color v1.18.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/netlink v1.8.0 // indirect

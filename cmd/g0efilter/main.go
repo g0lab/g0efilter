@@ -153,7 +153,7 @@ func loadConfig() config {
 }
 
 func setupLogger(cfg config) *slog.Logger {
-	lg := logging.NewWithFormat(cfg.logLevel, "console", os.Stdout, false)
+	lg := logging.NewWithContext(context.Background(), cfg.logLevel, "console", os.Stdout, false)
 	slog.SetDefault(lg)
 
 	logStartupInfo(lg, cfg)

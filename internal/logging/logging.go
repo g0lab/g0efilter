@@ -1,27 +1,26 @@
 // Package logging provides application logging helpers.
-//
-//nolint:gci,gofumpt
 package logging
 
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
+	"github.com/g0lab/g0efilter/internal/safeio"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
-
-	"github.com/g0lab/g0efilter/internal/safeio"
 )
 
 const (
@@ -68,7 +67,6 @@ type poster struct {
 	url        string
 	apiKey     string
 	q          chan []byte
-	client     *retryablehttp.Client
 	httpC      *http.Client
 	stop       chan struct{}
 	done       chan struct{}
@@ -77,39 +75,10 @@ type poster struct {
 	trace      bool
 	ready      chan struct{}
 	startDelay time.Duration
-}
-
-type retryLogger struct {
-	zl  zerolog.Logger
-	lvl zerolog.Level
-}
-
-func (r *retryLogger) Printf(format string, v ...any) {
-	msg := fmt.Sprintf(format, v...)
-	r.logMsg(msg)
-}
-
-func (r *retryLogger) Println(v ...any) { r.Printf("%s", fmt.Sprint(v...)) }
-
-func (r *retryLogger) logMsg(msg string) {
-	switch r.lvl {
-	case zerolog.NoLevel, zerolog.InfoLevel, zerolog.Disabled:
-		r.zl.Info().Msg(msg)
-	case zerolog.TraceLevel:
-		r.zl.Trace().Msg(msg)
-	case zerolog.DebugLevel:
-		r.zl.Debug().Msg(msg)
-	case zerolog.WarnLevel:
-		r.zl.Warn().Msg(msg)
-	case zerolog.ErrorLevel:
-		r.zl.Error().Msg(msg)
-	case zerolog.FatalLevel:
-		r.zl.Fatal().Msg(msg)
-	case zerolog.PanicLevel:
-		r.zl.Panic().Msg(msg)
-	default:
-		r.zl.Info().Msg(msg)
-	}
+	// retry configuration
+	retryMax     int
+	retryWaitMin time.Duration
+	retryWaitMax time.Duration
 }
 
 type nopLogger struct{}
@@ -117,7 +86,56 @@ type nopLogger struct{}
 func (n *nopLogger) Printf(string, ...any) {}
 func (n *nopLogger) Println(...any)        {}
 
+// shouldRetry returns true if we should retry the request based on the response or error.
+func shouldRetry(resp *http.Response, err error) bool {
+	if err != nil {
+		// Retry on network errors
+		return true
+	}
+
+	if resp == nil {
+		return false
+	}
+
+	// Retry on 5xx server errors and 429 (rate limited), but not on 4xx client errors
+	return resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests
+}
+
+// exponentialBackoffWithJitter calculates the wait time for retry attempt.
+func exponentialBackoffWithJitter(attempt int, minWait, maxWait time.Duration) time.Duration {
+	if attempt == 0 {
+		return minWait
+	}
+
+	// Calculate exponential backoff: minWait * 2^attempt
+	backoff := time.Duration(float64(minWait) * math.Pow(2, float64(attempt)))
+
+	// Cap at maximum wait time
+	if backoff > maxWait {
+		backoff = maxWait
+	}
+
+	// Add jitter (random factor between 0.5 and 1.0)
+	// Use crypto/rand for security compliance
+	jitterBig, err := rand.Int(rand.Reader, big.NewInt(500)) // 0-499
+	if err != nil {
+		// Fallback to no jitter if random generation fails
+		return backoff
+	}
+
+	jitter := 0.5 + float64(jitterBig.Int64())/1000.0 // 0.5 to 0.999
+
+	return time.Duration(float64(backoff) * jitter)
+}
+
+// newPoster is a convenience wrapper retained for tests; production uses newPosterWithCtx.
+//
+//nolint:unparam // apiKey repetition occurs only in tests; in production a real key flows via environment
 func newPoster(url, apiKey string, zl zerolog.Logger, debug bool) *poster {
+	return newPosterWithCtx(context.Background(), url, apiKey, zl, debug)
+}
+
+func newPosterWithCtx(ctx context.Context, url, apiKey string, zl zerolog.Logger, debug bool) *poster {
 	poster := &poster{
 		url:    url,
 		apiKey: apiKey,
@@ -139,20 +157,10 @@ func newPoster(url, apiKey string, zl zerolog.Logger, debug bool) *poster {
 
 	poster.httpC = &http.Client{Timeout: defaultHTTPClientTimeout, Transport: tr}
 
-	rc := retryablehttp.NewClient()
-	rc.RetryMax = 4
-	rc.RetryWaitMin = defaultRetryWait
-	rc.RetryWaitMax = defaultRetryWaitMax
-	rc.Backoff = retryablehttp.DefaultBackoff
-	rc.HTTPClient = poster.httpC
-
-	if debug {
-		rc.Logger = &retryLogger{zl: zl, lvl: zerolog.DebugLevel}
-	} else {
-		rc.Logger = &nopLogger{}
-	}
-
-	poster.client = rc
+	// Configure retry settings
+	poster.retryMax = 4
+	poster.retryWaitMin = defaultRetryWait
+	poster.retryWaitMax = defaultRetryWaitMax
 
 	// Start the worker after a small startup delay (DASHBOARD_START_DELAY, default 5s)
 	startDelay := defaultStartDelay
@@ -166,7 +174,7 @@ func newPoster(url, apiKey string, zl zerolog.Logger, debug bool) *poster {
 
 	poster.startDelay = startDelay
 
-	go poster.startWorker()
+	go poster.startWorker(ctx)
 
 	defaultPoster = poster
 
@@ -201,7 +209,7 @@ func (p *poster) Enqueue(payload []byte) {
 	}
 }
 
-func (p *poster) Probe() error {
+func (p *poster) Probe(ctx context.Context) error {
 	probe := map[string]any{
 		"time":  time.Now().UTC().Format(time.RFC3339Nano),
 		"level": "INFO",
@@ -213,7 +221,7 @@ func (p *poster) Probe() error {
 		return fmt.Errorf("failed to marshal probe: %w", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultProbeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultProbeTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(payload))
@@ -266,7 +274,7 @@ func (p *poster) Probe() error {
 	return nil
 }
 
-func (p *poster) startWorker() {
+func (p *poster) startWorker(ctx context.Context) {
 	if p.startDelay > 0 {
 		t := time.NewTimer(p.startDelay)
 		defer t.Stop()
@@ -281,7 +289,7 @@ func (p *poster) startWorker() {
 	}
 
 	close(p.ready) // signal that shipping is beginning
-	p.worker()     // closes p.done when it exits
+	p.worker(ctx)  // closes p.done when it exits
 }
 
 // setAPIAuthHeaders de-duplicates setting both API key headers everywhere.
@@ -294,7 +302,7 @@ func setAPIAuthHeaders(headers http.Header, apiKey string) {
 	headers.Set("Authorization", "Bearer "+apiKey)
 }
 
-func (p *poster) handlePostPayload(payload []byte) {
+func (p *poster) handlePostPayload(ctx context.Context, payload []byte) {
 	if p.debug {
 		p.zl.Debug().Int("payload_size", len(payload)).Str("url", p.url).Msg("dashboard.posting")
 	}
@@ -304,33 +312,89 @@ func (p *poster) handlePostPayload(payload []byte) {
 		logTraceBody(p.zl, p.url, payload)
 	}
 
-	rreq, err := retryablehttp.NewRequest(http.MethodPost, p.url, bytes.NewReader(payload))
+	// Retry loop with exponential backoff
+	for attempt := 0; attempt <= p.retryMax; attempt++ {
+		success := p.attemptPost(ctx, payload, attempt)
+		if success {
+			return
+		}
+
+		// Don't wait after the last attempt
+		if attempt < p.retryMax {
+			p.waitBeforeRetry(attempt)
+		}
+	}
+
+	// All retries exhausted
+	p.zl.Error().Int("max_retries", p.retryMax).Str("url", p.url).
+		Msg("dashboard: all retry attempts exhausted")
+}
+
+func (p *poster) attemptPost(ctx context.Context, payload []byte, attempt int) bool {
+	// Create new request for each attempt with context
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(payload))
 	if err != nil {
 		p.zl.Error().Err(err).Msg("dashboard: build request error")
 
-		return
+		return true // Don't retry on request creation errors
 	}
 
-	rreq.Header.Set("Content-Type", "application/json")
-	setAPIAuthHeaders(rreq.Header, p.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	setAPIAuthHeaders(req.Header, p.apiKey)
 
-	resp, err := p.client.Do(rreq)
+	resp, err := p.httpC.Do(req)
+
+	// Check if we should retry
+	if !shouldRetry(resp, err) {
+		return p.handleFinalResponse(resp, err)
+	}
+
+	// Log retry attempt
+	p.logRetryAttempt(err, resp, attempt)
+
+	return false // Continue retrying
+}
+
+func (p *poster) handleFinalResponse(resp *http.Response, err error) bool {
 	if err != nil {
 		p.zl.Error().Err(err).Msg("dashboard: post error")
 
-		return
+		return true
 	}
 
-	defer func() { _ = resp.Body.Close() }()
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
 
-	logPosterResponse(p.zl, resp, p.trace)
+		logPosterResponse(p.zl, resp, p.trace)
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		p.zl.Warn().Int("status", resp.StatusCode).Str("url", p.url).
-			Msg("dashboard: unexpected status when posting logs")
-
-		return
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			p.zl.Warn().Int("status", resp.StatusCode).Str("url", p.url).
+				Msg("dashboard: unexpected status when posting logs")
+		}
 	}
+
+	return true
+}
+
+func (p *poster) logRetryAttempt(err error, resp *http.Response, attempt int) {
+	if err != nil {
+		p.zl.Debug().Err(err).Int("attempt", attempt+1).Int("max_retries", p.retryMax).
+			Msg("dashboard: post attempt failed, will retry")
+	} else if resp != nil {
+		p.zl.Debug().Int("status", resp.StatusCode).Int("attempt", attempt+1).Int("max_retries", p.retryMax).
+			Msg("dashboard: post attempt failed with status, will retry")
+		_ = resp.Body.Close()
+	}
+}
+
+func (p *poster) waitBeforeRetry(attempt int) {
+	waitTime := exponentialBackoffWithJitter(attempt, p.retryWaitMin, p.retryWaitMax)
+	if p.debug {
+		p.zl.Debug().Dur("wait_time", waitTime).Int("attempt", attempt+1).
+			Msg("dashboard: waiting before retry")
+	}
+
+	time.Sleep(waitTime)
 }
 
 func logTraceBody(zl zerolog.Logger, url string, body []byte) {
@@ -386,13 +450,13 @@ func logPosterResponse(zl zerolog.Logger, resp *http.Response, trace bool) {
 	ev.Msg("dashboard.post resp")
 }
 
-func (p *poster) worker() {
+func (p *poster) worker(ctx context.Context) {
 	defer close(p.done)
 
 	for {
 		select {
 		case payload := <-p.q:
-			p.handlePostPayload(payload)
+			p.handlePostPayload(ctx, payload)
 		case <-p.stop:
 			// drain remaining items quickly
 			for {
@@ -627,12 +691,12 @@ func (z *zerologHandler) WithGroup(name string) slog.Handler {
 
 // ---------- constructors ----------
 
-// NewWithFormat builds a slog.Logger backed by zerolog for terminal/file output.
+// NewWithContext builds a slog.Logger backed by zerolog for terminal/file output.
 // 'format' and 'addSource' are kept for API compatibility; terminal/file output is console,
 // and JSON is used only for API shipping via the poster.
 //
 //nolint:cyclop,funlen
-func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Logger {
+func NewWithContext(ctx context.Context, level, format string, out io.Writer, addSource bool) *slog.Logger {
 	_ = format
 	_ = addSource
 
@@ -703,14 +767,14 @@ func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Lo
 		debugEnabled := lvl <= slog.LevelDebug
 		traceEnabled := lvl <= LevelTrace
 
-		poster = newPoster(durl, dapi, zl, debugEnabled)
+		poster = newPosterWithCtx(ctx, durl, dapi, zl, debugEnabled)
 		poster.trace = traceEnabled
 
 		// Fire a probe once initialised
 		go func() {
 			<-poster.ready
 
-			err := poster.Probe()
+			err := poster.Probe(ctx)
 			if err != nil {
 				zl.Warn().Err(err).Str("url", durl).Msg("dashboard: probe error")
 			} else {
@@ -723,6 +787,11 @@ func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Lo
 	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname}
 
 	return slog.New(h)
+}
+
+// NewWithFormat builds a slog.Logger using defaults, delegating to NewWithContext with a background context.
+func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Logger {
+	return NewWithContext(context.Background(), level, format, out, addSource)
 }
 
 // NewFromEnv creates a logger configured from environment variables.

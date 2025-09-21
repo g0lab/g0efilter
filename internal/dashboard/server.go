@@ -73,7 +73,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// Logger
-	lg := logging.NewWithFormat(cfg.LogLevel, cfg.LogFormat, os.Stdout, false) //nolint:contextcheck
+	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
 	slog.SetDefault(lg)
 
 	// In-memory store + SSE bus
@@ -626,7 +626,6 @@ func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
 
 		// JSON response
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store, max-age=0")
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(true)
 		_ = enc.Encode(rows)

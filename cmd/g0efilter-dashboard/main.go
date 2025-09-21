@@ -146,7 +146,7 @@ func startMain() error {
 	}
 
 	// Structured logger
-	lg := logging.NewWithFormat(cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
+	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
 	slog.SetDefault(lg)
 
 	if cfg.APIKey == "" {
