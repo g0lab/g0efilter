@@ -5,10 +5,13 @@
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
 
-g0efilter is a lightweight container designed to filter outbound (egress) traffic from other containers.
-You run g0efilter alongside your workloads, attach them to its network namespace, and it enforces a simple IP/domain allowlist policy. Using nftables, g0efilter permits traffic to the listed IPs or redirects traffic on ports 80 and 443 to local services. It then inspects the host headers (HTTP) or SNI headers in TLS hello packets (HTTPS) and allows or blocks traffic based on the defined policy.
+> [!WARNING]
+> g0efilter is in active development and configuration may change often.
 
-* Attach containers to the g0efilter container using network_mode: "container:g0efilter" in Docker Compose.
+g0efilter is a lightweight container designed to filter outbound (egress) traffic from other containers.
+You run g0efilter alongside your workloads, attach them to its network namespace, and it enforces a simple IP/domain allowlist policy. Using nftables, g0efilter permits traffic to the listed IPs or redirects traffic to ports 80 and 443 to local services. It then inspects the host headers (HTTP) or SNI headers in TLS hello packets (HTTPS) and allows or blocks traffic based on the defined policy.
+
+* Attach containers to the g0efilter container using `network_mode: "service:g0efilter"` in Docker Compose.
 * All outbound connections from attached containers are intercepted by g0efilter.
 * A policy file defines which IPs, CIDRs, and domains are allowed; all other traffic is blocked.
 * An optional g0efilter-dashboard displays real-time traffic and enforcement actions.
@@ -17,16 +20,16 @@ You run g0efilter alongside your workloads, attach them to its network namespace
 ### SNI/Host Header filtering behaviour (default)
 
 * All IPs listed in the policy file bypass any redirection.
-* In SNI mode (default), traffic to ports 443 and 80 is redirected to local services which inspect the SNI/Host headers and forward or block based on the domains listed in the policy file. Traffic not matching any rule is explicitly blocked at the nftables layer (default action: block).
+* In SNI mode (default), traffic with destination ports 443 and 80 is redirected to local services which inspect the SNI/Host headers and forward or block based on the domains listed in the policy file. Traffic not matching any rule is explicitly blocked at the nftables layer (default action: block).
 
 ### DNS filtering behaviour
 
 * All IPs listed in the policy file bypass any redirection.
 * In DNS mode, traffic to port 53 is redirected to a lightweight internal DNS service. This service only resolves domains that match those specified in the policy file. Domains not part of the policy simply fail to resolve (no explicit nftables drop). This method can be bypassed if IPs are directly connected to.
 
-### Dashboard component
+### Dashboard container
 
-The optional `g0efilter-dashboard` container runs a small web UI on **port 8081** (by default). If `DASHBOARD_HOST` and `DASHBOARD_API_KEY` are set, the `g0efilter` will ship logs to the dashboard.
+The optional **g0efilter-dashboard** container runs a small web UI on **port 8081** (by default). If `DASHBOARD_HOST` and `DASHBOARD_API_KEY` are set, the **g0efilter** container will ship logs to the dashboard.
 
 Example Dashboard Screenshot:
 
@@ -103,7 +106,7 @@ services:
       - 8081:8081 # Dashboard port
     read_only: true
     env_file:
-      - .env.example
+      - .env
     cap_add:
       - NET_ADMIN # Required for nftables modification
 
@@ -118,7 +121,7 @@ services:
       - no-new-privileges
     read_only: true
     env_file:
-      - .env.dashboard.example
+      - .env.dashboard
     network_mode: "service:g0efilter"
 
   example-container:
