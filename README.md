@@ -1,31 +1,34 @@
 [![docker pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=docker%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
 [![g0efilter CI](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/g0lab/g0efilter)](https://goreportcard.com/report/github.com/g0lab/g0efilter)
+[![Go Report Card](https://goreportcard.com/badge/g0lab/g0efilter)](https://goreportcard.com/report/g0lab/g0efilter)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
 
 > [!WARNING]
-> g0efilter is in active development and configuration may change often.
+> g0efilter is in active development and its configuration may change often.
 
-g0efilter is a lightweight container designed to filter outbound (egress) traffic from other containers.
-You run g0efilter alongside your workloads, attach them to its network namespace, and it enforces a simple IP/domain allowlist policy. Using nftables, g0efilter permits traffic to the listed IPs or redirects traffic to ports 80 and 443 to local services. It then inspects the host headers (HTTP) or SNI headers in TLS hello packets (HTTPS) and allows or blocks traffic based on the defined policy.
+g0efilter is a lightweight container designed to filter outbound (egress) traffic from attached container workloads. Run g0efilter alongside your workloads and attach them to its network namespace to enforce a simple IP and domain allowlist policy. Using nftables, g0efilter allows traffic to specified IPs or CIDRs, or redirects outbound HTTP (port 80) and HTTPS (port 443) traffic to local services. These services inspect the HTTP Host header or the TLS SNI extension in the ClientHello and allow or block connections according to the defined policy.
+
+### How it works
 
 * Attach containers to the g0efilter container using `network_mode: "service:g0efilter"` in Docker Compose.
 * All outbound connections from attached containers are intercepted by g0efilter.
-* A policy file defines which IPs, CIDRs, and domains are allowed; all other traffic is blocked.
-* An optional g0efilter-dashboard displays real-time traffic and enforcement actions.
-* Filtering behaviour depends on the selected mode: sni or dns.
+* A policy file defines which IPs, CIDRs, and domains are allowed; **all other traffic is blocked**.
+* An optional **g0efilter-dashboard** displays real-time traffic and enforcement actions.
+* Filtering behaviour depends on the selected mode: **sni** or **dns**.
+
+**Note:** Attached containers share g0efilter’s network namespace. g0efilter listens on `HTTP_PORT` (default `8080`) and `HTTPS_PORT` (default `8443`) for inspection. Avoid binding these ports in attached containers, or change them via env vars.
 
 ### SNI/Host Header filtering behaviour (default)
 
 * All IPs listed in the policy file bypass any redirection.
-* In SNI mode (default), traffic with destination ports 443 and 80 is redirected to local services which inspect the SNI/Host headers and forward or block based on the domains listed in the policy file. Traffic not matching any rule is explicitly blocked at the nftables layer (default action: block).
+* In SNI mode (default), traffic to ports 80 and 443 is redirected to local services that check the HTTP Host header or TLS SNI against the policy file, anything not matching is blocked by nftables.
 
 ### DNS filtering behaviour
 
 * All IPs listed in the policy file bypass any redirection.
-* In DNS mode, traffic to port 53 is redirected to a lightweight internal DNS service. This service only resolves domains that match those specified in the policy file. Domains not part of the policy simply fail to resolve (no explicit nftables drop). This method can be bypassed if IPs are directly connected to.
+* * In DNS mode, traffic to port 53 is redirected to an internal DNS server that only resolves domains that match the policy. Non-policy domains simply fail to resolve, but direct IP connections are allowed (no default deny), so this mode can be bypassed.
 
 ### Dashboard container
 
@@ -101,7 +104,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges
-    # Ports opened here for attached containers
+    # Host-exposed port for dashboard (dashboard runs in same netns)
     ports:
       - 8081:8081 # Dashboard port
     read_only: true
