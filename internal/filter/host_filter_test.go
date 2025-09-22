@@ -52,11 +52,158 @@ func TestCreateHTTPDialer(t *testing.T) {
 		return
 	}
 
-	// Check dialer configuration
+	// Test timeout is set correctly
 	expectedTimeout := time.Duration(options.DialTimeout) * time.Millisecond
 	if dialer.Timeout != expectedTimeout {
 		t.Errorf("Expected timeout %v, got %v", expectedTimeout, dialer.Timeout)
 	}
+}
+
+func TestReadHeadWithTextproto(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected map[string][]string
+		wantErr  bool
+	}{
+		{
+			name:  "Simple GET request",
+			input: "GET / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\n",
+			expected: map[string][]string{
+				"Host":       {"example.com"},
+				"User-Agent": {"test"},
+			},
+			wantErr: false,
+		},
+		{
+			name:  "POST request with Content-Length",
+			input: "POST /api HTTP/1.1\r\nHost: api.example.com\r\nContent-Length: 42\r\nContent-Type: application/json\r\n\r\n",
+			expected: map[string][]string{
+				"Host":           {"api.example.com"},
+				"Content-Length": {"42"},
+				"Content-Type":   {"application/json"},
+			},
+			wantErr: false,
+		},
+		{
+			name:  "Multiple values for same header",
+			input: "GET / HTTP/1.1\r\nHost: example.com\r\nAccept: text/html\r\nAccept: application/json\r\n\r\n",
+			expected: map[string][]string{
+				"Host":   {"example.com"},
+				"Accept": {"text/html", "application/json"},
+			},
+			wantErr: false,
+		},
+		{
+			name:     "Empty input",
+			input:    "",
+			expected: nil,
+			wantErr:  true,
+		},
+		{
+			name:     "Invalid HTTP format",
+			input:    "Not HTTP\r\n\r\n",
+			expected: map[string][]string{},
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			testHTTPRequest(t, tt.input, tt.expected, tt.wantErr)
+		})
+	}
+}
+
+// Helper function to test individual HTTP requests.
+func testHTTPRequest(t *testing.T, input string, expected map[string][]string, wantErr bool) {
+	t.Helper()
+
+	reader := strings.NewReader(input)
+	bufReader := bufio.NewReader(reader)
+
+	requestLine, headerBytes, err := readHeadWithTextproto(bufReader)
+
+	if wantErr {
+		if err == nil {
+			t.Error("Expected error but got nil")
+		}
+
+		return
+	}
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+
+		return
+	}
+
+	if len(headerBytes) == 0 {
+		t.Error("Expected non-empty header bytes")
+
+		return
+	}
+
+	// For malformed HTTP, we don't expect specific behavior
+	// Just verify the function doesn't panic
+	t.Logf("Request line: %s, Header bytes: %d", requestLine, len(headerBytes))
+
+	validateHeaders(t, headerBytes, expected)
+}
+
+// Helper function to validate HTTP headers.
+func validateHeaders(t *testing.T, headerBytes []byte, expected map[string][]string) {
+	t.Helper()
+
+	actualHeaders := parseHeaderBytes(headerBytes)
+
+	// Check that expected headers are present
+	for key, expectedValues := range expected {
+		actualValues, exists := actualHeaders[key]
+		if !exists {
+			t.Errorf("Expected header %s not found", key)
+
+			continue
+		}
+
+		if len(actualValues) != len(expectedValues) {
+			t.Errorf("Header %s: expected %d values, got %d", key, len(expectedValues), len(actualValues))
+
+			continue
+		}
+
+		for i, expectedValue := range expectedValues {
+			if actualValues[i] != expectedValue {
+				t.Errorf("Header %s[%d]: expected %s, got %s", key, i, expectedValue, actualValues[i])
+			}
+		}
+	}
+}
+
+// Helper function to parse header bytes into map.
+func parseHeaderBytes(headerBytes []byte) map[string][]string {
+	headerStr := string(headerBytes)
+	headerLines := strings.Split(strings.TrimSpace(headerStr), "\n")
+
+	actualHeaders := make(map[string][]string)
+
+	for _, line := range headerLines {
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(strings.TrimSpace(line), ":", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			actualHeaders[key] = append(actualHeaders[key], value)
+		}
+	}
+
+	return actualHeaders
 }
 
 func TestSetHTTPTimeouts(t *testing.T) {

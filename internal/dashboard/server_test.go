@@ -1227,3 +1227,283 @@ func TestPush(t *testing.T) {
 		t.Logf("Push failed as expected: %v", err)
 	}
 }
+
+func TestIntFrom(t *testing.T) {
+	t.Parallel()
+
+	tests := getIntFromTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := intFrom(tt.m, tt.k)
+			if result != tt.expected {
+				t.Errorf("intFrom(%v, %q) = %d, want %d", tt.m, tt.k, result, tt.expected)
+			}
+		})
+	}
+}
+
+func getIntFromTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected int
+} {
+	var cases []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected int
+	}
+
+	cases = append(cases, getIntFromBasicTestCases()...)
+	cases = append(cases, getIntFromNumericTestCases()...)
+	cases = append(cases, getIntFromEdgeTestCases()...)
+
+	return cases
+}
+
+func getIntFromBasicTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected int
+} {
+	return []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected int
+	}{
+		{
+			name:     "nil map",
+			m:        nil,
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "key not found",
+			m:        map[string]any{"other": 123},
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "nil value",
+			m:        map[string]any{"test": nil},
+			k:        "test",
+			expected: 0,
+		},
+	}
+}
+
+func getIntFromNumericTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected int
+} {
+	return []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected int
+	}{
+		{
+			name:     "int value",
+			m:        map[string]any{"test": 42},
+			k:        "test",
+			expected: 42,
+		},
+		{
+			name:     "negative int value",
+			m:        map[string]any{"test": -15},
+			k:        "test",
+			expected: -15,
+		},
+		{
+			name:     "float64 value",
+			m:        map[string]any{"test": 3.14},
+			k:        "test",
+			expected: 3,
+		},
+		{
+			name:     "float64 negative value",
+			m:        map[string]any{"test": -2.8},
+			k:        "test",
+			expected: -2,
+		},
+	}
+}
+
+func getIntFromEdgeTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected int
+} {
+	return []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected int
+	}{
+		{
+			name:     "string numeric value",
+			m:        map[string]any{"test": "123"},
+			k:        "test",
+			expected: 123,
+		},
+		{
+			name:     "string non-numeric value",
+			m:        map[string]any{"test": "abc"},
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "string empty value",
+			m:        map[string]any{"test": ""},
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "bool value",
+			m:        map[string]any{"test": true},
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "slice value",
+			m:        map[string]any{"test": []int{1, 2, 3}},
+			k:        "test",
+			expected: 0,
+		},
+		{
+			name:     "map value",
+			m:        map[string]any{"test": map[string]int{"nested": 42}},
+			k:        "test",
+			expected: 0,
+		},
+	}
+}
+
+func TestStrFrom(t *testing.T) {
+	t.Parallel()
+
+	tests := getStrFromTestCases()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := strFrom(tt.m, tt.k)
+			if result != tt.expected {
+				t.Errorf("strFrom(%v, %q) = %q, want %q", tt.m, tt.k, result, tt.expected)
+			}
+		})
+	}
+}
+
+func getStrFromTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected string
+} {
+	var cases []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected string
+	}
+
+	cases = append(cases, getStrFromBasicTestCases()...)
+	cases = append(cases, getStrFromTypeTestCases()...)
+
+	return cases
+}
+
+func getStrFromBasicTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected string
+} {
+	return []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected string
+	}{
+		{
+			name:     "nil map",
+			m:        nil,
+			k:        "test",
+			expected: "",
+		},
+		{
+			name:     "key not found",
+			m:        map[string]any{"other": "value"},
+			k:        "test",
+			expected: "",
+		},
+		{
+			name:     "nil value",
+			m:        map[string]any{"test": nil},
+			k:        "test",
+			expected: "",
+		},
+		{
+			name:     "string value",
+			m:        map[string]any{"test": "hello"},
+			k:        "test",
+			expected: "hello",
+		},
+		{
+			name:     "empty string value",
+			m:        map[string]any{"test": ""},
+			k:        "test",
+			expected: "",
+		},
+	}
+}
+
+func getStrFromTypeTestCases() []struct {
+	name     string
+	m        map[string]any
+	k        string
+	expected string
+} {
+	return []struct {
+		name     string
+		m        map[string]any
+		k        string
+		expected string
+	}{
+		{
+			name:     "int value",
+			m:        map[string]any{"test": 42},
+			k:        "test",
+			expected: "42",
+		},
+		{
+			name:     "bool value",
+			m:        map[string]any{"test": true},
+			k:        "test",
+			expected: "true",
+		},
+		{
+			name:     "float value",
+			m:        map[string]any{"test": 3.14},
+			k:        "test",
+			expected: "3.14",
+		},
+		{
+			name:     "slice value",
+			m:        map[string]any{"test": []int{1, 2, 3}},
+			k:        "test",
+			expected: "[1 2 3]",
+		},
+	}
+}

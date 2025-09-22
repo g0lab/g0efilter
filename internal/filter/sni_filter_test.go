@@ -4,6 +4,7 @@ package filter
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -49,10 +50,113 @@ func TestCreateMarkedDialer(t *testing.T) {
 		return
 	}
 
-	// Check dialer configuration
+	// Test timeout is set correctly
 	expectedTimeout := time.Duration(options.DialTimeout) * time.Millisecond
 	if dialer.Timeout != expectedTimeout {
 		t.Errorf("Expected timeout %v, got %v", expectedTimeout, dialer.Timeout)
+	}
+}
+
+func TestRoConn(t *testing.T) {
+	t.Parallel()
+
+	// Test the roConn struct which wraps a reader as a connection
+	reader := strings.NewReader("test data")
+	conn := roConn{r: reader}
+
+	t.Run("Read operations", func(t *testing.T) {
+		t.Parallel()
+		testRoConnRead(t, &conn)
+	})
+
+	t.Run("Write operations", func(t *testing.T) {
+		t.Parallel()
+		testRoConnWrite(t, &conn)
+	})
+
+	t.Run("Connection methods", func(t *testing.T) {
+		t.Parallel()
+		testRoConnMethods(t, &conn)
+	})
+
+	t.Run("Timeout methods", func(t *testing.T) {
+		t.Parallel()
+		testRoConnTimeouts(t, &conn)
+	})
+}
+
+// Helper function to test roConn read operations.
+func testRoConnRead(t *testing.T, conn *roConn) {
+	t.Helper()
+
+	buf := make([]byte, 4)
+
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Errorf("Unexpected error reading: %v", err)
+	}
+
+	if n != 4 {
+		t.Errorf("Expected to read 4 bytes, got %d", n)
+	}
+
+	if string(buf) != "test" {
+		t.Errorf("Expected 'test', got '%s'", string(buf))
+	}
+}
+
+// Helper function to test roConn write operations.
+func testRoConnWrite(t *testing.T, conn *roConn) {
+	t.Helper()
+
+	writeN, _ := conn.Write([]byte("test"))
+	if writeN != 0 {
+		t.Errorf("Expected Write to return 0 bytes written, got %d", writeN)
+	}
+	// Write can return an error since we're writing to a closed reader
+}
+
+// Helper function to test roConn basic connection methods.
+func testRoConnMethods(t *testing.T, conn *roConn) {
+	t.Helper()
+
+	// Test Close method (should return nil)
+	err := conn.Close()
+	if err != nil {
+		t.Errorf("Expected Close to return nil, got %v", err)
+	}
+
+	// Test LocalAddr method (should return nil)
+	if addr := conn.LocalAddr(); addr != nil {
+		t.Errorf("Expected LocalAddr to return nil, got %v", addr)
+	}
+
+	// Test RemoteAddr method (should return nil)
+	if addr := conn.RemoteAddr(); addr != nil {
+		t.Errorf("Expected RemoteAddr to return nil, got %v", addr)
+	}
+}
+
+// Helper function to test roConn timeout methods.
+func testRoConnTimeouts(t *testing.T, conn *roConn) {
+	t.Helper()
+
+	// Test SetDeadline method (should return nil)
+	err := conn.SetDeadline(time.Now())
+	if err != nil {
+		t.Errorf("Expected SetDeadline to return nil, got %v", err)
+	}
+
+	// Test SetReadDeadline method (should return nil)
+	err = conn.SetReadDeadline(time.Now())
+	if err != nil {
+		t.Errorf("Expected SetReadDeadline to return nil, got %v", err)
+	}
+
+	// Test SetWriteDeadline method (should return nil)
+	err = conn.SetWriteDeadline(time.Now())
+	if err != nil {
+		t.Errorf("Expected SetWriteDeadline to return nil, got %v", err)
 	}
 }
 

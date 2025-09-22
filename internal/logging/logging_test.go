@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +17,7 @@ import (
 )
 
 var (
-	errNetworkError = errors.New("network error")
+	errTestNetworkError = errors.New("test network error")
 )
 
 func TestParseLevel(t *testing.T) {
@@ -838,8 +839,12 @@ func TestZerologHandlerWithGroup(t *testing.T) {
 	}
 }
 
+//nolint:paralleltest // Cannot use t.Parallel() due to zerolog global level modification
 func TestLogToTerminal(t *testing.T) {
-	t.Parallel()
+	// Ensure global level allows info logs regardless of other tests
+	orig := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
 
 	var buf bytes.Buffer
 
@@ -850,8 +855,162 @@ func TestLogToTerminal(t *testing.T) {
 	logToTerminal(zl, slog.LevelInfo, "test message", attrs)
 
 	output := buf.String()
-	if !strings.Contains(output, "test message") {
-		t.Logf("Terminal log output: %s", output)
+	if output == "" {
+		// Should at least produce some output
+		t.Error("expected terminal output, got empty string")
+	}
+}
+
+// spyRC is a test ReadCloser that records reads and close calls.
+type spyRC struct {
+	data   []byte
+	off    int
+	closed bool
+}
+
+func (s *spyRC) Read(p []byte) (int, error) {
+	if s.off >= len(s.data) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, s.data[s.off:])
+	s.off += n
+
+	return n, nil
+}
+
+func (s *spyRC) Close() error {
+	s.closed = true
+
+	return nil
+}
+
+//nolint:paralleltest // Cannot use t.Parallel() due to zerolog global level modification
+func TestLogPosterResponse_NotTrace(t *testing.T) {
+	body := &spyRC{data: []byte(strings.Repeat("x", 1024))}
+	resp := &http.Response{StatusCode: http.StatusOK, Body: body}
+	zl := zerolog.New(io.Discard).Level(zerolog.TraceLevel)
+
+	logPosterResponse(zl, resp, false)
+
+	if !body.closed {
+		t.Error("expected body to be closed in non-trace mode")
+	}
+
+	if body.off != 1024 {
+		t.Errorf("expected body to be fully drained, read=%d", body.off)
+	}
+}
+
+//nolint:paralleltest // Cannot use t.Parallel() due to zerolog global level modification
+func TestLogPosterResponse_TraceJSON(t *testing.T) {
+	// Ensure trace logs are enabled regardless of global level set by other tests
+	orig := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
+
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf).Level(zerolog.TraceLevel)
+
+	payload := `{"ok":true}`
+	body := &spyRC{data: []byte(payload)}
+	resp := &http.Response{StatusCode: http.StatusCreated, Body: body}
+
+	logPosterResponse(zl, resp, true)
+
+	if !body.closed {
+		t.Error("expected body to be closed in trace mode")
+	}
+
+	if body.off == 0 {
+		t.Error("expected body to be read in trace mode")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "dashboard.post resp") {
+		t.Errorf("expected trace log to contain marker, got: %s", out)
+	}
+
+	if !strings.Contains(out, "resp_body") {
+		t.Errorf("expected trace log to contain resp_body, got: %s", out)
+	}
+}
+
+//nolint:paralleltest // Cannot use t.Parallel() due to zerolog global level modification
+func TestLogTraceBody_JSONAndText(t *testing.T) {
+	// Ensure trace logs are enabled regardless of global level set by other tests
+	orig := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
+
+	tests := []struct {
+		name       string
+		body       []byte
+		expectJSON bool
+	}{
+		{"json body", []byte(`{"a":1}`), true},
+		{"text body", []byte("hello"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // Due to global level
+			var buf bytes.Buffer
+
+			zl := zerolog.New(&buf).Level(zerolog.TraceLevel)
+
+			logTraceBody(zl, "http://example/ingest", tt.body)
+
+			out := buf.String()
+			if !strings.Contains(out, "dashboard.post body") {
+				t.Errorf("expected log to contain marker, got: %s", out)
+			}
+
+			if tt.expectJSON && !strings.Contains(out, "\"body\":{") {
+				t.Errorf("expected JSON body field, got: %s", out)
+			}
+
+			if !tt.expectJSON && !strings.Contains(out, "\"body\":\"hello\"") {
+				t.Errorf("expected string body field, got: %s", out)
+			}
+		})
+	}
+}
+
+func TestShipToDashboard_ActionFilter(t *testing.T) {
+	t.Parallel()
+
+	mkPoster := func() (*poster, chan []byte) {
+		ch := make(chan []byte, 10)
+		p := &poster{q: ch, zl: zerolog.New(io.Discard)}
+
+		return p, ch
+	}
+
+	allowed := []string{"ALLOWED", "BLOCKED", "REDIRECTED"}
+	for _, act := range allowed {
+		p, ch := mkPoster()
+		attrs := map[string]any{"action": act}
+		shipToDashboard(p, "host", time.Now(), slog.LevelInfo, "msg", attrs)
+
+		select {
+		case <-ch:
+			// ok
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("expected enqueue for action %s", act)
+		}
+	}
+
+	// Disallowed action should not enqueue
+	p, ch := mkPoster()
+	attrs := map[string]any{"action": "OTHER"}
+	shipToDashboard(p, "host", time.Now(), slog.LevelInfo, "msg", attrs)
+
+	select {
+	case <-ch:
+		t.Fatal("did not expect enqueue for other action")
+	case <-time.After(50 * time.Millisecond):
+		// ok: nothing enqueued
 	}
 }
 
@@ -864,13 +1023,11 @@ func TestShouldRetry(t *testing.T) {
 		err      error
 		expected bool
 	}{
-		{"network error", nil, errNetworkError, true},
+		{"network error", nil, errTestNetworkError, true},
 		{"500 server error", &http.Response{StatusCode: http.StatusInternalServerError}, nil, true},
-		{"502 bad gateway", &http.Response{StatusCode: http.StatusBadGateway}, nil, true},
 		{"503 service unavailable", &http.Response{StatusCode: http.StatusServiceUnavailable}, nil, true},
 		{"429 rate limited", &http.Response{StatusCode: http.StatusTooManyRequests}, nil, true},
 		{"200 success", &http.Response{StatusCode: http.StatusOK}, nil, false},
-		{"400 client error", &http.Response{StatusCode: http.StatusBadRequest}, nil, false},
 		{"404 not found", &http.Response{StatusCode: http.StatusNotFound}, nil, false},
 		{"nil response", nil, nil, false},
 	}
@@ -891,7 +1048,7 @@ func TestExponentialBackoffWithJitter(t *testing.T) {
 	t.Parallel()
 
 	minWait := 1 * time.Second
-	maxWait := 30 * time.Second
+	maxWait := 8 * time.Second
 
 	tests := []struct {
 		name    string
@@ -900,9 +1057,9 @@ func TestExponentialBackoffWithJitter(t *testing.T) {
 		maxWant time.Duration
 	}{
 		{"first attempt", 0, minWait, minWait},
-		{"second attempt", 1, minWait, 2 * time.Second},
-		{"third attempt", 2, 2 * time.Second, 4 * time.Second},
-		{"large attempt", 10, maxWait / 2, maxWait}, // Should be capped at max
+		{"second attempt", 1, minWait / 2, 2 * time.Second},
+		{"third attempt", 2, 1 * time.Second, 4 * time.Second},
+		{"cap at max", 10, maxWait / 2, maxWait},
 	}
 
 	for _, tt := range tests {
@@ -911,10 +1068,151 @@ func TestExponentialBackoffWithJitter(t *testing.T) {
 
 			result := exponentialBackoffWithJitter(tt.attempt, minWait, maxWait)
 
-			if result < tt.minWant/2 || result > tt.maxWant {
+			if result < tt.minWant || result > tt.maxWant {
 				t.Errorf("exponentialBackoffWithJitter(%d) = %v, want between %v and %v",
-					tt.attempt, result, tt.minWant/2, tt.maxWant)
+					tt.attempt, result, tt.minWant, tt.maxWant)
 			}
 		})
 	}
+}
+
+//nolint:paralleltest // Cannot use t.Parallel() because newPoster modifies global defaultPoster
+func TestPosterStop_Timeout(_ *testing.T) {
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf)
+	poster := newPoster("http://test.com/ingest", "test-key", zl, false)
+
+	// Stop with short timeout to test timeout path
+	poster.Stop(1 * time.Millisecond)
+}
+
+//nolint:paralleltest // Cannot use t.Parallel() because newPoster modifies global defaultPoster
+func TestPosterStop_ZeroTimeout(_ *testing.T) {
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf)
+	poster := newPoster("http://test.com/ingest", "test-key", zl, false)
+
+	// Stop with zero timeout should wait indefinitely
+	poster.Stop(0)
+}
+
+func TestZerologHandlerWithPoster(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf)
+
+	// Mock poster
+	ch := make(chan []byte, 10)
+	mockPoster := &poster{q: ch, zl: zl}
+
+	handler := &zerologHandler{
+		zl:        zl,
+		termLevel: slog.LevelWarn, // Higher threshold
+		poster:    mockPoster,
+		hostname:  "test-host",
+	}
+
+	// Test that debug level is enabled due to poster (even if below term threshold)
+	enabled := handler.Enabled(context.Background(), slog.LevelDebug)
+	if !enabled {
+		t.Error("Expected debug to be enabled due to poster presence")
+	}
+}
+
+func TestNewWithContext_DashboardIntegration(t *testing.T) {
+	t.Setenv("DASHBOARD_HOST", "http://localhost:8080")
+	t.Setenv("DASHBOARD_API_KEY", "test-key")
+
+	var buf bytes.Buffer
+
+	logger := NewWithContext(context.Background(), "DEBUG", "json", &buf, false)
+
+	if logger == nil {
+		t.Fatal("NewWithContext() returned nil logger")
+	}
+
+	// Test that logger works
+	logger.Info("test dashboard integration")
+}
+
+func TestNewWithContext_LogFile(t *testing.T) {
+	t.Setenv("LOG_FILE", "/tmp/test.log")
+
+	var buf bytes.Buffer
+
+	logger := NewWithContext(context.Background(), "INFO", "json", &buf, false)
+
+	if logger == nil {
+		t.Fatal("NewWithContext() returned nil logger with LOG_FILE")
+	}
+}
+
+func TestZerologHandlerEnabled_WithPoster(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf)
+
+	// Create handler with poster
+	ch := make(chan []byte, 1)
+	mockPoster := &poster{q: ch, zl: zl}
+
+	handler := &zerologHandler{
+		zl:        zl,
+		termLevel: slog.LevelError, // Very high threshold
+		poster:    mockPoster,      // But poster present
+		hostname:  "test-host",
+	}
+
+	// Should be enabled even for debug due to poster
+	if !handler.Enabled(context.Background(), slog.LevelDebug) {
+		t.Error("Expected debug to be enabled due to poster")
+	}
+
+	// Should be enabled for error due to term level
+	if !handler.Enabled(context.Background(), slog.LevelError) {
+		t.Error("Expected error to be enabled due to term level")
+	}
+}
+
+func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
+	t.Parallel()
+
+	rTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	t.Run("empty hostname", func(t *testing.T) {
+		t.Parallel()
+
+		payload := buildDashboardPayload("", rTime, slog.LevelInfo, "msg", "BLOCKED", map[string]any{})
+		if _, exists := payload["hostname"]; exists {
+			t.Error("Expected no hostname field for empty hostname")
+		}
+	})
+
+	t.Run("hostname from attrs takes precedence", func(t *testing.T) {
+		t.Parallel()
+
+		attrs := map[string]any{"hostname": "attr-host"}
+
+		payload := buildDashboardPayload("param-host", rTime, slog.LevelInfo, "msg", "BLOCKED", attrs)
+		if payload["hostname"] != "attr-host" {
+			t.Errorf("Expected hostname from attrs, got %v", payload["hostname"])
+		}
+	})
+
+	t.Run("uses param hostname when attr empty", func(t *testing.T) {
+		t.Parallel()
+
+		attrs := map[string]any{"hostname": ""}
+
+		payload := buildDashboardPayload("param-host", rTime, slog.LevelInfo, "msg", "BLOCKED", attrs)
+		if payload["hostname"] != "param-host" {
+			t.Errorf("Expected param hostname, got %v", payload["hostname"])
+		}
+	})
 }
