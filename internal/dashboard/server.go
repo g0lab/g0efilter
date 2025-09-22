@@ -775,7 +775,7 @@ func (w *respWrap) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, errHijackerNotSupported
 }
 
-// OPTIONAL: passthrough HTTP/2 server push (no-op if not supported).
+// Push provides passthrough HTTP/2 server push (no-op if not supported).
 func (w *respWrap) Push(target string, opts *http.PushOptions) error {
 	if p, ok := w.ResponseWriter.(http.Pusher); ok {
 		err := p.Push(target, opts)
