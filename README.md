@@ -142,3 +142,11 @@ services:
       - g0efilter
     network_mode: "service:g0efilter"
 ```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Third-Party Dependencies
+
+This project uses `golang.org/x/text` which contains some Unicode data components licensed under CC-BY-SA-3.0. These components consist primarily of Unicode Character Database (UCD) and Common Locale Data Repository (CLDR) data, which are factual compilations of international standards. See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for detailed information.
