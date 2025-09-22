@@ -64,3 +64,16 @@ release:
     name: g0efilter
   draft: false          
   prerelease: auto
+
+changelog:
+  filters:
+    exclude:
+      - '^tests:'
+      - '^docs:'
+      - '^style:'
+      - '^test:'
+      - '^doc:'
+      - '^chore:'
+      - 'merge conflict'
+      - 'Merge branch'
+      - 'Merge pull request'
