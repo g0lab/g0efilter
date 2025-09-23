@@ -839,6 +839,22 @@ func testIngestHandler(t *testing.T) {
 
 	handler := ingestHandler(nil, st, bus, rl)
 
+	t.Run("valid request with JSON content type", func(t *testing.T) {
+		testValidJSONRequest(t, handler)
+	})
+
+	t.Run("reject request without JSON content type", func(t *testing.T) {
+		testInvalidContentType(t, handler)
+	})
+
+	t.Run("accept request with JSON content type and charset", func(t *testing.T) {
+		testJSONWithCharset(t, handler)
+	})
+}
+
+func testValidJSONRequest(t *testing.T, handler http.Handler) {
+	t.Helper()
+
 	// Valid log entry
 	logEntry := map[string]any{
 		"time":   time.Now().UTC().Format(time.RFC3339Nano),
@@ -860,6 +876,56 @@ func testIngestHandler(t *testing.T) {
 
 	if w.Code != http.StatusAccepted {
 		t.Errorf("Expected status %d, got %d", http.StatusAccepted, w.Code)
+	}
+}
+
+func testInvalidContentType(t *testing.T, handler http.Handler) {
+	t.Helper()
+
+	logEntry := map[string]any{
+		"msg":    "test message",
+		"action": "BLOCKED",
+	}
+
+	jsonData, err := json.Marshal(logEntry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(jsonData))
+	req.Header.Set("Content-Type", "text/plain") // Wrong content type
+
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("Expected status %d for wrong content type, got %d", http.StatusUnsupportedMediaType, w.Code)
+	}
+}
+
+func testJSONWithCharset(t *testing.T, handler http.Handler) {
+	t.Helper()
+
+	logEntry := map[string]any{
+		"msg":    "test message",
+		"action": "BLOCKED",
+	}
+
+	jsonData, err := json.Marshal(logEntry)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(jsonData))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Errorf("Expected status %d for JSON with charset, got %d", http.StatusAccepted, w.Code)
 	}
 }
 

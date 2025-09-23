@@ -112,7 +112,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Handler:           withCommon(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      0, // 15 * time.Second,
+		WriteTimeout:      30 * time.Second, // Enable write timeout to prevent slow loris attacks
 		IdleTimeout:       600 * time.Second,
 	}
 
@@ -424,6 +424,14 @@ func validateIngestRequest(w http.ResponseWriter, r *http.Request, rl *rateLimit
 		return false
 	}
 
+	// Validate Content-Type to prevent CSRF attacks
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" && !strings.HasPrefix(contentType, "application/json;") {
+		http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
+
+		return false
+	}
+
 	ip := remoteIP(r)
 	if !rl.allow(ip) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
@@ -585,18 +593,48 @@ func validateNumericFields(payload map[string]any) error {
 func validateNumericField(field string, val any) error {
 	switch v := val.(type) {
 	case float64:
-		if v < 0 || v > 65535 {
-			return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
-		}
+		return validateFloatRange(field, v)
 	case int:
-		if v < 0 || v > 65535 {
-			return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
-		}
+		return validateIntRange(field, v)
+	case string:
+		return validateStringNumeric(field, v)
 	default:
-		// Allow strings that can be converted to numbers
-		if _, ok := val.(string); !ok {
-			return fmt.Errorf("%w: %s", errFieldMustBeNumber, field)
-		}
+		return fmt.Errorf("%w: %s", errFieldMustBeNumber, field)
+	}
+
+}
+
+// validateFloatRange checks if a float64 value is within valid port range.
+func validateFloatRange(field string, v float64) error {
+	if v < 0 || v > 65535 {
+		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
+	}
+
+	return nil
+}
+
+// validateIntRange checks if an int value is within valid port range.
+func validateIntRange(field string, v int) error {
+	if v < 0 || v > 65535 {
+		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
+	}
+
+	return nil
+}
+
+// validateStringNumeric validates string numeric fields by parsing and range checking.
+func validateStringNumeric(field string, v string) error {
+	if v == "" {
+		return nil // Allow empty strings
+	}
+
+	num, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fmt.Errorf("%w: %s (invalid number format)", errFieldMustBeNumber, field)
+	}
+
+	if num < 0 || num > 65535 {
+		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
 	}
 
 	return nil
@@ -914,6 +952,17 @@ func clearLogsHandler(lg *slog.Logger, st *memStore, bus *broadcaster) http.Hand
 
 func withCommon(lg *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Add security headers
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+
+		// Content Security Policy for dashboard
+		if strings.HasPrefix(r.URL.Path, "/") && r.URL.Path != "/logs" && r.URL.Path != "/events" && r.URL.Path != "/ingest" && r.URL.Path != "/logs/clear" && r.URL.Path != "/healthz" {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data:; connect-src 'self'")
+		}
+
 		start := time.Now()
 		ww := &respWrap{ResponseWriter: w, code: 200}
 		next.ServeHTTP(ww, r)
@@ -1165,11 +1214,13 @@ func (b *broadcaster) send(p []byte) {
 }
 
 type rateLimiter struct {
-	mu     sync.Mutex
-	tokens map[string]float64
-	last   map[string]time.Time
-	rps    float64
-	burst  float64
+	mu          sync.Mutex
+	tokens      map[string]float64
+	last        map[string]time.Time
+	rps         float64
+	burst       float64
+	maxEntries  int
+	lastCleanup time.Time
 }
 
 func newRateLimiter(rps, burst float64) *rateLimiter {
@@ -1182,10 +1233,12 @@ func newRateLimiter(rps, burst float64) *rateLimiter {
 	}
 
 	return &rateLimiter{
-		tokens: map[string]float64{},
-		last:   map[string]time.Time{},
-		rps:    rps,
-		burst:  burst,
+		tokens:      map[string]float64{},
+		last:        map[string]time.Time{},
+		rps:         rps,
+		burst:       burst,
+		maxEntries:  10000, // Prevent unlimited memory growth
+		lastCleanup: time.Now(),
 	}
 }
 
@@ -1194,6 +1247,12 @@ func (rl *rateLimiter) allow(key string) bool {
 
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
+
+	// Periodic cleanup to prevent memory leaks
+	if len(rl.tokens) > rl.maxEntries || now.Sub(rl.lastCleanup) > 10*time.Minute {
+		rl.cleanup(now)
+		rl.lastCleanup = now
+	}
 
 	t := rl.tokens[key]
 	last := rl.last[key]
@@ -1211,6 +1270,17 @@ func (rl *rateLimiter) allow(key string) bool {
 	rl.last[key] = now
 
 	return true
+}
+
+// cleanup removes entries older than 1 hour to prevent memory leaks.
+func (rl *rateLimiter) cleanup(now time.Time) {
+	cutoff := now.Add(-time.Hour)
+	for key, lastSeen := range rl.last {
+		if lastSeen.Before(cutoff) {
+			delete(rl.tokens, key)
+			delete(rl.last, key)
+		}
+	}
 }
 
 func mathMin(a, b float64) float64 {
