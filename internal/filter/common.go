@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/net/idna"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -78,53 +79,55 @@ func allowedHost(host string, allowlist []string) bool {
 
 const soOriginalDst = 80 // from linux/netfilter_ipv4.h
 
-// originalDstTCP returns "ip:port" that the app originally dialled (before REDIRECT).
-// This function uses unsafe pointers for SO_ORIGINAL_DST getsockopt() system call.
+// originalDstTCP (IPv4 only) returns "ip:port" that the app originally dialled (before REDIRECT).
+// Uses SO_ORIGINAL_DST via getsockopt() with proper type-safe sockaddr_in structure.
 func originalDstTCP(conn *net.TCPConn) (string, error) {
 	raw, err := conn.SyscallConn()
 	if err != nil {
 		return "", fmt.Errorf("syscallconn: %w", err)
 	}
 
-	var out string
-
-	var ctrlErr error
+	var (
+		out     string
+		ctrlErr error
+	)
 
 	err = raw.Control(func(fd uintptr) {
-		var buffer [128]byte
+		var sa unix.RawSockaddrInet4
 
-		bufferLen := uint32(len(buffer))
+		optlen := uint32(unsafe.Sizeof(sa))
 
-		// getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, &buffer[0], &bufferLen)
-		_, _, syscallErr := syscall.Syscall6(syscall.SYS_GETSOCKOPT,
+		// getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, &sa, &optlen)
+		_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT,
 			fd,
-			uintptr(syscall.SOL_IP),
+			uintptr(unix.SOL_IP),
 			uintptr(soOriginalDst),
-			uintptr(unsafe.Pointer(&buffer[0])), // #nosec G103
-			uintptr(unsafe.Pointer(&bufferLen)), // #nosec G103
+			uintptr(unsafe.Pointer(&sa)),     // #nosec G103
+			uintptr(unsafe.Pointer(&optlen)), // #nosec G103
 			0)
-		if syscallErr != 0 {
-			ctrlErr = syscallErr
+		if errno != 0 {
+			ctrlErr = errno
 
 			return
 		}
 
-		// Validate buffer length against expected sockaddr_in structure (16 bytes minimum)
-		if bufferLen < 8 {
+		// Expect a full sockaddr_in (16 bytes on Linux)
+		if optlen < uint32(unsafe.Sizeof(sa)) {
 			ctrlErr = syscall.EINVAL
 
 			return
 		}
 
-		// Additional safety: ensure we don't exceed our buffer bounds
-		if bufferLen > uint32(len(buffer)) {
-			ctrlErr = syscall.EINVAL
+		// Validate address family
+		if sa.Family != unix.AF_INET {
+			ctrlErr = syscall.EAFNOSUPPORT
 
 			return
 		}
 
-		port := int(binary.BigEndian.Uint16(buffer[2:4]))
-		ip := net.IPv4(buffer[4], buffer[5], buffer[6], buffer[7]).String()
+		// sin_port is network byte order (big-endian)
+		port := int(binary.BigEndian.Uint16((*[2]byte)(unsafe.Pointer(&sa.Port))[:])) // #nosec G103
+		ip := net.IP(sa.Addr[:]).String()
 		out = net.JoinHostPort(ip, strconv.Itoa(port))
 	})
 	if err != nil {
