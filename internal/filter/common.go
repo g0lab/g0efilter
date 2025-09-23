@@ -1,3 +1,5 @@
+//go:build linux
+
 // Package filter provides common network filtering utilities including domain validation,
 // connection handling, and synthetic event emission for network flow tracking.
 package filter
@@ -77,6 +79,7 @@ func allowedHost(host string, allowlist []string) bool {
 const soOriginalDst = 80 // from linux/netfilter_ipv4.h
 
 // originalDstTCP returns "ip:port" that the app originally dialled (before REDIRECT).
+// This function uses unsafe pointers for SO_ORIGINAL_DST getsockopt() system call.
 func originalDstTCP(conn *net.TCPConn) (string, error) {
 	raw, err := conn.SyscallConn()
 	if err != nil {
@@ -106,7 +109,15 @@ func originalDstTCP(conn *net.TCPConn) (string, error) {
 			return
 		}
 
+		// Validate buffer length against expected sockaddr_in structure (16 bytes minimum)
 		if bufferLen < 8 {
+			ctrlErr = syscall.EINVAL
+
+			return
+		}
+
+		// Additional safety: ensure we don't exceed our buffer bounds
+		if bufferLen > uint32(len(buffer)) {
 			ctrlErr = syscall.EINVAL
 
 			return

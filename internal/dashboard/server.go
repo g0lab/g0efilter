@@ -482,6 +482,7 @@ func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *br
 func sanitizeJSONForSSE(jsonData []byte) []byte {
 	var buf bytes.Buffer
 	json.HTMLEscape(&buf, jsonData)
+
 	return buf.Bytes()
 }
 
