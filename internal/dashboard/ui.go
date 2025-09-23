@@ -96,7 +96,7 @@ input[type="search"]{min-width:220px}
         <option value="dns">dns</option>
       </select>
     </label>
-    <input id="search" type="search" placeholder="Search host/SNI/src/dst/flow/hostname…" />
+    <input id="search" type="search" placeholder="Search host/SNI/src/dst/flow_id/hostname…" />
     <button id="apply" class="primary">Apply</button>
     <input id="apiKey" placeholder="API key (for clear)" size="16" type="password"/>
     <button id="clearBtn" title="requires API key">Clear</button>
@@ -119,6 +119,7 @@ input[type="search"]{min-width:220px}
           <col style="width:220px">  <!-- Src -->
           <col style="width:240px">  <!-- Dst -->
           <col style="width:180px">  <!-- Hostname -->
+          <col style="width:120px">  <!-- Flow ID -->
           <col style="width:200px">  <!-- Time -->
         </colgroup>
         <thead>
@@ -129,6 +130,7 @@ input[type="search"]{min-width:220px}
             <th>Src</th>
             <th>Dst</th>
             <th>Hostname</th>
+            <th>Flow ID</th>
             <th>Time</th>
           </tr>
         </thead>
@@ -230,6 +232,7 @@ function hostOf(it){var f=(it&&it.fields)||{};return it.http_host||it.host||it.s
 function dstOf(it){if(it&&it.dst)return it.dst; if(it&&it.destination_ip&&it.destination_port)return it.destination_ip+':'+it.destination_port; return it&&it.destination_ip?it.destination_ip:'';}
 function srcOf(it){if(it&&it.src)return it.src; if(it&&it.source_ip&&it.source_port)return it.source_ip+':'+it.source_port; return it&&it.source_ip?it.source_ip:'';}
 function hostnameOf(it){return it.hostname || ((it.fields&&it.fields.hostname)||'');}
+function flowIdOf(it){return it.flow_id || ((it.fields&&it.fields.flow_id)||'');}
 
 /* filter */
 function matches(it){
@@ -239,7 +242,7 @@ function matches(it){
   var act=getAction(it); if(aSel && act!==aSel) return false;
   var comp=getComp(it); if(cSel && comp!==cSel) return false;
   if(!q) return true;
-  var hay=[act, comp, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), it.flow_id||''].join(' ').toLowerCase();
+  var hay=[act, comp, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), flowIdOf(it)].join(' ').toLowerCase();
   return hay.indexOf(q)!==-1;
 }
 
@@ -252,6 +255,7 @@ function rowHTML(it){
   var src  = srcOf(it);
   var dst  = dstOf(it);
   var hn   = hostnameOf(it);
+  var fid  = flowIdOf(it);
   var when = it.time || it.ts || new Date().toISOString();
   var badge = 'badge-'+act;
   return '<tr>' +
@@ -261,6 +265,7 @@ function rowHTML(it){
     '<td class="mono">'+esc(src)+'</td>' +
     '<td class="mono">'+esc(dst)+'</td>' +
     '<td>'+esc(hn)+'</td>' +
+    '<td class="mono">'+esc(fid)+'</td>' +
     '<td><small>'+esc(new Date(when).toLocaleString())+' <span style="opacity:.6">('+esc(rel(when))+' ago)</span></small></td>' +
   '</tr>';
 }
