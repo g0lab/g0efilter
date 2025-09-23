@@ -195,7 +195,6 @@ func TestMemStore_InsertAndQuery(t *testing.T) {
 
 	// Insert a log entry
 	entry := &LogEntry{
-		Level:   "INFO",
 		Message: "test message",
 		Fields:  json.RawMessage(`{"key":"value"}`),
 	}
@@ -210,7 +209,7 @@ func TestMemStore_InsertAndQuery(t *testing.T) {
 	}
 
 	// Query the entry
-	entries, err := store.Query(ctx, "", "", 0, 10)
+	entries, err := store.Query(ctx, "", 0, 10)
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}
@@ -231,7 +230,7 @@ func TestMemStore_Clear(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert an entry
-	entry := &LogEntry{Level: "INFO", Message: "test"}
+	entry := &LogEntry{Message: "test"}
 
 	_, err := store.Insert(ctx, entry)
 	if err != nil {
@@ -245,7 +244,7 @@ func TestMemStore_Clear(t *testing.T) {
 	}
 
 	// Verify empty
-	entries, err := store.Query(ctx, "", "", 0, 10)
+	entries, err := store.Query(ctx, "", 0, 10)
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}
@@ -264,7 +263,6 @@ func TestMemStore_RingBuffer(t *testing.T) {
 	// Insert 3 entries (more than capacity)
 	for i := range 3 {
 		entry := &LogEntry{
-			Level:   "INFO",
 			Message: fmt.Sprintf("message %d", i),
 		}
 
@@ -275,7 +273,7 @@ func TestMemStore_RingBuffer(t *testing.T) {
 	}
 
 	// Should only have the last 2 entries
-	entries, err := store.Query(ctx, "", "", 0, 10)
+	entries, err := store.Query(ctx, "", 0, 10)
 	if err != nil {
 		t.Fatalf("Query failed: %v", err)
 	}
@@ -634,9 +632,9 @@ func setupTestStore() *memStore {
 
 	// Insert test data
 	entries := []*LogEntry{
-		{Level: "INFO", Message: "info message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
-		{Level: "ERROR", Message: "error message", Fields: json.RawMessage(`{"action":"BLOCKED"}`)},
-		{Level: "DEBUG", Message: "debug message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
+		{Message: "info message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
+		{Message: "error message", Fields: json.RawMessage(`{"action":"BLOCKED"}`)},
+		{Message: "debug message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
 	}
 
 	for _, entry := range entries {
@@ -676,13 +674,13 @@ func TestListLogsHandler_GetAllLogs(t *testing.T) {
 	}
 }
 
-func TestListLogsHandler_FilterByLevel(t *testing.T) {
+func TestListLogsHandler_FilterByQuery(t *testing.T) {
 	t.Parallel()
 
 	store := setupTestStore()
 	handler := listLogsHandler(store, 100)
 
-	req := httptest.NewRequest(http.MethodGet, "/logs?level=ERROR", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs?q=error", nil)
 	w := httptest.NewRecorder()
 
 	handler.ServeHTTP(w, req)
@@ -699,11 +697,11 @@ func TestListLogsHandler_FilterByLevel(t *testing.T) {
 	}
 
 	if len(logs) != 1 {
-		t.Errorf("Expected 1 ERROR log, got %d", len(logs))
+		t.Errorf("Expected 1 log with 'error', got %d", len(logs))
 	}
 
-	if logs[0].Level != "ERROR" {
-		t.Errorf("Expected ERROR level, got %s", logs[0].Level)
+	if !strings.Contains(logs[0].Message, "error") {
+		t.Errorf("Expected message containing 'error', got %s", logs[0].Message)
 	}
 }
 
@@ -844,7 +842,6 @@ func testIngestHandler(t *testing.T) {
 	// Valid log entry
 	logEntry := map[string]any{
 		"time":   time.Now().UTC().Format(time.RFC3339Nano),
-		"level":  "INFO",
 		"msg":    "test message",
 		"action": "BLOCKED",
 	}
@@ -913,7 +910,6 @@ func testLogsListHandler(t *testing.T) {
 	// Add a test log entry
 	entry := &LogEntry{
 		Time:    time.Now().UTC(),
-		Level:   "INFO",
 		Message: "test message",
 		Action:  "BLOCKED",
 	}
@@ -1038,7 +1034,6 @@ func testMemoryStoreOperations(t *testing.T) {
 	for i := range 3 {
 		entry := &LogEntry{
 			Time:    time.Now().UTC(),
-			Level:   "INFO",
 			Message: fmt.Sprintf("test message %d", i),
 			Action:  "BLOCKED",
 		}
@@ -1054,7 +1049,7 @@ func testMemoryStoreOperations(t *testing.T) {
 	}
 
 	// Test querying
-	logs, err := st.Query(context.Background(), "", "", 0, 10)
+	logs, err := st.Query(context.Background(), "", 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}

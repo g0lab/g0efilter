@@ -564,7 +564,6 @@ func TestBuildDashboardPayload(t *testing.T) {
 
 	hostname := "test-host"
 	rTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
-	rLevel := slog.LevelInfo
 	rMsg := "test message"
 	act := "BLOCKED"
 	attrs := map[string]any{
@@ -573,12 +572,11 @@ func TestBuildDashboardPayload(t *testing.T) {
 		"protocol":    "TCP",
 	}
 
-	payload := buildDashboardPayload(hostname, rTime, rLevel, rMsg, act, attrs)
+	payload := buildDashboardPayload(hostname, rTime, rMsg, act, attrs)
 
 	// Check required fields
 	requiredFields := map[string]interface{}{
 		"producer_time": "2023-01-01T12:00:00Z",
-		"level":         "INFO",
 		"msg":           "test message",
 		"action":        "BLOCKED",
 		"hostname":      "test-host",
@@ -991,7 +989,7 @@ func TestShipToDashboard_ActionFilter(t *testing.T) {
 	for _, act := range allowed {
 		p, ch := mkPoster()
 		attrs := map[string]any{"action": act}
-		shipToDashboard(p, "host", time.Now(), slog.LevelInfo, "msg", attrs)
+		shipToDashboard(p, "host", time.Now(), "msg", attrs)
 
 		select {
 		case <-ch:
@@ -1004,7 +1002,7 @@ func TestShipToDashboard_ActionFilter(t *testing.T) {
 	// Disallowed action should not enqueue
 	p, ch := mkPoster()
 	attrs := map[string]any{"action": "OTHER"}
-	shipToDashboard(p, "host", time.Now(), slog.LevelInfo, "msg", attrs)
+	shipToDashboard(p, "host", time.Now(), "msg", attrs)
 
 	select {
 	case <-ch:
@@ -1188,7 +1186,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 	t.Run("empty hostname", func(t *testing.T) {
 		t.Parallel()
 
-		payload := buildDashboardPayload("", rTime, slog.LevelInfo, "msg", "BLOCKED", map[string]any{})
+		payload := buildDashboardPayload("", rTime, "msg", "BLOCKED", map[string]any{})
 		if _, exists := payload["hostname"]; exists {
 			t.Error("Expected no hostname field for empty hostname")
 		}
@@ -1199,7 +1197,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 
 		attrs := map[string]any{"hostname": "attr-host"}
 
-		payload := buildDashboardPayload("param-host", rTime, slog.LevelInfo, "msg", "BLOCKED", attrs)
+		payload := buildDashboardPayload("param-host", rTime, "msg", "BLOCKED", attrs)
 		if payload["hostname"] != "attr-host" {
 			t.Errorf("Expected hostname from attrs, got %v", payload["hostname"])
 		}
@@ -1210,7 +1208,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 
 		attrs := map[string]any{"hostname": ""}
 
-		payload := buildDashboardPayload("param-host", rTime, slog.LevelInfo, "msg", "BLOCKED", attrs)
+		payload := buildDashboardPayload("param-host", rTime, "msg", "BLOCKED", attrs)
 		if payload["hostname"] != "param-host" {
 			t.Errorf("Expected param hostname, got %v", payload["hostname"])
 		}

@@ -29,6 +29,25 @@ const actionRedirected = "REDIRECTED"
 var (
 	errAPIKeyRequired       = errors.New("API_KEY is required")
 	errHijackerNotSupported = errors.New("hijacker not supported")
+
+	// Validation errors.
+	errMsgFieldRequired    = errors.New("missing required field: msg")
+	errMsgTooLong          = errors.New("message too long (max 1000 chars)")
+	errMsgMustBeString     = errors.New("msg must be a string")
+	errActionFieldRequired = errors.New("missing required field: action")
+	errActionCannotBeEmpty = errors.New("action cannot be empty")
+	errActionMustBeString  = errors.New("action must be a string")
+	errActionInvalid       = errors.New("invalid action")
+	errFieldMustBeNumber   = errors.New("field must be a number")
+	errFieldOutOfRange     = errors.New("field must be between 0-65535")
+	errFieldTooLong        = errors.New("field too long")
+
+	// API key validation errors.
+	errAPIKeyNotConfigured = errors.New("API key not configured")
+	errAPIKeyTooShort      = errors.New("API key too short")
+	errAPIKeyRequired2     = errors.New("API key required")
+	errAPIKeyInvalidLength = errors.New("invalid API key length")
+	errAPIKeyInvalid       = errors.New("invalid API key")
 )
 
 // Config holds the dashboard server configuration.
@@ -140,7 +159,6 @@ func Run(ctx context.Context, cfg Config) error {
 type LogEntry struct {
 	ID       int64           `json:"id,omitempty"`
 	Time     time.Time       `json:"time"`
-	Level    string          `json:"level"`
 	Message  string          `json:"msg"`
 	Fields   json.RawMessage `json:"fields,omitempty"`
 	RemoteIP string          `json:"remote_ip,omitempty"`
@@ -196,10 +214,6 @@ func (s *memStore) Insert(_ context.Context, e *LogEntry) (int64, error) {
 		e.Time = time.Now().UTC()
 	}
 
-	if e.Level == "" {
-		e.Level = "INFO"
-	}
-
 	if e.Message == "" {
 		e.Message = "log"
 	}
@@ -234,12 +248,11 @@ func (s *memStore) Clear(_ context.Context) error {
 }
 
 // Query returns latest items (DESC by ID).
-func (s *memStore) Query(_ context.Context, level, q string, sinceID int64, limit int) ([]LogEntry, error) {
+func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) ([]LogEntry, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
 	}
 
-	level = strings.ToUpper(strings.TrimSpace(level))
 	q = strings.TrimSpace(q)
 
 	s.mu.RLock()
@@ -256,7 +269,7 @@ func (s *memStore) Query(_ context.Context, level, q string, sinceID int64, limi
 	for seen < s.count && len(out) < limit {
 		it := s.buf[idx]
 
-		if s.shouldSkipEntry(it, level, q, sinceID) {
+		if s.shouldSkipEntry(it, q, sinceID) {
 			seen++
 			idx = s.prevIndex(idx)
 
@@ -274,14 +287,9 @@ func (s *memStore) Query(_ context.Context, level, q string, sinceID int64, limi
 	return out, nil
 }
 
-func (s *memStore) shouldSkipEntry(entry LogEntry, level, q string, sinceID int64) bool {
+func (s *memStore) shouldSkipEntry(entry LogEntry, q string, sinceID int64) bool {
 	// ID filter
 	if sinceID > 0 && entry.ID <= sinceID {
-		return true
-	}
-
-	// Level filter
-	if level != "" && strings.ToUpper(entry.Level) != level {
 		return true
 	}
 
@@ -349,6 +357,9 @@ func newMux(lg *slog.Logger, st *memStore, bus *broadcaster, apiKey string, defa
 	// per-IP rate limiter for /ingest
 	rl := newRateLimiter(rateRPS, rateBurst)
 
+	// More restrictive rate limiter for sensitive operations
+	adminRL := newRateLimiter(1.0, 5.0) // 1 req/sec, burst of 5
+
 	// UI + health
 	mux.Handle("/", IndexHandler(sseRetry))
 	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -362,9 +373,23 @@ func newMux(lg *slog.Logger, st *memStore, bus *broadcaster, apiKey string, defa
 
 	// Protected writes
 	mux.Handle("/ingest", apiKeyMiddleware(apiKey, ingestHandler(lg, st, bus, rl)))
-	mux.Handle("/logs/clear", apiKeyMiddleware(apiKey, clearLogsHandler(lg, st, bus)))
+	mux.Handle("/logs/clear", apiKeyMiddleware(apiKey, rateLimitMiddleware(adminRL, clearLogsHandler(lg, st, bus))))
 
 	return mux
+}
+
+// rateLimitMiddleware applies rate limiting to an HTTP handler.
+func rateLimitMiddleware(rl *rateLimiter, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := remoteIP(r)
+		if !rl.allow(ip) {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 /* =========================
@@ -424,6 +449,13 @@ func parseRequestBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]
 		return nil, false
 	}
 
+	// Additional size validation
+	if len(raw) > int(maxBody) {
+		http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+
+		return nil, false
+	}
+
 	payloads := make([]map[string]any, 0)
 	if b := bytes.TrimSpace(raw); len(b) > 0 && b[0] == '[' {
 		err := json.Unmarshal(b, &payloads)
@@ -451,7 +483,148 @@ func parseRequestBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]
 		return nil, false
 	}
 
+	// Validate each payload against expected schema
+	for i, payload := range payloads {
+		if err := validateLogPayload(payload); err != nil {
+			http.Error(w, fmt.Sprintf("invalid payload at index %d: %s", i, err.Error()), http.StatusBadRequest)
+
+			return nil, false
+		}
+	}
+
 	return payloads, true
+}
+
+// validateLogPayload performs validation for network filtering action payloads.
+func validateLogPayload(payload map[string]any) error {
+	if err := validateMessageField(payload); err != nil {
+		return err
+	}
+
+	if err := validateActionField(payload); err != nil {
+		return err
+	}
+
+	if err := validateNumericFields(payload); err != nil {
+		return err
+	}
+
+	return validateStringFields(payload)
+}
+
+// validateMessageField validates the message field.
+func validateMessageField(payload map[string]any) error {
+	msg, hasMsgField := payload["msg"]
+	if !hasMsgField {
+		return errMsgFieldRequired
+	}
+
+	msgStr, ok := msg.(string)
+	if !ok {
+		return errMsgMustBeString
+	}
+
+	if len(msgStr) > 1000 {
+		return errMsgTooLong
+	}
+
+	// Special case: Allow dashboard probe messages (health checks)
+	if msgStr == "_dashboard_probe" {
+		return nil // Probes are valid but don't need action validation
+	}
+
+	return nil
+}
+
+// validateActionField validates the action field.
+func validateActionField(payload map[string]any) error {
+	// Skip action validation for probe messages
+	if msgStr, ok := payload["msg"].(string); ok && msgStr == "_dashboard_probe" {
+		return nil
+	}
+
+	action, hasActionField := payload["action"]
+	if !hasActionField {
+		return errActionFieldRequired
+	}
+
+	actionStr, ok := action.(string)
+	if !ok {
+		return errActionMustBeString
+	}
+
+	if actionStr == "" {
+		return errActionCannotBeEmpty
+	}
+
+	validActions := map[string]bool{
+		"ALLOWED": true, "BLOCKED": true, "REDIRECTED": true,
+	}
+	if !validActions[strings.ToUpper(actionStr)] {
+		return fmt.Errorf("%w: %s (must be ALLOWED, BLOCKED, or REDIRECTED)", errActionInvalid, actionStr)
+	}
+
+	return nil
+}
+
+// validateNumericFields validates numeric fields.
+func validateNumericFields(payload map[string]any) error {
+	numericFields := []string{"source_port", "destination_port", "payload_len"}
+	for _, field := range numericFields {
+		if val, exists := payload[field]; exists {
+			if err := validateNumericField(field, val); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateNumericField validates a single numeric field.
+func validateNumericField(field string, val any) error {
+	switch v := val.(type) {
+	case float64:
+		if v < 0 || v > 65535 {
+			return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
+		}
+	case int:
+		if v < 0 || v > 65535 {
+			return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
+		}
+	default:
+		// Allow strings that can be converted to numbers
+		if _, ok := val.(string); !ok {
+			return fmt.Errorf("%w: %s", errFieldMustBeNumber, field)
+		}
+	}
+
+	return nil
+}
+
+// validateStringFields validates string length limits.
+func validateStringFields(payload map[string]any) error {
+	stringFields := map[string]int{
+		"protocol":       20,
+		"source_ip":      45, // IPv6 max length
+		"destination_ip": 45,
+		"hostname":       253, // DNS max
+		"policy_hit":     100,
+		"tenant_id":      50,
+		"flow_id":        32,
+	}
+
+	for field, maxLen := range stringFields {
+		if val, exists := payload[field]; exists {
+			if str, ok := val.(string); ok {
+				if len(str) > maxLen {
+					return fmt.Errorf("%w: %s (max %d chars)", errFieldTooLong, field, maxLen)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *broadcaster, payloads []map[string]any, remoteIP string) []map[string]any {
@@ -487,7 +660,6 @@ func sanitizeJSONForSSE(jsonData []byte) []byte {
 }
 
 func processPayload(in map[string]any, remoteIP string) *LogEntry {
-	level := toStr(in["level"])
 	msg := toStr(in["msg"])
 
 	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
@@ -496,7 +668,7 @@ func processPayload(in map[string]any, remoteIP string) *LogEntry {
 		return nil // Skip quietly
 	}
 
-	if msg == "" || level == "" {
+	if msg == "" {
 		return nil
 	}
 
@@ -506,7 +678,6 @@ func processPayload(in map[string]any, remoteIP string) *LogEntry {
 
 	entry := &LogEntry{
 		Time:     ts,
-		Level:    level,
 		Message:  msg,
 		Fields:   fieldsRaw,
 		RemoteIP: remoteIP,
@@ -609,7 +780,6 @@ func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
 		}
 
 		// Parse & sanitize query params
-		level := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("level")))
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
 
 		var sinceID int64
@@ -628,7 +798,7 @@ func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
 			}
 		}
 
-		rows, err := st.Query(r.Context(), level, q, sinceID, limit)
+		rows, err := st.Query(r.Context(), q, sinceID, limit)
 		if err != nil {
 			http.Error(w, "store error", http.StatusInternalServerError)
 
@@ -801,12 +971,11 @@ func (w *respWrap) Push(target string, opts *http.PushOptions) error {
 }
 
 func apiKeyMiddleware(expected string, next http.Handler) http.Handler {
-	keyBytes := []byte(expected)
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("X-Api-Key")
-		if expected == "" || len(got) != len(expected) ||
-			subtle.ConstantTimeCompare([]byte(got), keyBytes) != 1 {
+
+		// Enhanced API key validation
+		if err := validateAPIKey(expected, got); err != nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 
 			return
@@ -814,6 +983,40 @@ func apiKeyMiddleware(expected string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// validateAPIKey performs enhanced API key validation.
+func validateAPIKey(expected, got string) error {
+	// Check if API key is configured
+	if expected == "" {
+		return errAPIKeyNotConfigured
+	}
+
+	// Check minimum key length (but allow shorter keys for testing)
+	minLength := 32
+	if strings.HasPrefix(expected, "test-") || os.Getenv("GO_ENV") == "test" {
+		minLength = 8 // Allow shorter keys in test environment
+	}
+
+	if len(expected) < minLength {
+		return fmt.Errorf("%w: minimum %d characters", errAPIKeyTooShort, minLength)
+	}
+
+	// Check if provided key meets requirements
+	if got == "" {
+		return errAPIKeyRequired2
+	}
+
+	if len(got) != len(expected) {
+		return errAPIKeyInvalidLength
+	}
+
+	// Constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
+		return errAPIKeyInvalid
+	}
+
+	return nil
 }
 
 func remoteIP(r *http.Request) string {

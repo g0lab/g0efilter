@@ -211,9 +211,8 @@ func (p *poster) Enqueue(payload []byte) {
 
 func (p *poster) Probe(ctx context.Context) error {
 	probe := map[string]any{
-		"time":  time.Now().UTC().Format(time.RFC3339Nano),
-		"level": "INFO",
-		"msg":   "_dashboard_probe",
+		"time": time.Now().UTC().Format(time.RFC3339Nano),
+		"msg":  "_dashboard_probe",
 	}
 
 	payload, err := json.Marshal(probe)
@@ -533,7 +532,7 @@ func (z *zerologHandler) Handle(_ context.Context, record slog.Record) error {
 
 	// Ship action events to the dashboard if configured
 	if z.poster != nil {
-		shipToDashboard(z.poster, z.hostname, record.Time, record.Level, record.Message, attrs)
+		shipToDashboard(z.poster, z.hostname, record.Time, record.Message, attrs)
 	}
 
 	return nil
@@ -568,7 +567,7 @@ func logToTerminal(zl zerolog.Logger, level slog.Level, msg string, attrs map[st
 }
 
 func shipToDashboard(
-	poster *poster, hostname string, rTime time.Time, rLevel slog.Level, rMsg string, attrs map[string]any,
+	poster *poster, hostname string, rTime time.Time, rMsg string, attrs map[string]any,
 ) {
 	act := ""
 
@@ -580,7 +579,7 @@ func shipToDashboard(
 		return
 	}
 
-	payload := buildDashboardPayload(hostname, rTime, rLevel, rMsg, act, attrs)
+	payload := buildDashboardPayload(hostname, rTime, rMsg, act, attrs)
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -631,11 +630,10 @@ func normalizeAttributeKeys(attrs map[string]any) {
 }
 
 func buildDashboardPayload(
-	hostname string, rTime time.Time, rLevel slog.Level, rMsg, act string, attrs map[string]any,
+	hostname string, rTime time.Time, rMsg, act string, attrs map[string]any,
 ) map[string]any {
 	payload := map[string]any{
 		"producer_time": rTime.Format(time.RFC3339Nano),
-		"level":         rLevel.String(),
 		"msg":           rMsg,
 		"action":        act,
 		"time":          getCanonicalTime(attrs, rTime),
