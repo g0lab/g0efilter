@@ -466,13 +466,23 @@ func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *br
 				results = append(results, map[string]any{"id": id, "status": "ok"})
 
 				if out, err := json.Marshal(entry); err == nil && out != nil {
-					bus.send(out)
+					// Sanitize JSON to prevent XSS attacks while preserving JSON structure
+					sanitized := sanitizeJSONForSSE(out)
+					bus.send(sanitized)
 				}
 			}
 		}
 	}
 
 	return results
+}
+
+// sanitizeJSONForSSE HTML-escapes JSON content to prevent XSS attacks
+// while preserving JSON structure for client-side parsing.
+func sanitizeJSONForSSE(jsonData []byte) []byte {
+	var buf bytes.Buffer
+	json.HTMLEscape(&buf, jsonData)
+	return buf.Bytes()
 }
 
 func processPayload(in map[string]any, remoteIP string) *LogEntry {
