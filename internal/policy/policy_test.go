@@ -337,6 +337,103 @@ func TestLoadConfig(t *testing.T) {
 	})
 }
 
+func TestLoadConfigPathTraversal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("path traversal with .. in path", func(t *testing.T) {
+		t.Parallel()
+
+		// Try to access a file using path traversal
+		_, err := loadConfig("../../../etc/passwd")
+		if err == nil {
+			t.Error("loadConfig() = nil, want error for path traversal attempt")
+		}
+
+		// Check that it's specifically a path traversal error
+		if err != nil && !strings.Contains(err.Error(), "path traversal not allowed") {
+			t.Errorf("Expected path traversal error, got: %v", err)
+		}
+	})
+
+	t.Run("path traversal with relative path", func(t *testing.T) {
+		t.Parallel()
+
+		// Try various path traversal patterns
+		traversalPaths := []string{
+			"./config/../../etc/passwd",
+			"config/../../../etc/passwd",
+			"config/./../../etc/passwd",
+		}
+
+		for _, path := range traversalPaths {
+			_, err := loadConfig(path)
+			if err == nil {
+				t.Errorf("loadConfig(%q) = nil, want error for path traversal attempt", path)
+			}
+
+			// Check that it's caught by our validation - split into multiple checks to reduce line length
+			if err != nil {
+				hasTraversalError := strings.Contains(err.Error(), "path traversal not allowed")
+
+				hasInvalidPathError := strings.Contains(err.Error(), "invalid file path")
+				if !hasTraversalError && !hasInvalidPathError {
+					t.Errorf("Expected path traversal or invalid path error for %q, got: %v", path, err)
+				}
+			}
+		}
+	})
+}
+
+func TestLoadConfigInvalidPaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid file path with unusual characters", func(t *testing.T) {
+		t.Parallel()
+
+		// Test paths that would be cleaned differently by filepath.Clean
+		invalidPaths := []string{
+			"config//policy.yaml",          // double slash
+			"config/./policy.yaml",         // current directory reference
+			"config/../config/policy.yaml", // up and down
+		}
+
+		for _, path := range invalidPaths {
+			_, err := loadConfig(path)
+			if err == nil {
+				t.Errorf("loadConfig(%q) = nil, want error for invalid file path", path)
+			}
+
+			// Some of these will be caught by file not found, others by path validation
+			if err != nil {
+				hasInvalidPath := strings.Contains(err.Error(), "invalid file path")
+				hasTraversalError := strings.Contains(err.Error(), "path traversal not allowed")
+				hasAccessError := strings.Contains(err.Error(), "error accessing file")
+
+				if !hasInvalidPath && !hasTraversalError && !hasAccessError {
+					t.Errorf("Expected path validation error for %q, got: %v", path, err)
+				}
+			}
+		}
+	})
+
+	t.Run("directory instead of file", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a temporary directory
+		tmpDir := t.TempDir()
+
+		_, err := loadConfig(tmpDir)
+		if err == nil {
+			t.Error("loadConfig() = nil, want error when trying to load a directory")
+		}
+
+		// Check that it's specifically a "not a regular file" error
+		if err != nil && !strings.Contains(err.Error(), "not a regular file") {
+			t.Errorf("Expected 'not a regular file' error, got: %v", err)
+		}
+	})
+}
+
 func TestReadPolicy(t *testing.T) {
 	t.Parallel()
 

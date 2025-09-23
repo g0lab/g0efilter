@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -15,8 +16,11 @@ import (
 )
 
 var (
-	errInvalidIP     = errors.New("invalid IP address")
-	errInvalidDomain = errors.New("invalid domain pattern")
+	errInvalidIP               = errors.New("invalid IP address")
+	errInvalidDomain           = errors.New("invalid domain pattern")
+	errInvalidFilePath         = errors.New("invalid file path")
+	errPathTraversalNotAllowed = errors.New("path traversal not allowed")
+	errNotRegularFile          = errors.New("not a regular file")
 )
 
 const maxDomainLength = 253
@@ -209,7 +213,28 @@ type Config struct {
 func loadConfig(file string) (Config, error) {
 	var cfg Config
 
-	data, err := os.ReadFile(file) // #nosec G304
+	// Validate file path to prevent directory traversal
+	cleanPath := filepath.Clean(file)
+	if cleanPath != file {
+		return cfg, fmt.Errorf("%w: %s", errInvalidFilePath, file)
+	}
+
+	// Check for path traversal attempts
+	if strings.Contains(cleanPath, "..") {
+		return cfg, fmt.Errorf("%w: %s", errPathTraversalNotAllowed, file)
+	}
+
+	// Ensure file is readable regular file
+	fileInfo, err := os.Stat(cleanPath)
+	if err != nil {
+		return cfg, fmt.Errorf("error accessing file: %w", err)
+	}
+
+	if !fileInfo.Mode().IsRegular() {
+		return cfg, fmt.Errorf("%w: %s", errNotRegularFile, cleanPath)
+	}
+
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return cfg, fmt.Errorf("error reading file: %w", err)
 	}
