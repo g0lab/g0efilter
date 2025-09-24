@@ -82,6 +82,8 @@ allowlist:
 | `LOG_FILE`          | Optional path for persistent log file              | unset               |
 | `NFLOG_BUFSIZE`     | Netfilter log buffer size                          | `96`                |
 | `NFLOG_QTHRESH`     | Netfilter log queue threshold                      | `50`                |
+| `NOTIFICATION_HOST` | Gotify server URL for security alert notifications | unset               |
+| `NOTIFICATION_KEY`  | Gotify application key for authentication          | unset               |
 
 ### g0efilter-dashboard
 
