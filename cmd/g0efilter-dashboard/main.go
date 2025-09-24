@@ -103,6 +103,57 @@ type exitCodeError int
 
 func (e exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
 
+func buildConfig() dashboard.Config {
+	return dashboard.Config{
+		Addr:         getenv("PORT", ":8081"),
+		APIKey:       getenv("API_KEY", ""),
+		LogLevel:     getenv("LOG_LEVEL", "INFO"),
+		LogFormat:    "json",
+		BufferSize:   getenvInt("BUFFER_SIZE", defaultBufferSize),
+		ReadLimit:    getenvInt("READ_LIMIT", defaultReadLimit),
+		SERetryMs:    getenvInt("SSE_RETRY_MS", defaultSERetryMs),
+		RateRPS:      getenvFloat("RATE_RPS", defaultRateRPS),
+		RateBurst:    getenvFloat("RATE_BURST", defaultRateBurst),
+		WriteTimeout: getenvInt("WRITE_TIMEOUT", 0), // 0 = no timeout (SSE-friendly)
+	}
+}
+
+func normalizeAddr(cfg *dashboard.Config) {
+	if cfg.Addr != "" && !strings.Contains(cfg.Addr, ":") {
+		_, aerr := strconv.Atoi(cfg.Addr)
+		if aerr == nil {
+			cfg.Addr = ":" + cfg.Addr
+		}
+	}
+}
+
+func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
+	// Structured logger
+	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
+	slog.SetDefault(lg)
+
+	if cfg.APIKey == "" {
+		lg.Error("config.missing_api_key", "msg", "API_KEY is not set; the dashboard requires API_KEY to run")
+
+		return nil, exitCodeError(1)
+	}
+
+	lg.Info("dashboard.starting",
+		"addr", cfg.Addr,
+		"buffer_size", cfg.BufferSize,
+		"read_limit", cfg.ReadLimit,
+		"sse_retry_ms", cfg.SERetryMs,
+		"rate_rps", cfg.RateRPS,
+		"rate_burst", cfg.RateBurst,
+		"write_timeout", cfg.WriteTimeout,
+		"version", version,
+		"commit", commit,
+		"date", date,
+	)
+
+	return lg, nil
+}
+
 func main() {
 	err := startMain()
 	if err != nil {
@@ -126,46 +177,13 @@ func startMain() error {
 		}
 	}
 
-	cfg := dashboard.Config{
-		Addr:       getenv("PORT", ":8081"),
-		APIKey:     getenv("API_KEY", ""),
-		LogLevel:   getenv("LOG_LEVEL", "INFO"),
-		LogFormat:  "json",
-		BufferSize: getenvInt("BUFFER_SIZE", defaultBufferSize),
-		ReadLimit:  getenvInt("READ_LIMIT", defaultReadLimit),
-		SERetryMs:  getenvInt("SSE_RETRY_MS", defaultSERetryMs),
-		RateRPS:    getenvFloat("RATE_RPS", defaultRateRPS),
-		RateBurst:  getenvFloat("RATE_BURST", defaultRateBurst),
+	cfg := buildConfig()
+	normalizeAddr(&cfg)
+
+	lg, err := setupLogging(cfg)
+	if err != nil {
+		return err
 	}
-
-	if cfg.Addr != "" && !strings.Contains(cfg.Addr, ":") {
-		_, aerr := strconv.Atoi(cfg.Addr)
-		if aerr == nil {
-			cfg.Addr = ":" + cfg.Addr
-		}
-	}
-
-	// Structured logger
-	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
-	slog.SetDefault(lg)
-
-	if cfg.APIKey == "" {
-		lg.Error("config.missing_api_key", "msg", "API_KEY is not set; the dashboard requires API_KEY to run")
-
-		return exitCodeError(1)
-	}
-
-	lg.Info("dashboard.starting",
-		"addr", cfg.Addr,
-		"buffer_size", cfg.BufferSize,
-		"read_limit", cfg.ReadLimit,
-		"sse_retry_ms", cfg.SERetryMs,
-		"rate_rps", cfg.RateRPS,
-		"rate_burst", cfg.RateBurst,
-		"version", version,
-		"commit", commit,
-		"date", date,
-	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

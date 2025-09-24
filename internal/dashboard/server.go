@@ -52,15 +52,16 @@ var (
 
 // Config holds the dashboard server configuration.
 type Config struct {
-	Addr       string  // ":8081"
-	APIKey     string  // required for /ingest and /logs/clear
-	LogLevel   string  // "INFO"
-	LogFormat  string  // "json"
-	BufferSize int     // optional (default 5000)
-	ReadLimit  int     // optional (default 500)
-	SERetryMs  int     // optional (default 2000) - SSE client retry hint
-	RateRPS    float64 // optional (default 50)
-	RateBurst  float64 // optional (default 100)
+	Addr         string  // ":8081"
+	APIKey       string  // required for /ingest and /logs/clear
+	LogLevel     string  // "INFO"
+	LogFormat    string  // "json"
+	BufferSize   int     // optional (default 5000)
+	ReadLimit    int     // optional (default 500)
+	SERetryMs    int     // optional (default 2000) - SSE client retry hint
+	RateRPS      float64 // optional (default 50)
+	RateBurst    float64 // optional (default 100)
+	WriteTimeout int     // optional (default 0 = no timeout) - HTTP write timeout in seconds
 }
 
 // Run starts the dashboard HTTP server and stops when ctx is done.
@@ -91,6 +92,11 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.RateBurst = 100
 	}
 
+	// WriteTimeout defaults to 0 (no timeout) for SSE compatibility
+	if cfg.WriteTimeout < 0 {
+		cfg.WriteTimeout = 0
+	}
+
 	// Logger
 	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
 	slog.SetDefault(lg)
@@ -112,7 +118,7 @@ func Run(ctx context.Context, cfg Config) error {
 		Handler:           withCommon(lg, mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      30 * time.Second, // Enable write timeout to prevent slow loris attacks
+		WriteTimeout:      time.Duration(cfg.WriteTimeout) * time.Second,
 		IdleTimeout:       600 * time.Second,
 	}
 
@@ -601,7 +607,6 @@ func validateNumericField(field string, val any) error {
 	default:
 		return fmt.Errorf("%w: %s", errFieldMustBeNumber, field)
 	}
-
 }
 
 // validateFloatRange checks if a float64 value is within valid port range.
