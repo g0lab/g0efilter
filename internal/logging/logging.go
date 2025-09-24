@@ -12,11 +12,13 @@ import (
 	"log/slog"
 	"math"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/alerting"
 	"github.com/g0lab/g0efilter/internal/safeio"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -472,11 +474,14 @@ func (p *poster) worker(ctx context.Context) {
 
 // ---------- zerolog bridge as a slog.Handler ----------
 
+// zerologHandler implements slog.Handler using zerolog.
+// Includes optional alerting feature for BLOCKED events.
 type zerologHandler struct {
 	zl        zerolog.Logger
 	termLevel slog.Level
 	poster    *poster
 	hostname  string
+	notifier  *alerting.Notifier // alerting feature - can be removed if not needed
 }
 
 func (z *zerologHandler) Enabled(_ context.Context, l slog.Level) bool {
@@ -516,7 +521,7 @@ var dashboardKeys = []string{ //nolint:gochecknoglobals
 	"hostname", "flow_id",
 }
 
-func (z *zerologHandler) Handle(_ context.Context, record slog.Record) error {
+func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 	// Collect attrs into a flat map
 	attrs := make(map[string]any, record.NumAttrs())
 	record.Attrs(func(a slog.Attr) bool {
@@ -533,6 +538,11 @@ func (z *zerologHandler) Handle(_ context.Context, record slog.Record) error {
 	// Ship action events to the dashboard if configured
 	if z.poster != nil {
 		shipToDashboard(z.poster, z.hostname, record.Time, record.Message, attrs)
+	}
+
+	// Alerting feature - send notifications for BLOCKED events
+	if z.notifier != nil {
+		handleBlockedAlert(ctx, z.notifier, attrs)
 	}
 
 	return nil
@@ -589,6 +599,101 @@ func shipToDashboard(
 	}
 
 	poster.Enqueue(payloadBytes)
+}
+
+// handleBlockedAlert processes BLOCKED events and sends notifications.
+// This is part of the alerting feature.
+func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs map[string]any) {
+	if notifier == nil {
+		return
+	}
+
+	// Check if this is a BLOCKED event
+	act := ""
+	if v, ok := attrs["action"]; ok {
+		act = strings.ToUpper(fmt.Sprint(v))
+	}
+
+	if act != "BLOCKED" {
+		return
+	}
+
+	// Extract detailed connection information
+	info := alerting.BlockedConnectionInfo{
+		SourceIP:        extractStringAttr(attrs, "source_ip"),
+		SourcePort:      extractStringAttr(attrs, "source_port"),
+		DestinationIP:   extractStringAttr(attrs, "destination_ip"),
+		DestinationPort: extractStringAttr(attrs, "destination_port"),
+		Destination:     buildDestinationString(attrs),
+		Component:       extractStringAttr(attrs, "component"),
+	}
+
+	// Extract reason
+	info.Reason = extractStringAttr(attrs, "reason")
+	if info.Reason == "" {
+		info.Reason = extractStringAttr(attrs, "note")
+	}
+
+	if info.Reason == "" {
+		info.Reason = "blocked by policy"
+	}
+
+	// Default component if not specified
+	if info.Component == "" {
+		info.Component = "filter"
+	}
+
+	// Send notification
+	notifier.NotifyBlock(ctx, info)
+}
+
+// extractStringAttr safely extracts a string attribute.
+// Alerting feature helper function.
+func extractStringAttr(attrs map[string]any, key string) string {
+	if v, ok := attrs[key]; ok && v != nil {
+		return fmt.Sprint(v)
+	}
+
+	return ""
+}
+
+// buildDestinationString creates a human-readable destination string.
+// Alerting feature helper function.
+func buildDestinationString(attrs map[string]any) string {
+	// Try domain names first (SNI, hostname, DNS query name)
+	if sni := extractStringAttr(attrs, "sni"); sni != "" {
+		return sni
+	}
+
+	if host := extractStringAttr(attrs, "http_host"); host != "" {
+		return host
+	}
+
+	if host := extractStringAttr(attrs, "host"); host != "" {
+		return host
+	}
+
+	if qname := extractStringAttr(attrs, "qname"); qname != "" {
+		return qname
+	}
+
+	// Fallback to dst field (IP:port) or individual IP components
+	if dst := extractStringAttr(attrs, "dst"); dst != "" {
+		return dst
+	}
+
+	destIP := extractStringAttr(attrs, "destination_ip")
+
+	destPort := extractStringAttr(attrs, "destination_port")
+	if destIP != "" {
+		if destPort != "" {
+			return net.JoinHostPort(destIP, destPort)
+		}
+
+		return destIP
+	}
+
+	return "unknown destination"
 }
 
 func getCanonicalTime(attrs map[string]any, fallback time.Time) string {
@@ -678,7 +783,13 @@ func (z *zerologHandler) WithAttrs(a []slog.Attr) slog.Handler {
 		}
 	}
 
-	return &zerologHandler{zl: logger, termLevel: z.termLevel, poster: z.poster, hostname: z.hostname}
+	return &zerologHandler{
+		zl:        logger,
+		termLevel: z.termLevel,
+		poster:    z.poster,
+		hostname:  z.hostname,
+		notifier:  z.notifier,
+	}
 }
 
 func (z *zerologHandler) WithGroup(name string) slog.Handler {
@@ -781,8 +892,12 @@ func NewWithContext(ctx context.Context, level, format string, out io.Writer, ad
 		}()
 	}
 
+	// Initialize alerting feature (optional)
+	// This can be easily removed if alerting is not needed
+	notifier := alerting.NewNotifier()
+
 	// Bridge into slog
-	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname}
+	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname, notifier: notifier}
 
 	return slog.New(h)
 }

@@ -16,6 +16,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const actionBlocked = "BLOCKED"
+
 var (
 	errTestNetworkError = errors.New("test network error")
 )
@@ -565,7 +567,7 @@ func TestBuildDashboardPayload(t *testing.T) {
 	hostname := "test-host"
 	rTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	rMsg := "test message"
-	act := "BLOCKED"
+	act := actionBlocked
 	attrs := map[string]any{
 		"source_ip":   "192.168.1.1",
 		"destination": "example.com",

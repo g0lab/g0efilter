@@ -158,6 +158,7 @@ func setupLogger(cfg config) *slog.Logger {
 
 	logStartupInfo(lg, cfg)
 	logDashboardInfo(lg)
+	logNotificationInfo(lg)
 
 	return lg
 }
@@ -209,6 +210,17 @@ func logDashboardInfo(lg *slog.Logger) {
 		lg.Info("shipping.enabled", "host", disp)
 	} else {
 		lg.Info("shipping.disabled")
+	}
+}
+
+func logNotificationInfo(lg *slog.Logger) {
+	nhost := strings.TrimSpace(getenvDefault("NOTIFICATION_HOST", ""))
+	ntoken := strings.TrimSpace(getenvDefault("NOTIFICATION_KEY", ""))
+
+	if nhost != "" && ntoken != "" {
+		lg.Info("notifications.enabled", "host", nhost)
+	} else {
+		lg.Info("notifications.disabled")
 	}
 }
 
