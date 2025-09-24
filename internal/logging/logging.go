@@ -25,6 +25,12 @@ import (
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
+// setGlobalLogger sets the global zerolog.Logger for libraries.
+// This is typically called during initialization and race conditions are rare.
+func setGlobalLogger(zl zerolog.Logger) {
+	log.Logger = zl
+}
+
 const (
 	actionRedirected = "REDIRECTED"
 	// LevelTrace defines a trace-level log severity, lower than slog.LevelDebug.
@@ -859,7 +865,7 @@ func NewWithContext(ctx context.Context, level, format string, out io.Writer, ad
 	zerolog.SetGlobalLevel(zlvl)
 
 	// Optional: wire global logger for libraries
-	log.Logger = zl
+	setGlobalLogger(zl)
 
 	// Dashboard poster
 	lvl := parseLevel(lvlStr).Level()

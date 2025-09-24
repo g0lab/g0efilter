@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -166,10 +167,10 @@ func TestAlertingDisabled(t *testing.T) {
 
 func TestAlertingOnlyBlockedEvents(t *testing.T) {
 	// Test that only BLOCKED events trigger notifications
-	notificationCount := 0
+	var notificationCount int64
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		notificationCount++
+		atomic.AddInt64(&notificationCount, 1)
 
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -194,7 +195,7 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		notificationCount = 0
+		atomic.StoreInt64(&notificationCount, 0)
 
 		logger.Info("test.event",
 			"action", tc.action,
@@ -205,11 +206,12 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 		// Give some time for potential notification
 		time.Sleep(50 * time.Millisecond)
 
-		if tc.expected && notificationCount == 0 {
+		count := atomic.LoadInt64(&notificationCount)
+		if tc.expected && count == 0 {
 			t.Errorf("Expected notification for action %s but none received", tc.action)
 		}
 
-		if !tc.expected && notificationCount > 0 {
+		if !tc.expected && count > 0 {
 			t.Errorf("Unexpected notification for action %s", tc.action)
 		}
 	}
