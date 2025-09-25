@@ -66,8 +66,25 @@ release:
   prerelease: auto
 
 changelog:
+  use: github 
+  format: "{{ .Message }} (by {{ with .AuthorUsername }}{{ . }}{{ else }}{{ .AuthorName }}{{ end }})"
+  abbrev: -1                 
+  sort: asc
+  groups:                     
+    - title: "Enhancements"
+      regexp: '^.*?(?i:(feat|feature|enhance|add|introduce|allow|improve|bump|migrate|implement|support|enable|update|refactor))'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?(?i:(fix|bug|revert|hotfix|correct|workaround|issue))'
+      order: 1
+    - title: "Documentation"
+      regexp: '^.*?(?i:(docs?|documentation|readme))'
+      order: 2
+    - title: "Misc"
+      order: 99
   filters:
     exclude:
+      - '^ci:'
       - '^tests:'
       - '^docs:'
       - '^style:'
@@ -77,3 +94,26 @@ changelog:
       - 'merge conflict'
       - 'Merge branch'
       - 'Merge pull request'
+
+signs:
+- cmd: cosign
+  signature: "${artifact}.sig"
+  certificate: "${artifact}.pem"
+  args:
+    - "sign-blob"
+    - "--oidc-issuer=https://token.actions.githubusercontent.com"
+    - "--output-certificate=${certificate}"
+    - "--output-signature=${signature}"
+    - "${artifact}"
+    - "--yes"
+  artifacts: all
+  output: true
+
+docker_signs:
+- cmd: cosign
+  artifacts: manifests
+  output: true
+  args:
+  - 'sign'
+  - '${artifact}'
+  - '--yes'
