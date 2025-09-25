@@ -1,8 +1,0 @@
-.git/
-examples/
-*.txt
-LICENSE
-README.md
-Dockerfile-dashboard
-Dockerfile
-.github

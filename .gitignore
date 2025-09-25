@@ -27,6 +27,9 @@ go.work.sum
 # Ignore env file
 .env
 
+# Ignore Vendor directory
+vendor/
+
 # Include example env file
 !examples/
 !examples/.env

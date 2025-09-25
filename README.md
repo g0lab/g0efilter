@@ -1,11 +1,11 @@
 [![docker pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=docker%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
 [![g0efilter CI](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml)
-[![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter?ref=badge_shield&issueType=security)
 [![Go Report Card](https://goreportcard.com/badge/g0lab/g0efilter)](https://goreportcard.com/report/g0lab/g0efilter)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/6221eed68e504016acd2ec9d951bc031)](https://app.codacy.com/gh/g0lab/g0efilter/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter?ref=badge_shield)
+[![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
 
 > [!WARNING]
 > g0efilter is in active development and its configuration may change often.
@@ -149,7 +149,3 @@ services:
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-### Third-Party Dependencies
-
-This project uses `golang.org/x/text` which contains some Unicode data components licensed under CC-BY-SA-3.0. These components consist primarily of Unicode Character Database (UCD) and Common Locale Data Repository (CLDR) data, which are factual compilations of international standards. See [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md) for detailed information.
