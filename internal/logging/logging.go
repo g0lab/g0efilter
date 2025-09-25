@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/alerting"
@@ -25,9 +26,17 @@ import (
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
+//nolint:gochecknoglobals // Global logger mutex is necessary for thread safety
+var globalLoggerMutex sync.Mutex
+
 // setGlobalLogger sets the global zerolog.Logger for libraries.
-// This is typically called during initialization and race conditions are rare.
+// This is protected by a mutex to prevent race conditions during testing.
+//
+
 func setGlobalLogger(zl zerolog.Logger) {
+	globalLoggerMutex.Lock()
+	defer globalLoggerMutex.Unlock()
+
 	log.Logger = zl
 }
 

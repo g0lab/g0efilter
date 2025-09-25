@@ -2,6 +2,7 @@ package logging_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -194,13 +195,17 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 		{"blocked", true}, // case insensitive
 	}
 
-	for _, tc := range testCases {
+	for i, tc := range testCases {
 		atomic.StoreInt64(&notificationCount, 0)
+
+		// Use different IPs for each test case to avoid rate limiting
+		sourceIP := fmt.Sprintf("192.168.1.%d", i+1)
+		destIP := fmt.Sprintf("10.0.0.%d", i+1)
 
 		logger.Info("test.event",
 			"action", tc.action,
-			"source_ip", "192.168.1.1",
-			"destination_ip", "10.0.0.1",
+			"source_ip", sourceIP,
+			"destination_ip", destIP,
 		)
 
 		// Give some time for potential notification

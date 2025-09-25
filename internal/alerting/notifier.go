@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +22,11 @@ type Notifier struct {
 	hostname string
 	client   *http.Client
 	enabled  bool
+
+	// Rate limiting to prevent spam
+	mu            sync.RWMutex
+	recentAlerts  map[string]time.Time
+	backoffPeriod time.Duration
 }
 
 // NewNotifier creates a new notification client.
@@ -44,11 +51,23 @@ func NewNotifier() *Notifier {
 		}
 	}
 
+	// Configure backoff period (default 60 seconds)
+	backoffPeriod := 60 * time.Second
+
+	if backoffEnv := strings.TrimSpace(os.Getenv("NOTIFICATION_BACKOFF_SECONDS")); backoffEnv != "" {
+		seconds, err := strconv.Atoi(backoffEnv)
+		if err == nil && seconds > 0 {
+			backoffPeriod = time.Duration(seconds) * time.Second
+		}
+	}
+
 	return &Notifier{
-		host:     host,
-		token:    token,
-		hostname: hostname,
-		enabled:  true,
+		host:          host,
+		token:         token,
+		hostname:      hostname,
+		enabled:       true,
+		recentAlerts:  make(map[string]time.Time),
+		backoffPeriod: backoffPeriod,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
@@ -87,6 +106,11 @@ func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) 
 		info.Component = "tcp"
 	}
 
+	// Check rate limiting - don't spam the same alert
+	if !n.shouldSendAlert(info) {
+		return // Skip notification due to rate limiting
+	}
+
 	go n.sendNotification(ctx, info)
 }
 
@@ -100,6 +124,47 @@ func (n *Notifier) Close() {
 	if n.client != nil {
 		n.client.CloseIdleConnections()
 	}
+
+	// Clean up rate limiting resources
+	n.mu.Lock()
+	n.recentAlerts = nil
+	n.mu.Unlock()
+}
+
+// shouldSendAlert checks if enough time has passed since the last alert for this connection.
+func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
+	// Create a unique key for this type of blocked connection.
+	// We exclude source port because it can change frequently for the same logical connection
+	// (e.g., multiple outbound connections from the same source to the same destination).
+	key := fmt.Sprintf("%s->%s:%s:%s",
+		info.SourceIP,
+		info.DestinationIP, info.DestinationPort,
+		info.Component)
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	now := time.Now()
+
+	// Clean up old entries periodically (older than 2x backoff period)
+	cleanupThreshold := now.Add(-2 * n.backoffPeriod)
+	for k, lastSent := range n.recentAlerts {
+		if lastSent.Before(cleanupThreshold) {
+			delete(n.recentAlerts, k)
+		}
+	}
+
+	// Check if we've sent an alert for this connection recently
+	if lastSent, exists := n.recentAlerts[key]; exists {
+		if now.Sub(lastSent) < n.backoffPeriod {
+			return false // Still in backoff period
+		}
+	}
+
+	// Update the last sent time
+	n.recentAlerts[key] = now
+
+	return true
 }
 
 // isIPOnlyDestination checks if the destination contains only IP information (no domain name).
