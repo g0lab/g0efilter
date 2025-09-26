@@ -111,6 +111,7 @@ changelog:
 signs:
   - cmd: cosign
     artifacts: checksum
+    signature: "${artifact}.sigstore" 
     args:
       - sign-blob
       - --bundle=${artifact}.sigstore
