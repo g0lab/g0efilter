@@ -81,11 +81,11 @@ release:
 
 changelog:
   use: github 
-  format: "{{ .Message }} (by {{ with .AuthorUsername }}[@{{ . }}](https://github.com/{{ . }}){{ else }}{{ .AuthorName }}{{ end }}) [[{{ .ShortHash }}](https://github.com/g0lab/g0efilter/commit/{{ .Hash }})]"
-  abbrev: -1                 
+  format: "{{.SHA}}: {{.Message}} (@{{.AuthorUsername}})"
+  abbrev: 7          
   sort: asc
   groups:                     
-    - title: "Enhancements"
+    - title: "Features"
       regexp: '^.*?(?i:(feat|feature|enhance|add|introduce|allow|improve|bump|migrate|implement|support|enable|update|refactor))'
       order: 0
     - title: "Bug fixes"
