@@ -1,7 +1,6 @@
 version: 2
 
 project_name: g0efilter
-mod_timestamp: "{{ .CommitDate }}"
 
 before:
   hooks:
