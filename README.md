@@ -34,7 +34,7 @@ g0efilter is a lightweight container designed to filter outbound (egress) traffi
 ### DNS filtering behaviour
 
 * All IPs listed in the policy file bypass any redirection.
-* In DNS mode, traffic to port 53 is redirected to an internal DNS server that only resolves domains that match the policy. Non-policy domains simply fail to resolve, but direct IP connections are allowed (no default deny), so this mode can be bypassed.
+* In DNS mode, traffic to port 53 is redirected to an internal DNS server that only resolves domains that match the policy. Non-policy domains simply fail to resolve, but direct IP connections are allowed (no default deny), so this mode can potentially be bypassed.
 
 ### Dashboard container
 
