@@ -11,11 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/safeio"
-	"golang.org/x/sys/unix"
 )
 
 // Serve80 starts an HTTP Host-based egress filter on opts.ListenAddr.
@@ -201,26 +199,7 @@ func handleAllowedHost(
 
 // createHTTPDialer creates a dialer for HTTP backend connections.
 func createHTTPDialer(opts Options) *net.Dialer {
-	dialer := new(net.Dialer)
-	dialer.Timeout = time.Duration(opts.DialTimeout) * time.Millisecond
-	dialer.Control = func(_ string, _ string, rc syscall.RawConn) error {
-		var serr error
-
-		err := rc.Control(func(fd uintptr) {
-			serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, socketMarkValue)
-		})
-		if err != nil {
-			return err //nolint:wrapcheck
-		}
-
-		if serr != nil {
-			return fmt.Errorf("setsockopt SO_MARK: %w", serr)
-		}
-
-		return nil
-	}
-
-	return dialer
+	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
 }
 
 // logHTTPBackendError logs HTTP backend connection errors.

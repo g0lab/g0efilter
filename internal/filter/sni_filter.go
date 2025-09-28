@@ -11,11 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/safeio"
-	"golang.org/x/sys/unix"
 )
 
 var errFailedCapture = errors.New("failed to capture client hello")
@@ -197,26 +195,7 @@ func connectAndSpliceSNI(conn net.Conn, cr io.Reader, target string, opts Option
 
 // createMarkedDialer creates a dialer with SO_MARK set.
 func createMarkedDialer(opts Options) *net.Dialer {
-	dialer := new(net.Dialer)
-	dialer.Timeout = time.Duration(opts.DialTimeout) * time.Millisecond
-	dialer.Control = func(_ string, _ string, rc syscall.RawConn) error {
-		var serr error
-
-		err := rc.Control(func(fd uintptr) {
-			serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, socketMarkValue)
-		})
-		if err != nil {
-			return fmt.Errorf("socket control error: %w", err)
-		}
-
-		if serr != nil {
-			return fmt.Errorf("set socket mark: %w", serr)
-		}
-
-		return nil
-	}
-
-	return dialer
+	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
 }
 
 // logBackendDialError logs backend connection errors.

@@ -2,17 +2,14 @@ package filter
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/miekg/dns"
-	"golang.org/x/sys/unix"
 )
 
 // Serve53 starts a DNS proxy that enforces an allowlist by QNAME.
@@ -363,28 +360,7 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 }
 
 func (handler *dnsHandler) markedDialer() *net.Dialer {
-	// build the Dialer explicitly rather than using a partial composite literal
-	// to avoid exhaustruct warnings across Go versions while preserving fields.
-	dialer := new(net.Dialer)
-	dialer.Timeout = handler.timeout
-	dialer.Control = func(_ string, _ string, c syscall.RawConn) error {
-		var serr error
-
-		err := c.Control(func(fd uintptr) {
-			// Set SO_MARK=0x1 (match your nftables bypass rule)
-			e := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, socketMarkValue)
-			if e != nil {
-				serr = e
-			}
-		})
-		if err != nil {
-			return fmt.Errorf("control func error: %w", err)
-		}
-
-		return serr
-	}
-
-	return dialer
+	return newMarkedDialer(handler.timeout)
 }
 
 func durOrDefault(d, def time.Duration) time.Duration {

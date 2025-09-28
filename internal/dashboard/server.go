@@ -45,7 +45,6 @@ var (
 	// API key validation errors.
 	errAPIKeyNotConfigured = errors.New("API key not configured")
 	errAPIKeyTooShort      = errors.New("API key too short")
-	errAPIKeyRequired2     = errors.New("API key required")
 	errAPIKeyInvalidLength = errors.New("invalid API key length")
 	errAPIKeyInvalid       = errors.New("invalid API key")
 )
@@ -1058,7 +1057,7 @@ func validateAPIKey(expected, got string) error {
 
 	// Check if provided key meets requirements
 	if got == "" {
-		return errAPIKeyRequired2
+		return errAPIKeyRequired
 	}
 
 	if len(got) != len(expected) {

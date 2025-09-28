@@ -66,7 +66,6 @@ main{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding:10px 
 .badge-ALLOWED{background:rgba(16,185,129,.15);color:#d1fae5;border-color:rgba(16,185,129,.35)}
 .badge-BLOCKED{background:rgba(239,68,68,.15);color:#fee2e2;border-color:rgba(239,68,68,.35)}
 .badge-REDIRECTED{background:rgba(245,158,11,.15);color:#fef3c7;border-color:rgba(245,158,11,.35)}
-.badge-INFO{background:#1f2937;color:#cbd5e1}
 
 small{color:var(--muted);font-size:11px}
 #connectionStatus{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-left:4px}
@@ -249,7 +248,7 @@ function matches(it){
 /* --- stream --- */
 var allItems=[];
 function rowHTML(it){
-  var act  = getAction(it) || 'INFO';
+  var act  = getAction(it);
   var comp = getComp(it) || (it.component||'');
   var host = hostOf(it);
   var src  = srcOf(it);

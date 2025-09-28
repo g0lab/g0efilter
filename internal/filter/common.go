@@ -77,6 +77,31 @@ func allowedHost(host string, allowlist []string) bool {
 	return false
 }
 
+// newMarkedDialer creates a net.Dialer with SO_MARK set to bypass iptables rules.
+// This allows outbound connections to bypass the transparent proxy rules.
+func newMarkedDialer(timeout time.Duration) *net.Dialer {
+	dialer := new(net.Dialer)
+	dialer.Timeout = timeout
+	dialer.Control = func(_ string, _ string, rc syscall.RawConn) error {
+		var serr error
+
+		err := rc.Control(func(fd uintptr) {
+			serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, socketMarkValue)
+		})
+		if err != nil {
+			return fmt.Errorf("socket control error: %w", err)
+		}
+
+		if serr != nil {
+			return fmt.Errorf("set socket mark: %w", serr)
+		}
+
+		return nil
+	}
+
+	return dialer
+}
+
 const soOriginalDst = 80 // from linux/netfilter_ipv4.h
 
 // originalDstTCP (IPv4 only) returns "ip:port" that the app originally dialled (before REDIRECT).
