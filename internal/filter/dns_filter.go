@@ -32,7 +32,7 @@ func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 		allowlist: allowlist,
 		opts:      opts,
 		upstreams: upstreams,
-		timeout:   durOrDefault(time.Duration(opts.DialTimeout)*time.Millisecond, 3*time.Second),
+		timeout:   timeoutFromOptions(opts, 3*time.Second),
 	}
 }
 
@@ -224,7 +224,7 @@ func (handler *dnsHandler) handleBlockedEnforcedType(
 			"source_ip", remoteAddr,
 			"source_port", remotePort,
 			"flow_id", flowID,
-			"note", "sinkhole",
+			"note", "sinkholed-not-allowlisted",
 		)
 	}
 

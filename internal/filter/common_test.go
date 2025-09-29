@@ -399,6 +399,51 @@ func TestEmitSyntheticUDP(t *testing.T) {
 	}
 }
 
+func TestTimeoutFromOptions(t *testing.T) {
+	t.Parallel()
+
+	def := 3 * time.Second
+
+	// When DialTimeout <= 0 we expect the default
+	opts := Options{DialTimeout: 0}
+	if got := timeoutFromOptions(opts, def); got != def {
+		t.Errorf("timeoutFromOptions returned %v, want %v", got, def)
+	}
+
+	// When DialTimeout is set we expect that value in milliseconds
+	opts = Options{DialTimeout: 1500}
+	if got := timeoutFromOptions(opts, def); got != 1500*time.Millisecond {
+		t.Errorf("timeoutFromOptions returned %v, want %v", got, 1500*time.Millisecond)
+	}
+}
+
+func TestNewDialerFromOptions(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{DialTimeout: 2500}
+
+	d := newDialerFromOptions(opts)
+	if d == nil {
+		t.Fatal("newDialerFromOptions returned nil")
+	}
+
+	if d.Timeout != 2500*time.Millisecond {
+		t.Errorf("dialer timeout = %v, want %v", d.Timeout, 2500*time.Millisecond)
+	}
+
+	// Zero DialTimeout should produce a dialer with zero Timeout
+	opts = Options{DialTimeout: 0}
+
+	d2 := newDialerFromOptions(opts)
+	if d2 == nil {
+		t.Fatal("newDialerFromOptions returned nil for zero timeout")
+	}
+
+	if d2.Timeout != 0 {
+		t.Errorf("dialer timeout = %v, want 0", d2.Timeout)
+	}
+}
+
 func testEmitSyntheticUDPCase(t *testing.T, tt struct {
 	name        string
 	component   string

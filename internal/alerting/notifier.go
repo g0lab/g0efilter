@@ -133,13 +133,8 @@ func (n *Notifier) Close() {
 
 // shouldSendAlert checks if enough time has passed since the last alert for this connection.
 func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
-	// Create a unique key for this type of blocked connection.
-	// We exclude source port because it can change frequently for the same logical connection
-	// (e.g., multiple outbound connections from the same source to the same destination).
-	key := fmt.Sprintf("%s->%s:%s:%s",
-		info.SourceIP,
-		info.DestinationIP, info.DestinationPort,
-		info.Component)
+	// Build key using helper (keeps DNS backoff keyed by domain where possible)
+	key := fmt.Sprintf("%s->%s:%s", info.SourceIP, destKeyFor(info), info.Component)
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -147,12 +142,7 @@ func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
 	now := time.Now()
 
 	// Clean up old entries periodically (older than 2x backoff period)
-	cleanupThreshold := now.Add(-2 * n.backoffPeriod)
-	for k, lastSent := range n.recentAlerts {
-		if lastSent.Before(cleanupThreshold) {
-			delete(n.recentAlerts, k)
-		}
-	}
+	n.cleanupOldAlerts(now)
 
 	// Check if we've sent an alert for this connection recently
 	if lastSent, exists := n.recentAlerts[key]; exists {
@@ -165,6 +155,36 @@ func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
 	n.recentAlerts[key] = now
 
 	return true
+}
+
+// destKeyFor derives a destination key for backoff. For DNS it prefers the
+// looked-up domain (info.Destination) to avoid collapsing many queries to
+// 0.0.0.0 into the same key.
+func destKeyFor(info BlockedConnectionInfo) string {
+	switch {
+	case info.Component == "dns" && info.Destination != "":
+		return info.Destination
+	case info.DestinationIP != "" && info.DestinationPort != "":
+		return fmt.Sprintf("%s:%s", info.DestinationIP, info.DestinationPort)
+	case info.DestinationIP != "":
+		return info.DestinationIP
+	default:
+		return info.Destination
+	}
+}
+
+// cleanupOldAlerts removes entries older than 2x backoffPeriod. Caller must hold n.mu.
+func (n *Notifier) cleanupOldAlerts(now time.Time) {
+	if n.recentAlerts == nil {
+		return
+	}
+
+	cleanupThreshold := now.Add(-2 * n.backoffPeriod)
+	for k, lastSent := range n.recentAlerts {
+		if lastSent.Before(cleanupThreshold) {
+			delete(n.recentAlerts, k)
+		}
+	}
 }
 
 // isIPOnlyDestination checks if the destination contains only IP information (no domain name).

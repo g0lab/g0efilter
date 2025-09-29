@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/safeio"
@@ -54,7 +52,7 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 
 // extractSNIFromConnection extracts SNI from TLS ClientHello.
 func extractSNIFromConnection(conn net.Conn, opts Options) (string, io.Reader, error) {
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(connectionReadTimeout))
 
 	ch, cr, err := peekClientHello(conn)
 	if err != nil {
@@ -97,7 +95,6 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 	}
 
 	sourceIP, sourcePort := sourceAddr(conn)
-	flowID := ""
 
 	var destIP string
 
@@ -105,7 +102,7 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 
 	tgt, derr := originalDstTCP(tc)
 	if derr == nil {
-		flowID = EmitSynthetic(opts.Logger, "sni", conn, tc, tgt)
+		_ = EmitSynthetic(opts.Logger, "sni", conn, tc, tgt)
 		destIP, destPort = parseHostPort(tgt)
 	} else {
 		opts.Logger.Debug("sni.orig_dst_unavailable_for_blocked",
@@ -115,25 +112,7 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 		)
 	}
 
-	fields := []any{
-		"time", time.Now().UTC().Format(time.RFC3339Nano),
-		"component", "sni",
-		"action", "BLOCKED",
-		"sni", sni,
-		"reason", reason,
-		"source_ip", sourceIP,
-		"source_port", sourcePort,
-		"flow_id", flowID,
-	}
-	if destIP != "" {
-		fields = append(fields,
-			"destination_ip", destIP,
-			"destination_port", destPort,
-			"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-		)
-	}
-
-	opts.Logger.Info("sni.blocked", fields...)
+	logBlockedConnection(opts, componentSNI, reason, sni, conn, destIP, destPort)
 }
 
 // handleAllowedSNI handles allowed SNI connections.
@@ -160,93 +139,33 @@ func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, cr io.Reader, sni string, 
 
 // logAllowedSNI logs allowed SNI connections.
 func logAllowedSNI(conn net.Conn, target, sni string, opts Options) {
-	sourceIP, sourcePort := sourceAddr(conn)
-	destIP, destPort := parseHostPort(target)
-	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
-	opts.Logger.Info("sni.allowed",
-		"component", "sni",
-		"action", "ALLOWED",
-		"sni", sni,
-		"source_ip", sourceIP,
-		"source_port", sourcePort,
-		"destination_ip", destIP,
-		"destination_port", destPort,
-		"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-		"flow_id", flowID,
-	)
+	logAllowedConnection(opts, componentSNI, target, sni, conn)
 }
 
 // connectAndSpliceSNI connects to backend and splices data.
 func connectAndSpliceSNI(conn net.Conn, cr io.Reader, target string, opts Options) error {
 	backend, err := createMarkedDialer(opts).Dial("tcp", target)
 	if err != nil {
-		logBackendDialError(target, opts, err)
+		logBackendDialError(opts, componentSNI, conn, target, err)
 
 		return fmt.Errorf("dial backend %s: %w", target, err)
 	}
 
 	defer func() { _ = backend.Close() }()
 
-	setConnectionTimeouts(conn, backend, opts)
-	spliceConnections(conn, backend, cr)
+	setConnTimeouts(conn, backend, opts)
+	bidirectionalCopy(conn, backend, cr)
 
 	return nil
 }
 
 // createMarkedDialer creates a dialer with SO_MARK set.
 func createMarkedDialer(opts Options) *net.Dialer {
-	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
+	return newDialerFromOptions(opts)
 }
 
 // logBackendDialError logs backend connection errors.
-func logBackendDialError(target string, opts Options, err error) {
-	if opts.Logger != nil {
-		destIP, destPort := parseHostPort(target)
-		opts.Logger.Warn("sni.backend_dial_error",
-			"component", "sni",
-			"destination_ip", destIP,
-			"destination_port", destPort,
-			"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-			"err", err.Error(),
-		)
-	}
-}
-
-// setConnectionTimeouts sets idle timeouts if configured.
-func setConnectionTimeouts(c net.Conn, backend net.Conn, opts Options) {
-	if opts.IdleTimeout > 0 {
-		timeout := time.Duration(opts.IdleTimeout) * time.Millisecond
-		_ = c.SetDeadline(time.Now().Add(timeout))
-		_ = backend.SetDeadline(time.Now().Add(timeout))
-	}
-}
-
-// spliceConnections performs bidirectional data copying.
-func spliceConnections(conn net.Conn, backend net.Conn, cr io.Reader) {
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-
-	go func() {
-		_, _ = io.Copy(backend, cr)
-		if btc, ok := backend.(*net.TCPConn); ok {
-			_ = btc.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	go func() {
-		_, _ = io.Copy(conn, backend)
-		if tc, ok := conn.(*net.TCPConn); ok {
-			_ = tc.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	wg.Wait()
-}
+// removed: use common.logBackendDialError
 
 // TLS ClientHello peek helpers
 

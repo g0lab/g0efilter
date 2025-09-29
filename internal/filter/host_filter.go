@@ -8,9 +8,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/safeio"
@@ -36,7 +34,7 @@ func handleHost(conn net.Conn, allowlist []string, opts Options) error {
 	}
 
 	// 1) Parse request line + headers via textproto; extract Host
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(connectionReadTimeout))
 	br := bufio.NewReader(conn)
 	host, headBytes, err := readHeadWithTextproto(br)
 	_ = conn.SetReadDeadline(time.Time{})
@@ -95,28 +93,10 @@ func logBlockedHost(
 	}
 
 	// Try to recover original dst so we can compute flow_id and emit synthetic redirect
-	flowID, destIP, destPort := getDestinationInfo(conn, tc, sourceIP, sourcePort, opts)
+	_, destIP, destPort := getDestinationInfo(conn, tc, sourceIP, sourcePort, opts)
 
 	// Emitting normalised fields for ingestion; include flow_id when available
-	fields := []any{
-		"time", time.Now().UTC().Format(time.RFC3339Nano),
-		"component", "http",
-		"action", "BLOCKED",
-		"reason", reason,
-		"host", host,
-		"source_ip", sourceIP,
-		"source_port", sourcePort,
-		"flow_id", flowID,
-	}
-	if destIP != "" {
-		fields = append(fields,
-			"destination_ip", destIP,
-			"destination_port", destPort,
-			"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-		)
-	}
-
-	opts.Logger.Info("http.blocked", fields...)
+	logBlockedConnection(opts, componentHTTP, reason, host, conn, destIP, destPort)
 }
 
 // getDestinationInfo recovers destination information for logging.
@@ -173,14 +153,14 @@ func handleAllowedHost(
 	// 3) Connect and splice
 	backend, err := createHTTPDialer(opts).Dial("tcp", target)
 	if err != nil {
-		logHTTPBackendError(conn, target, opts, err)
+		logBackendDialError(opts, componentHTTP, conn, target, err)
 
 		return fmt.Errorf("dial backend: %w", err)
 	}
 
 	defer func() { _ = backend.Close() }()
 
-	setHTTPTimeouts(conn, backend, opts)
+	setConnTimeouts(conn, backend, opts)
 
 	// Write collected header+body to the backend
 	if len(headBytes) > 0 {
@@ -192,85 +172,22 @@ func handleAllowedHost(
 		}
 	}
 
-	spliceHTTPConnections(conn, backend, br)
+	bidirectionalCopy(conn, backend, br)
 
 	return nil
 }
 
 // createHTTPDialer creates a dialer for HTTP backend connections.
 func createHTTPDialer(opts Options) *net.Dialer {
-	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
+	return newDialerFromOptions(opts)
 }
 
 // logHTTPBackendError logs HTTP backend connection errors.
-func logHTTPBackendError(conn net.Conn, target string, opts Options, err error) {
-	if opts.Logger != nil {
-		sourceIP, sourcePort := sourceAddr(conn)
-		destIP, destPort := parseHostPort(target)
-		opts.Logger.Warn("http.backend_dial_error",
-			"component", "http",
-			"destination_ip", destIP,
-			"destination_port", destPort,
-			"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-			"err", err.Error(),
-			"source_ip", sourceIP,
-			"source_port", sourcePort,
-		)
-	}
-}
-
-// setHTTPTimeouts sets idle timeouts if configured.
-func setHTTPTimeouts(conn net.Conn, backend net.Conn, opts Options) {
-	if opts.IdleTimeout > 0 {
-		duration := time.Duration(opts.IdleTimeout) * time.Millisecond
-		_ = conn.SetDeadline(time.Now().Add(duration))
-		_ = backend.SetDeadline(time.Now().Add(duration))
-	}
-}
-
-// spliceHTTPConnections performs bidirectional HTTP data copying.
-func spliceHTTPConnections(conn net.Conn, backend net.Conn, br *bufio.Reader) {
-	var wg sync.WaitGroup
-
-	wg.Add(2)
-
-	go func() {
-		_, _ = io.Copy(backend, br)
-		if btc, ok := backend.(*net.TCPConn); ok {
-			_ = btc.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	go func() {
-		_, _ = io.Copy(conn, backend)
-		if t, ok := conn.(*net.TCPConn); ok {
-			_ = t.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	wg.Wait()
-}
+// removed: use common.logBackendDialError
 
 // logAllowedHost logs allowed HTTP connections.
 func logAllowedHost(conn net.Conn, target, host string, opts Options) {
-	sourceIP, sourcePort := sourceAddr(conn)
-	destIP, destPort := parseHostPort(target)
-	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
-	opts.Logger.Info("http.allowed",
-		"component", "http",
-		"action", "ALLOWED",
-		"host", host,
-		"source_ip", sourceIP,
-		"source_port", sourcePort,
-		"destination_ip", destIP,
-		"destination_port", destPort,
-		"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
-		"flow_id", flowID,
-	)
+	logAllowedConnection(opts, componentHTTP, target, host, conn)
 }
 
 // readHeadWithTextproto parses the request line and MIME headers using textproto,

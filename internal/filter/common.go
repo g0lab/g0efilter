@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"log/slog"
 	"net"
 	"strconv"
@@ -24,9 +25,14 @@ import (
 )
 
 const (
-	actionRedirected = "REDIRECTED"
-	socketMarkValue  = 0x1 // mark value to set on redirected packets
-	defaultTTL       = 60  // default TTL for DNS responses in seconds
+	bypassMark            = 0x1 // SO_MARK value to bypass nftables REDIRECT rules
+	actionRedirected      = "REDIRECTED"
+	defaultTTL            = 60              // default TTL for DNS responses in seconds
+	connectionReadTimeout = 5 * time.Second // timeout for initial connection reads
+
+	// Component names for logging.
+	componentSNI  = "sni"
+	componentHTTP = "http"
 )
 
 var errListenAddrEmpty = errors.New("listenAddr cannot be empty")
@@ -77,29 +83,81 @@ func allowedHost(host string, allowlist []string) bool {
 	return false
 }
 
+// newDialerFromOptions creates a marked dialer using Options timeout in milliseconds.
+func newDialerFromOptions(opts Options) *net.Dialer {
+	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
+}
+
+// timeoutFromOptions converts Options.DialTimeout to time.Duration with default fallback.
+func timeoutFromOptions(opts Options, defaultTimeout time.Duration) time.Duration {
+	if opts.DialTimeout <= 0 {
+		return defaultTimeout
+	}
+
+	return time.Duration(opts.DialTimeout) * time.Millisecond
+}
+
 // newMarkedDialer creates a net.Dialer with SO_MARK set to bypass iptables rules.
 // This allows outbound connections to bypass the transparent proxy rules.
-func newMarkedDialer(timeout time.Duration) *net.Dialer {
-	dialer := new(net.Dialer)
-	dialer.Timeout = timeout
-	dialer.Control = func(_ string, _ string, rc syscall.RawConn) error {
-		var serr error
+func newMarkedDialer(dialTimeout time.Duration) *net.Dialer {
+	dialer := &net.Dialer{
+		Timeout: dialTimeout,
+		Control: func(_ string, _ string, rc syscall.RawConn) error {
+			var serr error
 
-		err := rc.Control(func(fd uintptr) {
-			serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, socketMarkValue)
-		})
-		if err != nil {
-			return fmt.Errorf("socket control error: %w", err)
-		}
+			err := rc.Control(func(fd uintptr) {
+				serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, bypassMark)
+			})
 
-		if serr != nil {
-			return fmt.Errorf("set socket mark: %w", serr)
-		}
+			if err != nil {
+				return fmt.Errorf("socket control error: %w", err)
+			}
 
-		return nil
+			if serr != nil {
+				return fmt.Errorf("set socket mark: %w", serr)
+			}
+
+			return nil
+		},
 	}
 
 	return dialer
+}
+
+// setConnTimeouts sets idle timeouts if configured for both connections.
+func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
+	if opts.IdleTimeout > 0 {
+		timeout := time.Duration(opts.IdleTimeout) * time.Millisecond
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+		_ = backend.SetDeadline(time.Now().Add(timeout))
+	}
+}
+
+// bidirectionalCopy performs bidirectional data copying between connections.
+func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		_, _ = io.Copy(backend, reader)
+		if btc, ok := backend.(*net.TCPConn); ok {
+			_ = btc.CloseWrite()
+		}
+
+		wg.Done()
+	}()
+
+	go func() {
+		_, _ = io.Copy(conn, backend)
+		if tc, ok := conn.(*net.TCPConn); ok {
+			_ = tc.CloseWrite()
+		}
+
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
 
 const soOriginalDst = 80 // from linux/netfilter_ipv4.h
@@ -383,4 +441,101 @@ func serveTCP(
 
 		go func() { _ = handler(conn, allowlist, opts) }()
 	}
+}
+
+// logAllowedConnection logs an allowed connection with common fields.
+func logAllowedConnection(opts Options, component, target, identifier string, conn net.Conn) {
+	if opts.Logger == nil {
+		return
+	}
+
+	sourceIP, sourcePort := sourceAddr(conn)
+	destIP, destPort := parseHostPort(target)
+	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
+
+	var identifierKey string
+
+	switch component {
+	case componentSNI:
+		identifierKey = componentSNI
+	case componentHTTP:
+		identifierKey = "host"
+	default:
+		identifierKey = "identifier"
+	}
+
+	opts.Logger.Info(component+".allowed",
+		"component", component,
+		"action", "ALLOWED",
+		identifierKey, identifier,
+		"source_ip", sourceIP,
+		"source_port", sourcePort,
+		"destination_ip", destIP,
+		"destination_port", destPort,
+		"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
+		"flow_id", flowID,
+	)
+}
+
+// logBlockedConnection logs a blocked connection with common fields.
+func logBlockedConnection(
+	opts Options, component, reason, identifier string, conn net.Conn, destIP string, destPort int,
+) {
+	if opts.Logger == nil {
+		return
+	}
+
+	sourceIP, sourcePort := sourceAddr(conn)
+	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
+
+	var identifierKey string
+
+	switch component {
+	case componentSNI:
+		identifierKey = componentSNI
+	case componentHTTP:
+		identifierKey = "host"
+	default:
+		identifierKey = "identifier"
+	}
+
+	fields := []any{
+		"time", time.Now().UTC().Format(time.RFC3339Nano),
+		"component", component,
+		"action", "BLOCKED",
+		identifierKey, identifier,
+		"reason", reason,
+		"source_ip", sourceIP,
+		"source_port", sourcePort,
+		"flow_id", flowID,
+	}
+
+	if destIP != "" {
+		fields = append(fields,
+			"destination_ip", destIP,
+			"destination_port", destPort,
+			"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
+		)
+	}
+
+	opts.Logger.Info(component+".blocked", fields...)
+}
+
+// logBackendDialError logs backend dial/connect errors for TCP backends.
+func logBackendDialError(opts Options, component string, conn net.Conn, target string, err error) {
+	if opts.Logger == nil {
+		return
+	}
+
+	sourceIP, sourcePort := sourceAddr(conn)
+	destIP, destPort := parseHostPort(target)
+	opts.Logger.Warn(component+".backend_dial_error",
+		"component", component,
+		"destination_ip", destIP,
+		"destination_port", destPort,
+		"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
+		"err", err.Error(),
+		"source_ip", sourceIP,
+		"source_port", sourcePort,
+	)
 }
