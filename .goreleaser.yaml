@@ -96,17 +96,19 @@ changelog:
       order: 2
     - title: "Misc"
       order: 99
-  filters:
-    exclude:
-      - '^ci:'
-      - '^tests:'
-      - '^docs:'
-      - '^style:'
-      - '^test:'
-      - '^doc:'
-      - 'merge conflict'
-      - 'Merge branch'
-      - 'Merge pull request'
+
+filters:
+  exclude:
+    - '(?i)^docs?:'
+    - '(?i)^docs\([^:]+\):'
+    - '(?i)^docs\[[^:]+\]:'
+    - '(?i)^tests?:'
+    - '(?i)^ci:'
+    - '(?i)^dev:'
+    - '(?i)^style:'
+    - '(?i)merge conflict'
+    - 'Merge pull request'
+    - 'Merge branch'
 
 signs:
   - cmd: cosign
