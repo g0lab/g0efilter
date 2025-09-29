@@ -81,21 +81,20 @@ release:
 
 changelog:
   use: github 
-  format: "{{.SHA}}: {{.Message}} (@{{.AuthorUsername}})"
-  abbrev: 7          
+  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"       
   sort: asc
   groups:                     
     - title: "Features"
-      regexp: '^.*?(?i:(feat|feature|enhance|add|introduce|allow|improve|bump|migrate|implement|support|enable|update|refactor))'
-      order: 0
-    - title: "Bug fixes"
-      regexp: '^.*?(?i:(fix|bug|revert|hotfix|correct|workaround|issue))'
-      order: 1
+      regexp: '^\s*feat(\([^)]+\))?!?:\s+.+$'
+      order: 100
+    - title: "Fixes"
+      regexp: '^\s*fix(\([^)]+\))?!?:\s+.+$'
+      order: 200
     - title: "Documentation"
-      regexp: '^.*?(?i:(docs?|documentation|readme))'
-      order: 2
-    - title: "Misc"
-      order: 99
+      regexp: '^\s*docs(\([^)]+\))?!?:\s+.+$'
+      order: 300
+    - title: Other work
+      order: 9999
 
 filters:
   exclude:
