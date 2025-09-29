@@ -95,19 +95,18 @@ changelog:
       order: 300
     - title: Other work
       order: 9999
-
-filters:
-  exclude:
-    - '(?i)^docs?:'
-    - '(?i)^docs\([^:]+\):'
-    - '(?i)^docs\[[^:]+\]:'
-    - '(?i)^tests?:'
-    - '(?i)^ci:'
-    - '(?i)^dev:'
-    - '(?i)^style:'
-    - '(?i)merge conflict'
-    - 'Merge pull request'
-    - 'Merge branch'
+  filters:
+    exclude:
+      - '(?i)^docs?:'
+      - '(?i)^docs\([^:]+\):'
+      - '(?i)^docs\[[^:]+\]:'
+      - '(?i)^tests?:'
+      - '(?i)^ci:'
+      - '(?i)^dev:'
+      - '(?i)^style:'
+      - '(?i)merge conflict'
+      - 'Merge pull request'
+      - 'Merge branch'
 
 signs:
   - cmd: cosign
