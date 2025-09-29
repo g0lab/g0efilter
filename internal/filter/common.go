@@ -108,7 +108,6 @@ func newMarkedDialer(dialTimeout time.Duration) *net.Dialer {
 			err := rc.Control(func(fd uintptr) {
 				serr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_MARK, bypassMark)
 			})
-
 			if err != nil {
 				return fmt.Errorf("socket control error: %w", err)
 			}
