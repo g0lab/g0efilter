@@ -67,6 +67,12 @@ jobs:
             --timeout=10m
             ./...
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.txt
+
   build-smoke:
     needs: [test-and-lint]
     runs-on: ubuntu-latest
@@ -89,9 +95,3 @@ jobs:
         run: |
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
           go build -trimpath -o /dev/null ./cmd/${{ matrix.target }}
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.txt
