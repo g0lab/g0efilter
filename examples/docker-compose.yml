@@ -36,6 +36,4 @@ services:
     container_name: example-container
     command: >
       sh -c "apk add --no-cache curl && tail -f /dev/null"
-    depends_on:
-      - g0efilter
     network_mode: "service:g0efilter"

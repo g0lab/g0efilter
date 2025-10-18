@@ -5,7 +5,6 @@
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/6221eed68e504016acd2ec9d951bc031)](https://app.codacy.com/gh/g0lab/g0efilter/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/g0lab/g0efilter?label=latest%20release)](https://github.com/g0lab/g0efilter/releases)
 
 > [!WARNING]
 > g0efilter is in active development and its configuration may change often.
@@ -141,8 +140,6 @@ services:
     container_name: example-container
     command: >
       sh -c "apk add --no-cache curl && tail -f /dev/null"
-    depends_on:
-      - g0efilter
     network_mode: "service:g0efilter"
 ```
 
