@@ -164,27 +164,22 @@ table ip filter_v4 {
         # Always allow loopback-bound traffic
         oifname "lo" accept
 
-        # Allow return traffic from local services (like redirected ports)
+        # Allow return traffic
         ct state established,related accept
 
-        # Exempt proxies' own traffic (SO_MARK=0x1)
+        # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
         # Allow local DNS proxy on loopback
         ip daddr 127.0.0.1 udp dport %d accept
         ip daddr 127.0.0.1 tcp dport %d accept
 
-        # Allow ping ONLY to allow-listed destinations (rate-limited)
-        icmp type echo-request ip daddr @allow_daddr_v4 limit rate 5/second accept
+        # Allow ping to allow-listed destinations
+        icmp type echo-request ip daddr @allow_daddr_v4 accept
 
         # Block other DNS transports: DoT/DoQ (tcp/udp 853)
         tcp dport 853 drop
         udp dport 853 drop
-
-        # mDNS & LLMNR (optional hardening)
-        udp dport 5353 drop
-        udp dport 5355 drop
-        tcp dport 5355 drop
     }
 }
 `, allowSet, dnsPort, dnsPort)
@@ -209,13 +204,13 @@ table ip filter_v4 {
         ip daddr 127.0.0.1 tcp dport %d accept    # HTTP proxy
         ip daddr 127.0.0.1 tcp dport %d accept    # HTTPS proxy
 
-        # Allow ping ONLY to allow-listed destinations (rate-limited)
-        icmp type echo-request ip daddr @allow_daddr_v4 limit rate 5/second accept
+        # Allow ping to allow-listed destinations
+        icmp type echo-request ip daddr @allow_daddr_v4 accept
 
-        # Allow return traffic from local services (like redirected ports)
+        # Allow already established connections
         ct state established,related accept
 
-        # Exempt proxies' own traffic
+        # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
         # Allow and log allow-listed destinations
@@ -242,7 +237,7 @@ table ip nat_v4 {
     chain output {
         type nat hook output priority -100;
 
-        # Exempt proxies' own marked traffic to avoid recursion
+        # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 return
 
         # Exempt direct access to the local DNS proxy
@@ -273,10 +268,10 @@ table ip nat_v4 {
     chain output {
         type nat hook output priority -100;
 
-        # Exempt proxies' own marked traffic to avoid recursion
+        # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 return
 
-        # Return if allow-listed IP (direct egress)
+        # Return if allow-listed IP
         ip daddr @allow_daddr_v4 return
 
         # Redirect HTTP (80) to local HTTP proxy unless allow-listed IP
