@@ -1,4 +1,4 @@
-FROM alpine:3.22
+FROM alpine:3
 
 # Install nftables and ca-certificates, clean up unnecessary binaries to harden / minimize image size
 RUN apk add --no-cache nftables ca-certificates \
