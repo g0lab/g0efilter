@@ -164,7 +164,7 @@ table ip filter_v4 {
         # Always allow loopback-bound traffic
         oifname "lo" accept
 
-        # Allow return traffic
+        # Allow already established connections
         ct state established,related accept
 
         # Bypass marked traffic (SO_MARK=0x1)
