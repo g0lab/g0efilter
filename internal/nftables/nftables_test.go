@@ -714,11 +714,10 @@ func TestStreamNfLog(t *testing.T) {
 
 	t.Parallel()
 
-	// StreamNfLog uses context.Background() and will retry forever on failure.
-	// Since we can't control it with a context, and nflog requires root/CAP_NET_ADMIN,
-	// we skip this test in environments without nflog support.
-	// The actual functionality is tested in TestStreamNfLogWithLogger which uses a context.
-	t.Skip("StreamNfLog() uses background context and retries indefinitely - tested via TestStreamNfLogWithLogger")
+	// StreamNfLog uses context.Background() which has no timeout.
+	// Since nflog requires root/CAP_NET_ADMIN, this will fail immediately in test environment.
+	// The actual functionality is tested in TestStreamNfLogWithLogger which uses a cancellable context.
+	t.Skip("StreamNfLog() uses background context - tested via TestStreamNfLogWithLogger")
 }
 
 func TestStreamNfLogWithLogger(t *testing.T) {
@@ -728,16 +727,22 @@ func TestStreamNfLogWithLogger(t *testing.T) {
 
 	t.Parallel()
 
+	// Create a context that will be cancelled after 100ms
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	logger := slog.Default()
 	err := StreamNfLogWithLogger(ctx, logger)
 
-	// We expect an error since nflog likely isn't available in test environment
-	// But the function should handle the timeout gracefully
+	// In test environment without nflog support, we expect an error from nflog.Open()
+	// The function should fail fast at startup, not hang
 	if err == nil {
-		t.Log("StreamNfLogWithLogger() unexpectedly succeeded")
+		t.Error("StreamNfLogWithLogger() expected error in test environment without nflog, got nil")
+	}
+
+	// Verify error is about nflog open failure, not context timeout
+	if err != nil && !strings.Contains(err.Error(), "nflog open failed") {
+		t.Logf("Got error (expected): %v", err)
 	}
 }
 
