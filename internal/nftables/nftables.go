@@ -94,7 +94,7 @@ func applyRuleset(ruleset string) error {
 //
 // In both modes:
 //   - Allows loopback and local proxy ports on 127.0.0.1.
-//   - Exempts SO_MARK=0x1 traffic (set by your proxies) to avoid recursion.
+//   - Exempts SO_MARK=0x1 traffic (set by the proxies) to avoid recursion.
 //   - Allows egress to allow-listed destination IPs (ALLOW_DADDR_V4 set).
 
 // ApplyNftRules installs nftables rules for either SNI or DNS mode.
@@ -561,6 +561,8 @@ func createNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
 }
 
 // StreamNfLogWithLogger streams netfilter log events using the provided logger.
+//
+//nolint:cyclop,funlen,wrapcheck // Complexity and length from retry loops and context handling is acceptable
 func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 	dfltBuf, dfltQ := parseNflogConfig()
 	lg = setupLogger(lg)
@@ -572,31 +574,75 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 		QThresh:  dfltQ,
 	}
 
-	nf, err := nflog.Open(&config)
-	if err != nil {
-		lg.Error("nflog.open_failed", "err", err.Error())
-
-		return fmt.Errorf("nflog open failed: %w", err)
-	}
-
-	defer func() { _ = nf.Close() }()
-
-	hook := createNflogHook(lg)
-
+	// Error handler that logs but continues
 	errFunc := func(e error) int {
-		lg.Error("nflog.error", "err", e.Error())
+		lg.Warn("nflog.error", "err", e.Error())
 
-		return 0
+		return 0 // Return 0 to keep receiving messages
 	}
 
-	err = nf.RegisterWithErrorFunc(ctx, hook, errFunc)
-	if err != nil {
-		lg.Error("nflog.register_failed", "err", err.Error())
+	for {
+		// Check if context is cancelled before attempting operations
+		select {
+		case <-ctx.Done():
+			lg.Info("nflog.shutdown", "reason", "context_cancelled")
 
-		return fmt.Errorf("register failed: %w", err)
+			return ctx.Err()
+		default:
+		}
+
+		nf, err := nflog.Open(&config)
+		if err != nil {
+			lg.Warn("nflog.open_failed", "err", err.Error())
+
+			// Sleep with context awareness before retrying
+			select {
+			case <-ctx.Done():
+				lg.Info("nflog.shutdown", "reason", "context_cancelled")
+
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+
+			continue
+		}
+
+		err = nf.RegisterWithErrorFunc(ctx, createNflogHook(lg), errFunc)
+
+		// Close the nflog handle after registration returns (whether success or error)
+		cerr := nf.Close()
+		if cerr != nil {
+			lg.Warn("nflog.close_failed", "err", cerr.Error())
+		}
+
+		if err != nil {
+			lg.Warn("nflog.register_failed", "err", err.Error())
+
+			// Sleep with context awareness before retrying
+			select {
+			case <-ctx.Done():
+				lg.Info("nflog.shutdown", "reason", "context_cancelled")
+
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+
+			continue
+		}
+
+		// RegisterWithErrorFunc returned without error, likely due to context cancellation
+		lg.Info("nflog.stopped", "reason", "register_returned")
+
+		// Check if context was cancelled
+		select {
+		case <-ctx.Done():
+			lg.Info("nflog.shutdown", "reason", "context_cancelled")
+
+			return ctx.Err()
+		default:
+			// Connection dropped but context not cancelled - retry after delay
+			lg.Warn("nflog.connection_lost", "action", "retrying")
+			time.Sleep(5 * time.Second)
+		}
 	}
-
-	<-ctx.Done()
-
-	return nil
 }

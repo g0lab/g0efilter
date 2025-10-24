@@ -42,7 +42,7 @@ var (
 //nolint:gochecknoinits
 func init() {
 	if version == "" {
-		version = "dev"
+		version = "0.0.0-dev"
 	}
 
 	if date == "" {
@@ -104,7 +104,7 @@ func startMain() error {
 		return err
 	}
 
-	startServices(ctx, stop, config, domains, lg)
+	startServices(ctx, config, domains, lg)
 
 	startNflogStream(ctx, lg)
 
@@ -264,7 +264,6 @@ func loadAndApplyPolicy(cfg config, lg *slog.Logger) ([]string, []string, error)
 
 func startServices(
 	ctx context.Context,
-	stop context.CancelFunc,
 	cfg config,
 	domains []string,
 	lg *slog.Logger,
@@ -278,15 +277,14 @@ func startServices(
 
 	switch cfg.mode {
 	case "dns":
-		startDNSService(ctx, stop, cfg.dnsPort, domains, opts, lg)
+		startDNSService(ctx, cfg.dnsPort, domains, opts, lg)
 	case "sni":
-		startSNIServices(ctx, stop, cfg, domains, opts, lg)
+		startSNIServices(ctx, cfg, domains, opts, lg)
 	}
 }
 
 func startDNSService(
 	ctx context.Context,
-	stop context.CancelFunc,
 	dnsPort string,
 	domains []string,
 	opts filter.Options,
@@ -298,17 +296,37 @@ func startDNSService(
 	dnsOpts.ListenAddr = ":" + dnsPort
 
 	go func() {
-		err := filter.Serve53(ctx, domains, dnsOpts)
-		if err != nil {
-			lg.Error("dns.stopped", "err", err)
-			stop()
+		for {
+			// Check if context is cancelled before attempting to start
+			select {
+			case <-ctx.Done():
+				lg.Info("dns.shutdown", "reason", "context_cancelled")
+
+				return
+			default:
+			}
+
+			err := filter.Serve53(ctx, domains, dnsOpts)
+			if err != nil {
+				// Check if this is a context cancellation (normal shutdown)
+				select {
+				case <-ctx.Done():
+					lg.Info("dns.shutdown", "reason", "context_cancelled")
+
+					return
+				default:
+					// Log error and retry after delay
+					lg.Error("dns.stopped", "err", err, "action", "retrying")
+					time.Sleep(5 * time.Second)
+				}
+			}
 		}
 	}()
 }
 
+//nolint:cyclop,funlen // Complexity and length from retry loops and context handling is acceptable
 func startSNIServices(
 	ctx context.Context,
-	stop context.CancelFunc,
 	cfg config,
 	domains []string,
 	opts filter.Options,
@@ -320,10 +338,30 @@ func startSNIServices(
 	sniOpts.ListenAddr = ":" + cfg.httpsPort
 
 	go func() {
-		err := filter.Serve443(ctx, domains, sniOpts)
-		if err != nil {
-			lg.Error("sni.stopped", "err", err)
-			stop()
+		for {
+			// Check if context is cancelled before attempting to start
+			select {
+			case <-ctx.Done():
+				lg.Info("sni.shutdown", "reason", "context_cancelled")
+
+				return
+			default:
+			}
+
+			err := filter.Serve443(ctx, domains, sniOpts)
+			if err != nil {
+				// Check if this is a context cancellation (normal shutdown)
+				select {
+				case <-ctx.Done():
+					lg.Info("sni.shutdown", "reason", "context_cancelled")
+
+					return
+				default:
+					// Log error and retry after delay
+					lg.Error("sni.stopped", "err", err, "action", "retrying")
+					time.Sleep(5 * time.Second)
+				}
+			}
 		}
 	}()
 
@@ -333,10 +371,30 @@ func startSNIServices(
 	hostOpts.ListenAddr = ":" + cfg.httpPort
 
 	go func() {
-		err := filter.Serve80(ctx, domains, hostOpts)
-		if err != nil {
-			lg.Error("http.stopped", "err", err)
-			stop()
+		for {
+			// Check if context is cancelled before attempting to start
+			select {
+			case <-ctx.Done():
+				lg.Info("http.shutdown", "reason", "context_cancelled")
+
+				return
+			default:
+			}
+
+			err := filter.Serve80(ctx, domains, hostOpts)
+			if err != nil {
+				// Check if this is a context cancellation (normal shutdown)
+				select {
+				case <-ctx.Done():
+					lg.Info("http.shutdown", "reason", "context_cancelled")
+
+					return
+				default:
+					// Log error and retry after delay
+					lg.Error("http.stopped", "err", err, "action", "retrying")
+					time.Sleep(5 * time.Second)
+				}
+			}
 		}
 	}()
 }

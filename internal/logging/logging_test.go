@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -181,21 +182,36 @@ func TestNewPoster(t *testing.T) {
 
 	zl := zerolog.New(&buf)
 
-	poster := newPoster("http://test.com/ingest", "test-key", zl, false)
+	const (
+		testURL   = "http://test.com/ingest"
+		testKey   = "test-key"
+		testEvent = "test-event"
+	)
 
-	if poster == nil {
-		t.Fatal("newPoster() returned nil")
+	poster := newPoster(testURL, testKey, zl, false)
+
+	// Test poster configuration
+	expectedConfig := struct {
+		url    string
+		apiKey string
+	}{
+		url:    testURL,
+		apiKey: testKey,
 	}
 
-	if poster.url != "http://test.com/ingest" {
-		t.Errorf("newPoster() url = %q, want %q", poster.url, "http://test.com/ingest")
+	if poster.url != expectedConfig.url {
+		t.Errorf("poster URL = %q, want %q", poster.url, expectedConfig.url)
 	}
 
-	if poster.apiKey != "test-key" {
-		t.Errorf("newPoster() apiKey = %q, want %q", poster.apiKey, "test-key")
+	if poster.apiKey != expectedConfig.apiKey {
+		t.Errorf("poster API key = %q, want %q", poster.apiKey, expectedConfig.apiKey)
 	}
 
-	// Clean shutdown
+	// Test poster functionality
+	payload := []byte(testEvent)
+	poster.Enqueue(payload)
+
+	// Clean shutdown and ensure channel is drained
 	poster.Stop(100 * time.Millisecond)
 }
 
@@ -1044,35 +1060,177 @@ func TestShouldRetry(t *testing.T) {
 	}
 }
 
-func TestExponentialBackoffWithJitter(t *testing.T) {
+func TestAddJitter(t *testing.T) {
 	t.Parallel()
 
-	minWait := 1 * time.Second
-	maxWait := 8 * time.Second
+	baseDuration := 1 * time.Second
 
-	tests := []struct {
-		name    string
-		attempt int
-		minWant time.Duration
-		maxWant time.Duration
-	}{
-		{"first attempt", 0, minWait, minWait},
-		{"second attempt", 1, minWait / 2, 2 * time.Second},
-		{"third attempt", 2, 1 * time.Second, 4 * time.Second},
-		{"cap at max", 10, maxWait / 2, maxWait},
+	// Test multiple times to verify jitter behavior
+	for range 100 {
+		result := addJitter(baseDuration)
+
+		// Result should be between 0.5x and 1.0x the base duration
+		if result < baseDuration/2 || result > baseDuration {
+			t.Errorf("addJitter(%v) = %v, want between %v and %v",
+				baseDuration, result, baseDuration/2, baseDuration)
+		}
+	}
+}
+
+//nolint:funlen
+func TestPosterRetry(t *testing.T) {
+	t.Parallel()
+
+	// Create a test server that fails a few times then succeeds
+	var (
+		failCount = 0
+		maxFails  = 3
+		received  = make(chan []byte, 1)
+	)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("Failed to read request body: %v", err)
+
+			return
+		}
+
+		defer func() {
+			err := r.Body.Close()
+			if err != nil {
+				t.Errorf("Failed to close request body: %v", err)
+			}
+		}()
+
+		if failCount < maxFails {
+			failCount++
+
+			w.WriteHeader(http.StatusServiceUnavailable)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+
+		received <- body
+	}))
+	defer server.Close()
+
+	zl := zerolog.New(io.Discard)
+	p := &poster{
+		url:          server.URL,
+		q:            make(chan []byte, 1),
+		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
+		zl:           zl,
+		retryWaitMin: 10 * time.Millisecond,
+		retryWaitMax: 50 * time.Millisecond,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 
-			result := exponentialBackoffWithJitter(tt.attempt, minWait, maxWait)
+	go p.worker(ctx)
 
-			if result < tt.minWant || result > tt.maxWant {
-				t.Errorf("exponentialBackoffWithJitter(%d) = %v, want between %v and %v",
-					tt.attempt, result, tt.minWant, tt.maxWant)
+	testMsg := []byte(`{"test":"retry"}`)
+	p.Enqueue(testMsg)
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("Test timed out")
+	case msg := <-received:
+		if !bytes.Equal(msg, testMsg) {
+			t.Errorf("Got unexpected message: %s", msg)
+		}
+	}
+}
+
+func TestPosterQueueOverflow(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	zl := zerolog.New(&buf)
+	p := &poster{
+		url:          "http://localhost:1", // Invalid URL to force queue buildup
+		q:            make(chan []byte, 1), // Tiny queue to force overflow
+		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
+		zl:           zl,
+		debug:        true, // Enable debug logging to capture queue full messages
+		retryWaitMin: 10 * time.Millisecond,
+		retryWaitMax: 50 * time.Millisecond,
+	}
+
+	// Flood the queue - first message will succeed, subsequent will fail
+	for i := range 10 {
+		payload := []byte(fmt.Sprintf(`{"test":"data-%d"}`, i))
+		p.Enqueue(payload) // This will log when queue is full
+	}
+
+	// Check that we got queue full debug messages
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, "queue full") && !strings.Contains(logOutput, "dropping message") {
+		t.Errorf("Expected queue full or dropping message in logs, got: %s", logOutput)
+	}
+	
+	// Most importantly: verify no "retry attempts exhausted" or similar exit messages
+	if strings.Contains(logOutput, "exhausted") || strings.Contains(logOutput, "max_retries") {
+		t.Error("Found retry exhaustion message - system should retry infinitely!")
+	}
+}
+
+func TestPosterResilience(t *testing.T) {
+	t.Parallel()
+
+	var processed = make(chan struct{}, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			err := r.Body.Close()
+			if err != nil {
+				t.Errorf("Failed to close request body: %v", err)
 			}
-		})
+		}()
+
+		w.WriteHeader(http.StatusOK)
+
+		processed <- struct{}{}
+	}))
+	defer server.Close()
+
+	zl := zerolog.New(io.Discard)
+	p := &poster{
+		url:          server.URL,
+		q:            make(chan []byte, 1),
+		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
+		zl:           zl,
+		retryWaitMin: 10 * time.Millisecond,
+		retryWaitMax: 50 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go p.worker(ctx)
+
+	// Send initial message
+	p.Enqueue([]byte(`{"test":"first"}`))
+
+	// Wait for first message
+	select {
+	case <-ctx.Done():
+		t.Fatal("First message timeout")
+	case <-processed:
+	}
+
+	// Verify system still accepts new messages
+	p.Enqueue([]byte(`{"test":"second"}`))
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("System should still be processing")
+	case <-processed:
+		// System still operational
 	}
 }
 

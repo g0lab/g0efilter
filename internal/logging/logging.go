@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -118,33 +117,6 @@ func shouldRetry(resp *http.Response, err error) bool {
 	return resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests
 }
 
-// exponentialBackoffWithJitter calculates the wait time for retry attempt.
-func exponentialBackoffWithJitter(attempt int, minWait, maxWait time.Duration) time.Duration {
-	if attempt == 0 {
-		return minWait
-	}
-
-	// Calculate exponential backoff: minWait * 2^attempt
-	backoff := time.Duration(float64(minWait) * math.Pow(2, float64(attempt)))
-
-	// Cap at maximum wait time
-	if backoff > maxWait {
-		backoff = maxWait
-	}
-
-	// Add jitter (random factor between 0.5 and 1.0)
-	// Use crypto/rand for security compliance
-	jitterBig, err := rand.Int(rand.Reader, big.NewInt(500)) // 0-499
-	if err != nil {
-		// Fallback to no jitter if random generation fails
-		return backoff
-	}
-
-	jitter := 0.5 + float64(jitterBig.Int64())/1000.0 // 0.5 to 0.999
-
-	return time.Duration(float64(backoff) * jitter)
-}
-
 // newPoster is a convenience wrapper retained for tests; production uses newPosterWithCtx.
 //
 //nolint:unparam // apiKey repetition occurs only in tests; in production a real key flows via environment
@@ -219,10 +191,16 @@ func (p *poster) Stop(timeout time.Duration) {
 }
 
 func (p *poster) Enqueue(payload []byte) {
+	// Non-blocking send with immediate drop if queue is full
 	select {
 	case p.q <- payload:
+		if p.debug {
+			p.zl.Debug().Msg("dashboard: message queued")
+		}
 	default:
-		p.zl.Warn().Msg("dashboard: queue full, dropping log")
+		if p.debug {
+			p.zl.Debug().Msg("dashboard: queue full, dropping message")
+		}
 	}
 }
 
@@ -328,25 +306,50 @@ func (p *poster) handlePostPayload(ctx context.Context, payload []byte) {
 		logTraceBody(p.zl, p.url, payload)
 	}
 
-	// Retry loop with exponential backoff
-	for attempt := 0; attempt <= p.retryMax; attempt++ {
-		success := p.attemptPost(ctx, payload, attempt)
-		if success {
-			return
-		}
+	// Retry loop with exponential backoff, no maximum retry limit
+	backoffDuration := p.retryWaitMin
 
-		// Don't wait after the last attempt
-		if attempt < p.retryMax {
-			p.waitBeforeRetry(attempt)
+	for {
+		select {
+		case <-ctx.Done():
+			return // Exit if context is cancelled
+		default:
+			success := p.attemptPost(ctx, payload)
+			if success {
+				return
+			}
+
+			// Log that we're going to retry
+			p.zl.Info().Str("url", p.url).
+				Msg("dashboard: posting failed, will retry")
+
+			// Wait with exponential backoff
+			time.Sleep(addJitter(backoffDuration))
+
+			// Increase backoff up to max
+			if backoffDuration < p.retryWaitMax {
+				backoffDuration *= 2
+				if backoffDuration > p.retryWaitMax {
+					backoffDuration = p.retryWaitMax
+				}
+			}
 		}
 	}
-
-	// All retries exhausted
-	p.zl.Error().Int("max_retries", p.retryMax).Str("url", p.url).
-		Msg("dashboard: all retry attempts exhausted")
 }
 
-func (p *poster) attemptPost(ctx context.Context, payload []byte, attempt int) bool {
+// addJitter adds a random factor between 0.5 and 1.0 to the duration.
+func addJitter(d time.Duration) time.Duration {
+	jitterBig, err := rand.Int(rand.Reader, big.NewInt(500)) // 0-499
+	if err != nil {
+		return d // Fallback to no jitter if random generation fails
+	}
+
+	jitter := 0.5 + float64(jitterBig.Int64())/1000.0 // 0.5 to 0.999
+
+	return time.Duration(float64(d) * jitter)
+}
+
+func (p *poster) attemptPost(ctx context.Context, payload []byte) bool {
 	// Create new request for each attempt with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(payload))
 	if err != nil {
@@ -365,8 +368,13 @@ func (p *poster) attemptPost(ctx context.Context, payload []byte, attempt int) b
 		return p.handleFinalResponse(resp, err)
 	}
 
-	// Log retry attempt
-	p.logRetryAttempt(err, resp, attempt)
+	// Log retry info
+	if err != nil {
+		p.zl.Debug().Err(err).Msg("dashboard: post attempt failed")
+	} else if resp != nil {
+		p.zl.Debug().Int("status", resp.StatusCode).Msg("dashboard: post attempt failed with status")
+		_ = resp.Body.Close()
+	}
 
 	return false // Continue retrying
 }
@@ -390,27 +398,6 @@ func (p *poster) handleFinalResponse(resp *http.Response, err error) bool {
 	}
 
 	return true
-}
-
-func (p *poster) logRetryAttempt(err error, resp *http.Response, attempt int) {
-	if err != nil {
-		p.zl.Debug().Err(err).Int("attempt", attempt+1).Int("max_retries", p.retryMax).
-			Msg("dashboard: post attempt failed, will retry")
-	} else if resp != nil {
-		p.zl.Debug().Int("status", resp.StatusCode).Int("attempt", attempt+1).Int("max_retries", p.retryMax).
-			Msg("dashboard: post attempt failed with status, will retry")
-		_ = resp.Body.Close()
-	}
-}
-
-func (p *poster) waitBeforeRetry(attempt int) {
-	waitTime := exponentialBackoffWithJitter(attempt, p.retryWaitMin, p.retryWaitMax)
-	if p.debug {
-		p.zl.Debug().Dur("wait_time", waitTime).Int("attempt", attempt+1).
-			Msg("dashboard: waiting before retry")
-	}
-
-	time.Sleep(waitTime)
 }
 
 func logTraceBody(zl zerolog.Logger, url string, body []byte) {
@@ -613,7 +600,14 @@ func shipToDashboard(
 		return
 	}
 
-	poster.Enqueue(payloadBytes)
+	// In your dashboard logging code
+	select {
+	case poster.q <- payloadBytes:
+		// Message queued
+	default:
+		// Queue full, drop message and continue
+		poster.zl.Warn().Msg("dashboard.queue_full")
+	}
 }
 
 // handleBlockedAlert processes BLOCKED events and sends notifications.
