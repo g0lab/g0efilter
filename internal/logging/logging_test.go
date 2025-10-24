@@ -1158,10 +1158,10 @@ func TestPosterQueueOverflow(t *testing.T) {
 	// Use ConsoleWriter for more readable output in tests
 	zl := zerolog.New(zerolog.ConsoleWriter{Out: &buf, NoColor: true, TimeFormat: time.RFC3339}).
 		With().Timestamp().Logger().Level(zerolog.DebugLevel)
-	
+
 	p := &poster{
 		url:          "http://localhost:1", // Invalid URL to force queue buildup
-		q:            make(chan []byte, 0), // Unbuffered channel - any enqueue will block/fail
+		q:            make(chan []byte),    // Unbuffered channel - any enqueue will block/fail
 		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
 		zl:           zl,
 		debug:        true, // Enable debug logging to capture queue full messages
