@@ -1172,7 +1172,7 @@ func TestPosterQueueOverflow(t *testing.T) {
 	if !strings.Contains(logOutput, "queue full") && !strings.Contains(logOutput, "dropping message") {
 		t.Errorf("Expected queue full or dropping message in logs, got: %s", logOutput)
 	}
-	
+
 	// Most importantly: verify no "retry attempts exhausted" or similar exit messages
 	if strings.Contains(logOutput, "exhausted") || strings.Contains(logOutput, "max_retries") {
 		t.Error("Found retry exhaustion message - system should retry infinitely!")

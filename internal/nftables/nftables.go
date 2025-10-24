@@ -574,10 +574,8 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 		QThresh:  dfltQ,
 	}
 
-	// Error handler that logs but continues
-	errFunc := func(e error) int {
-		lg.Warn("nflog.error", "err", e.Error())
-
+	// Error handler that silently continues on errors
+	errFunc := func(_ error) int {
 		return 0 // Return 0 to keep receiving messages
 	}
 
