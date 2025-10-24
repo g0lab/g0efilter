@@ -55,12 +55,25 @@ func TestCreateDNSHandler(t *testing.T) {
 	}
 
 	handler := createDNSHandler(allowedDomains, options)
-	if handler == nil {
-		t.Fatal("Expected non-nil DNS handler")
-	}
-
 	if len(handler.allowlist) != len(allowedDomains) {
 		t.Errorf("Expected %d domains in allowlist, got %d", len(allowedDomains), len(handler.allowlist))
+	}
+
+	// Verify the allowlist contains the expected domains
+	for _, domain := range allowedDomains {
+		found := false
+
+		for _, allowed := range handler.allowlist {
+			if allowed == domain {
+				found = true
+
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Expected allowlist to contain %q", domain)
+		}
 	}
 
 	// Test handler processing

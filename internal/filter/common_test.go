@@ -423,22 +423,16 @@ func TestNewDialerFromOptions(t *testing.T) {
 	opts := Options{DialTimeout: 2500}
 
 	d := newDialerFromOptions(opts)
-	if d == nil {
-		t.Fatal("newDialerFromOptions returned nil")
-	}
 
-	if d.Timeout != 2500*time.Millisecond {
-		t.Errorf("dialer timeout = %v, want %v", d.Timeout, 2500*time.Millisecond)
+	expectedTimeout := 2500 * time.Millisecond
+	if d.Timeout != expectedTimeout {
+		t.Errorf("dialer timeout = %v, want %v", d.Timeout, expectedTimeout)
 	}
 
 	// Zero DialTimeout should produce a dialer with zero Timeout
 	opts = Options{DialTimeout: 0}
 
 	d2 := newDialerFromOptions(opts)
-	if d2 == nil {
-		t.Fatal("newDialerFromOptions returned nil for zero timeout")
-	}
-
 	if d2.Timeout != 0 {
 		t.Errorf("dialer timeout = %v, want 0", d2.Timeout)
 	}

@@ -84,16 +84,16 @@ changelog:
   format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"       
   sort: asc
   groups:                     
-    - title: "Features"
+    - title: "Added"
       regexp: '^\s*feat(\([^)]+\))?!?:\s+.+$'
       order: 100
-    - title: "Fixes"
+    - title: "Changed"
       regexp: '^\s*fix(\([^)]+\))?!?:\s+.+$'
       order: 200
     - title: "Documentation"
       regexp: '^\s*docs(\([^)]+\))?!?:\s+.+$'
       order: 300
-    - title: Other work
+    - title: Other
       order: 9999
   filters:
     exclude:

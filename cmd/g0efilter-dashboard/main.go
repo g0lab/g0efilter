@@ -36,7 +36,8 @@ var (
 	date    = "" //nolint:gochecknoglobals
 )
 
-func init() { //nolint:gochecknoinits
+//nolint:gochecknoinits
+func init() {
 	// preserve build-time variables
 	if version == "" {
 		version = "dev"
