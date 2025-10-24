@@ -1148,12 +1148,20 @@ func TestPosterRetry(t *testing.T) {
 func TestPosterQueueOverflow(t *testing.T) {
 	t.Parallel()
 
+	// Ensure debug level is enabled for this test
+	origLevel := zerolog.GlobalLevel()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	t.Cleanup(func() { zerolog.SetGlobalLevel(origLevel) })
+
 	var buf bytes.Buffer
 
-	zl := zerolog.New(&buf)
+	// Use ConsoleWriter for more readable output in tests
+	zl := zerolog.New(zerolog.ConsoleWriter{Out: &buf, NoColor: true, TimeFormat: time.RFC3339}).
+		With().Timestamp().Logger().Level(zerolog.DebugLevel)
+	
 	p := &poster{
 		url:          "http://localhost:1", // Invalid URL to force queue buildup
-		q:            make(chan []byte, 1), // Tiny queue to force overflow
+		q:            make(chan []byte, 0), // Unbuffered channel - any enqueue will block/fail
 		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
 		zl:           zl,
 		debug:        true, // Enable debug logging to capture queue full messages
@@ -1161,16 +1169,19 @@ func TestPosterQueueOverflow(t *testing.T) {
 		retryWaitMax: 50 * time.Millisecond,
 	}
 
-	// Flood the queue - first message will succeed, subsequent will fail
-	for i := range 10 {
+	// With unbuffered channel (size 0), all enqueues should fail immediately
+	for i := range 5 {
 		payload := []byte(fmt.Sprintf(`{"test":"data-%d"}`, i))
-		p.Enqueue(payload) // This will log when queue is full
+		p.Enqueue(payload) // Should all be dropped since channel is unbuffered
 	}
 
-	// Check that we got queue full debug messages
+	// Give a tiny bit of time for log writes to complete
+	time.Sleep(10 * time.Millisecond)
+
+	// Check that we got queue full/dropping debug messages
 	logOutput := buf.String()
 	if !strings.Contains(logOutput, "queue full") && !strings.Contains(logOutput, "dropping message") {
-		t.Errorf("Expected queue full or dropping message in logs, got: %s", logOutput)
+		t.Errorf("Expected queue full or dropping message in logs, got: %q", logOutput)
 	}
 
 	// Most importantly: verify no "retry attempts exhausted" or similar exit messages
