@@ -605,14 +605,16 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 			continue
 		}
 
+		// RegisterWithErrorFunc blocks until context is cancelled or connection is lost
 		err = nf.RegisterWithErrorFunc(ctx, createNflogHook(lg), errFunc)
 
-		// Close the nflog handle after registration returns (whether success or error)
+		// Close the nflog handle after registration returns
 		cerr := nf.Close()
 		if cerr != nil {
 			lg.Warn("nflog.close_failed", "err", cerr.Error())
 		}
 
+		// Check if registration failed or context was cancelled
 		if err != nil {
 			lg.Warn("nflog.register_failed", "err", err.Error())
 
@@ -628,19 +630,15 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 			continue
 		}
 
-		// RegisterWithErrorFunc returned without error, likely due to context cancellation
-		lg.Info("nflog.stopped", "reason", "register_returned")
-
-		// Check if context was cancelled
+		// RegisterWithErrorFunc returned without error - wait before retry
+		// If context is cancelled during the wait, exit immediately
 		select {
 		case <-ctx.Done():
 			lg.Info("nflog.shutdown", "reason", "context_cancelled")
 
 			return ctx.Err()
-		default:
-			// Connection dropped but context not cancelled - retry after delay
-			lg.Warn("nflog.connection_lost", "action", "retrying")
-			time.Sleep(5 * time.Second)
+		case <-time.After(5 * time.Second):
+			// Connection dropped - retry
 		}
 	}
 }
