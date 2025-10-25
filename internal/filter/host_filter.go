@@ -172,7 +172,9 @@ func handleAllowedHost(
 		}
 	}
 
-	bidirectionalCopy(conn, backend, br)
+	// For splice optimization: if br has buffered data, copy it first,
+	// then copy directly from conn to enable splice(2) on Linux
+	bidirectionalCopyWithBufferedReader(conn, backend, br)
 
 	return nil
 }

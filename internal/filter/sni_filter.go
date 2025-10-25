@@ -34,7 +34,7 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 	}
 
 	// 1) Extract SNI from ClientHello
-	sni, cr, err := extractSNIFromConnection(conn, opts)
+	sni, buf, err := extractSNIFromConnection(conn, opts)
 	if err != nil {
 		return err
 	}
@@ -47,14 +47,14 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 	}
 
 	// 3) Handle allowed SNI connection
-	return handleAllowedSNI(conn, tc, cr, sni, opts)
+	return handleAllowedSNI(conn, tc, buf, sni, opts)
 }
 
 // extractSNIFromConnection extracts SNI from TLS ClientHello.
-func extractSNIFromConnection(conn net.Conn, opts Options) (string, io.Reader, error) {
+func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffer, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(connectionReadTimeout))
 
-	ch, cr, err := peekClientHello(conn)
+	ch, buf, err := peekClientHello(conn)
 	if err != nil {
 		if opts.Logger != nil {
 			opts.Logger.Info("sni.blocked",
@@ -73,7 +73,7 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, io.Reader, e
 
 	sni := strings.TrimSuffix(strings.ToLower(ch.ServerName), ".")
 
-	return sni, cr, nil
+	return sni, buf, nil
 }
 
 // handleBlockedSNI handles blocked SNI connections.
@@ -116,7 +116,7 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 }
 
 // handleAllowedSNI handles allowed SNI connections.
-func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, cr io.Reader, sni string, opts Options) error {
+func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni string, opts Options) error {
 	// Recover original destination
 	target, err := originalDstTCP(tc)
 	if err != nil {
@@ -134,7 +134,7 @@ func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, cr io.Reader, sni string, 
 	}
 
 	// Connect and splice
-	return connectAndSpliceSNI(conn, cr, target, opts)
+	return connectAndSpliceSNI(conn, buf, target, opts)
 }
 
 // logAllowedSNI logs allowed SNI connections.
@@ -143,7 +143,7 @@ func logAllowedSNI(conn net.Conn, target, sni string, opts Options) {
 }
 
 // connectAndSpliceSNI connects to backend and splices data.
-func connectAndSpliceSNI(conn net.Conn, cr io.Reader, target string, opts Options) error {
+func connectAndSpliceSNI(conn net.Conn, buf *bytes.Buffer, target string, opts Options) error {
 	backend, err := createMarkedDialer(opts).Dial("tcp", target)
 	if err != nil {
 		logBackendDialError(opts, componentSNI, conn, target, err)
@@ -154,7 +154,7 @@ func connectAndSpliceSNI(conn net.Conn, cr io.Reader, target string, opts Option
 	defer func() { _ = backend.Close() }()
 
 	setConnTimeouts(conn, backend, opts)
-	bidirectionalCopy(conn, backend, cr)
+	bidirectionalCopy(conn, backend, buf)
 
 	return nil
 }
@@ -188,7 +188,7 @@ func (c roConn) SetDeadline(time.Time) error      { return nil }
 func (c roConn) SetReadDeadline(time.Time) error  { return nil }
 func (c roConn) SetWriteDeadline(time.Time) error { return nil }
 
-func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, io.Reader, error) {
+func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, *bytes.Buffer, error) {
 	buf := new(bytes.Buffer)
 
 	hello, err := readClientHello(io.TeeReader(reader, buf))
@@ -196,7 +196,7 @@ func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, io.Reader, error) 
 		return nil, nil, err
 	}
 
-	return hello, io.MultiReader(buf, reader), nil
+	return hello, buf, nil
 }
 
 func readClientHello(r io.Reader) (*tls.ClientHelloInfo, error) {

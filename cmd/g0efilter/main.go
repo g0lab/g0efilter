@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/filter"
@@ -71,7 +69,14 @@ type exitCodeError int
 func (e exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
 
 func main() {
-	err := startMain()
+	if handleVersionFlag() {
+		return
+	}
+
+	config := loadConfig()
+	lg := setupLogger(config)
+
+	err := validateAndSetMode(config, lg)
 	if err != nil {
 		var ec exitCodeError
 		if errors.As(err, &ec) {
@@ -81,38 +86,21 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-func startMain() error {
-	if handleVersionFlag() {
-		return nil
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	config := loadConfig()
-	lg := setupLogger(config)
-
-	err := validateAndSetMode(config, lg)
-	if err != nil {
-		return err
-	}
 
 	domains, _, err := loadAndApplyPolicy(config, lg)
 	if err != nil {
-		return err
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
-	startServices(ctx, config, domains, lg)
+	// Services run with their own retry loops - just keep running forever
+	ctx := context.Background()
 
+	startServices(ctx, config, domains, lg)
 	startNflogStream(ctx, lg)
 
-	<-ctx.Done()
-	lg.Info("shutdown.graceful")
-	logging.Shutdown(5 * time.Second)
-
-	return nil
+	// Block forever - services handle their own failures via retry loops
+	select {}
 }
 
 func handleVersionFlag() bool {
@@ -297,34 +285,16 @@ func startDNSService(
 
 	go func() {
 		for {
-			// Check if context is cancelled before attempting to start
-			select {
-			case <-ctx.Done():
-				lg.Info("dns.shutdown", "reason", "context_cancelled")
-
-				return
-			default:
-			}
-
 			err := filter.Serve53(ctx, domains, dnsOpts)
 			if err != nil {
-				// Check if this is a context cancellation (normal shutdown)
-				select {
-				case <-ctx.Done():
-					lg.Info("dns.shutdown", "reason", "context_cancelled")
-
-					return
-				default:
-					// Log error and retry after delay
-					lg.Error("dns.stopped", "err", err, "action", "retrying")
-					time.Sleep(5 * time.Second)
-				}
+				// Log error and retry after delay
+				lg.Error("dns.stopped", "err", err, "action", "retrying")
+				time.Sleep(5 * time.Second)
 			}
 		}
 	}()
 }
 
-//nolint:cyclop,funlen // Complexity and length from retry loops and context handling is acceptable
 func startSNIServices(
 	ctx context.Context,
 	cfg config,
@@ -339,28 +309,11 @@ func startSNIServices(
 
 	go func() {
 		for {
-			// Check if context is cancelled before attempting to start
-			select {
-			case <-ctx.Done():
-				lg.Info("sni.shutdown", "reason", "context_cancelled")
-
-				return
-			default:
-			}
-
 			err := filter.Serve443(ctx, domains, sniOpts)
 			if err != nil {
-				// Check if this is a context cancellation (normal shutdown)
-				select {
-				case <-ctx.Done():
-					lg.Info("sni.shutdown", "reason", "context_cancelled")
-
-					return
-				default:
-					// Log error and retry after delay
-					lg.Error("sni.stopped", "err", err, "action", "retrying")
-					time.Sleep(5 * time.Second)
-				}
+				// Log error and retry after delay
+				lg.Error("sni.stopped", "err", err, "action", "retrying")
+				time.Sleep(5 * time.Second)
 			}
 		}
 	}()
@@ -372,28 +325,11 @@ func startSNIServices(
 
 	go func() {
 		for {
-			// Check if context is cancelled before attempting to start
-			select {
-			case <-ctx.Done():
-				lg.Info("http.shutdown", "reason", "context_cancelled")
-
-				return
-			default:
-			}
-
 			err := filter.Serve80(ctx, domains, hostOpts)
 			if err != nil {
-				// Check if this is a context cancellation (normal shutdown)
-				select {
-				case <-ctx.Done():
-					lg.Info("http.shutdown", "reason", "context_cancelled")
-
-					return
-				default:
-					// Log error and retry after delay
-					lg.Error("http.stopped", "err", err, "action", "retrying")
-					time.Sleep(5 * time.Second)
-				}
+				// Log error and retry after delay
+				lg.Error("http.stopped", "err", err, "action", "retrying")
+				time.Sleep(5 * time.Second)
 			}
 		}
 	}()

@@ -5,6 +5,8 @@
 package filter
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -133,13 +135,63 @@ func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 }
 
 // bidirectionalCopy performs bidirectional data copying between connections.
+// The reader parameter can be either *bytes.Buffer (for SNI filter with splice optimization)
+// or *bufio.Reader (for HTTP filter). When reader is *bytes.Buffer and both connections
+// are *net.TCPConn on Linux, this enables zero-copy splice(2) syscall for the bulk transfer.
 func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
 	var wg sync.WaitGroup
 
 	wg.Add(2)
 
 	go func() {
-		_, _ = io.Copy(backend, reader)
+		// Check if we can use the splice optimization (reader is *bytes.Buffer)
+		if buf, ok := reader.(*bytes.Buffer); ok {
+			// Copy peeked bytes first
+			_, _ = io.Copy(backend, buf)
+			// Then copy rest directly from conn to enable splice(2) on Linux
+			_, _ = io.Copy(backend, conn)
+		} else {
+			// For other reader types (e.g., bufio.Reader), use standard copy
+			_, _ = io.Copy(backend, reader)
+		}
+
+		if btc, ok := backend.(*net.TCPConn); ok {
+			_ = btc.CloseWrite()
+		}
+
+		wg.Done()
+	}()
+
+	go func() {
+		_, _ = io.Copy(conn, backend)
+		if tc, ok := conn.(*net.TCPConn); ok {
+			_ = tc.CloseWrite()
+		}
+
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+// bidirectionalCopyWithBufferedReader is optimized for HTTP filtering where headers
+// are read via bufio.Reader. It flushes any buffered data first, then switches to
+// copying directly from the underlying connection to enable splice(2) on Linux.
+func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bufio.Reader) {
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	go func() {
+		// First, copy any data already buffered by bufio.Reader
+		if br.Buffered() > 0 {
+			buffered := make([]byte, br.Buffered())
+			_, _ = io.ReadFull(br, buffered)
+			_, _ = backend.Write(buffered)
+		}
+		// Then copy rest directly from conn to enable splice(2) on Linux
+		_, _ = io.Copy(backend, conn)
+
 		if btc, ok := backend.(*net.TCPConn); ok {
 			_ = btc.CloseWrite()
 		}
@@ -401,7 +453,7 @@ func serveTCP(
 	if listenAddr == "" {
 		return errListenAddrEmpty
 	}
-	// Use ListenConfig to allow context-aware shutdown. Suppress exhaustruct here.
+
 	lc := &net.ListenConfig{} //nolint:exhaustruct
 
 	ln, err := lc.Listen(ctx, "tcp", listenAddr)

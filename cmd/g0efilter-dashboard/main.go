@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/g0lab/g0efilter/internal/dashboard"
 	"github.com/g0lab/g0efilter/internal/logging"
@@ -156,7 +154,20 @@ func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
 }
 
 func main() {
-	err := startMain()
+	// Handle version flag
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "version", "-V", "-v":
+			printVersion()
+
+			return
+		}
+	}
+
+	cfg := buildConfig()
+	normalizeAddr(&cfg)
+
+	lg, err := setupLogging(cfg)
 	if err != nil {
 		var ec exitCodeError
 		if errors.As(err, &ec) {
@@ -166,35 +177,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
 
-func startMain() error {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--version", "version", "-V", "-v":
-			printVersion()
+	// Run dashboard server indefinitely
+	ctx := context.Background()
 
-			return nil
-		}
-	}
-
-	cfg := buildConfig()
-	normalizeAddr(&cfg)
-
-	lg, err := setupLogging(cfg)
+	err = dashboard.Run(ctx, cfg)
 	if err != nil {
-		return err
+		lg.Error("dashboard.failed", "err", err)
+		os.Exit(1)
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	e := dashboard.Run(ctx, cfg)
-	if e != nil {
-		lg.Error("dashboard.failed", "err", e)
-
-		return exitCodeError(1)
-	}
-
-	return nil
 }

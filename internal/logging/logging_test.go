@@ -1175,8 +1175,8 @@ func TestPosterQueueOverflow(t *testing.T) {
 		p.Enqueue(payload) // Should all be dropped since channel is unbuffered
 	}
 
-	// Give a tiny bit of time for log writes to complete
-	time.Sleep(10 * time.Millisecond)
+	// Give enough time for log writes to complete (race detector slows things down)
+	time.Sleep(50 * time.Millisecond)
 
 	// Check that we got queue full/dropping debug messages
 	logOutput := buf.String()
