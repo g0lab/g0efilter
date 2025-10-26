@@ -1,5 +1,4 @@
-// Package main is the command-line entrypoint for g0efilter.
-// It starts the filters and applies nftables rules according to the configured policy.
+// Package main is the entrypoint for g0efilter.
 package main
 
 import (
@@ -23,14 +22,12 @@ const (
 	licenseOwner = "g0lab"
 	licenseType  = "MIT"
 
-	modeSNI = "sni"
-	modeDNS = "dns"
-
 	defaultDialTimeout = 5000
 	defaultIdleTimeout = 600000
+	retryDelay         = 5 * time.Second
 )
 
-// set by GoReleaser via ldflags.
+// Set by GoReleaser via ldflags.
 var (
 	version = ""
 	commit  = "" //nolint:gochecknoglobals
@@ -52,6 +49,7 @@ func init() {
 	}
 }
 
+// printVersion prints version information to stderr.
 func printVersion() {
 	short := commit
 	if len(short) >= 7 {
@@ -63,7 +61,7 @@ func printVersion() {
 	fmt.Fprintf(os.Stderr, "Licensed under the %s license\n", licenseType)
 }
 
-// exitCode is a lightweight way to carry a specific process exit code up to main().
+// exitCodeError carries a process exit code.
 type exitCodeError int
 
 func (e exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
@@ -76,7 +74,7 @@ func main() {
 	config := loadConfig()
 	lg := setupLogger(config)
 
-	err := validateAndSetMode(config, lg)
+	err := validateMode(config, lg)
 	if err != nil {
 		var ec exitCodeError
 		if errors.As(err, &ec) {
@@ -93,13 +91,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Services run with their own retry loops - just keep running forever
 	ctx := context.Background()
 
 	startServices(ctx, config, domains, lg)
 	startNflogStream(ctx, lg)
 
-	// Block forever - services handle their own failures via retry loops
 	select {}
 }
 
@@ -116,6 +112,7 @@ func handleVersionFlag() bool {
 	return false
 }
 
+// config holds application configuration from environment variables.
 type config struct {
 	policyPath string
 	httpPort   string
@@ -127,6 +124,7 @@ type config struct {
 	mode       string
 }
 
+// loadConfig reads configuration from environment variables.
 func loadConfig() config {
 	return config{
 		policyPath: getenvDefault("POLICY_PATH", "/app/policy.yaml"),
@@ -140,6 +138,7 @@ func loadConfig() config {
 	}
 }
 
+// setupLogger creates and configures the application logger.
 func setupLogger(cfg config) *slog.Logger {
 	lg := logging.NewWithContext(context.Background(), cfg.logLevel, "console", os.Stdout, false)
 	slog.SetDefault(lg)
@@ -151,6 +150,7 @@ func setupLogger(cfg config) *slog.Logger {
 	return lg
 }
 
+// logStartupInfo logs application startup information and configuration.
 func logStartupInfo(lg *slog.Logger, cfg config) {
 	kv := []any{
 		"name", name,
@@ -171,11 +171,11 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 
 	lg.Info("startup.info", kv...)
 
-	if cfg.mode == modeSNI {
+	if cfg.mode == filter.ModeSNI {
 		lg.Info("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
 	}
 
-	if cfg.mode == modeDNS {
+	if cfg.mode == filter.ModeDNS {
 		lg.Info("startup.ports", "dns_port", cfg.dnsPort)
 	}
 
@@ -187,6 +187,7 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 	)
 }
 
+// logDashboardInfo logs dashboard shipping configuration status.
 func logDashboardInfo(lg *slog.Logger) {
 	dhost := strings.TrimSpace(getenvDefault("DASHBOARD_HOST", ""))
 	if dhost != "" {
@@ -201,6 +202,7 @@ func logDashboardInfo(lg *slog.Logger) {
 	}
 }
 
+// logNotificationInfo logs notification configuration status.
 func logNotificationInfo(lg *slog.Logger) {
 	nhost := strings.TrimSpace(getenvDefault("NOTIFICATION_HOST", ""))
 	ntoken := strings.TrimSpace(getenvDefault("NOTIFICATION_KEY", ""))
@@ -212,21 +214,18 @@ func logNotificationInfo(lg *slog.Logger) {
 	}
 }
 
-func validateAndSetMode(cfg config, lg *slog.Logger) error {
-	if cfg.mode != modeSNI && cfg.mode != "dns" {
+// validateMode validates the filter mode configuration.
+func validateMode(cfg config, lg *slog.Logger) error {
+	if cfg.mode != filter.ModeSNI && cfg.mode != filter.ModeDNS {
 		lg.Error("config.invalid_mode", "filter_mode", cfg.mode)
 
 		return exitCodeError(2)
 	}
 
-	err := os.Setenv("FILTER_MODE", cfg.mode)
-	if err != nil {
-		lg.Warn("env.set_failed", "key", "FILTER_MODE", "err", err)
-	}
-
 	return nil
 }
 
+// loadAndApplyPolicy loads the policy file and applies nftables rules.
 func loadAndApplyPolicy(cfg config, lg *slog.Logger) ([]string, []string, error) {
 	ips, domains, err := policy.ReadPolicy(cfg.policyPath)
 	if err != nil {
@@ -250,6 +249,20 @@ func loadAndApplyPolicy(cfg config, lg *slog.Logger) ([]string, []string, error)
 	return domains, ips, nil
 }
 
+// runServiceWithRetry runs a service in a goroutine and restarts it on failure.
+func runServiceWithRetry(serviceName string, lg *slog.Logger, serviceFunc func() error) {
+	go func() {
+		for {
+			err := serviceFunc()
+			if err != nil {
+				lg.Error(serviceName+".stopped", "err", err, "action", "retrying")
+				time.Sleep(retryDelay)
+			}
+		}
+	}()
+}
+
+// startServices starts the appropriate filtering services based on mode.
 func startServices(
 	ctx context.Context,
 	cfg config,
@@ -271,6 +284,7 @@ func startServices(
 	}
 }
 
+// startDNSService starts the DNS filtering service.
 func startDNSService(
 	ctx context.Context,
 	dnsPort string,
@@ -283,18 +297,12 @@ func startDNSService(
 	dnsOpts := opts
 	dnsOpts.ListenAddr = ":" + dnsPort
 
-	go func() {
-		for {
-			err := filter.Serve53(ctx, domains, dnsOpts)
-			if err != nil {
-				// Log error and retry after delay
-				lg.Error("dns.stopped", "err", err, "action", "retrying")
-				time.Sleep(5 * time.Second)
-			}
-		}
-	}()
+	runServiceWithRetry("dns", lg, func() error {
+		return filter.Serve53(ctx, domains, dnsOpts)
+	})
 }
 
+// startSNIServices starts SNI and HTTP filtering services.
 func startSNIServices(
 	ctx context.Context,
 	cfg config,
@@ -307,34 +315,21 @@ func startSNIServices(
 	sniOpts := opts
 	sniOpts.ListenAddr = ":" + cfg.httpsPort
 
-	go func() {
-		for {
-			err := filter.Serve443(ctx, domains, sniOpts)
-			if err != nil {
-				// Log error and retry after delay
-				lg.Error("sni.stopped", "err", err, "action", "retrying")
-				time.Sleep(5 * time.Second)
-			}
-		}
-	}()
+	runServiceWithRetry("sni", lg, func() error {
+		return filter.Serve443(ctx, domains, sniOpts)
+	})
 
 	lg.Info("http.starting", "addr", ":"+cfg.httpPort)
 
 	hostOpts := opts
 	hostOpts.ListenAddr = ":" + cfg.httpPort
 
-	go func() {
-		for {
-			err := filter.Serve80(ctx, domains, hostOpts)
-			if err != nil {
-				// Log error and retry after delay
-				lg.Error("http.stopped", "err", err, "action", "retrying")
-				time.Sleep(5 * time.Second)
-			}
-		}
-	}()
+	runServiceWithRetry("http", lg, func() error {
+		return filter.Serve80(ctx, domains, hostOpts)
+	})
 }
 
+// startNflogStream starts the nflog event stream listener.
 func startNflogStream(ctx context.Context, lg *slog.Logger) {
 	lg.Info("nflog.listen")
 
@@ -346,10 +341,12 @@ func startNflogStream(ctx context.Context, lg *slog.Logger) {
 	}()
 }
 
+// getenvDefault gets an environment variable with a default value if empty.
 func getenvDefault(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
 	}
 
-	return def
+	return v
 }

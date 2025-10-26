@@ -394,12 +394,12 @@ func getDestinationIsIPPortTestCase() formattingTestCase {
 			SourcePort:      "12345",
 			DestinationIP:   "142.251.221.78",
 			DestinationPort: "80",
-			Destination:     "142.251.221.78:80", // This is what was causing duplicate IPs
+			Destination:     "142.251.221.78:80",
 			Reason:          "blocked by policy",
 			Component:       "http",
 		},
 		wantSrc:  "192.168.1.100:12345",
-		wantDest: "142.251.221.78:80", // Should NOT be "142.251.221.78:80 (142.251.221.78:80)"
+		wantDest: "142.251.221.78:80",
 	}
 }
 

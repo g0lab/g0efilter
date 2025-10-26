@@ -1,7 +1,6 @@
 //go:build linux
 
-// Package filter provides common network filtering utilities including domain validation,
-// connection handling, and synthetic event emission for network flow tracking.
+// Package filter provides network filtering utilities.
 package filter
 
 import (
@@ -27,10 +26,17 @@ import (
 )
 
 const (
-	bypassMark            = 0x1 // SO_MARK value to bypass nftables REDIRECT rules
-	actionRedirected      = "REDIRECTED"
-	defaultTTL            = 60              // default TTL for DNS responses in seconds
-	connectionReadTimeout = 5 * time.Second // timeout for initial connection reads
+	bypassMark            = 0x1             // SO_MARK to bypass nftables REDIRECT
+	defaultTTL            = 60              // DNS response TTL in seconds
+	connectionReadTimeout = 5 * time.Second // Timeout for initial connection reads
+
+	// ActionRedirected is logged when traffic is redirected.
+	ActionRedirected = "REDIRECTED"
+
+	// ModeSNI is the SNI-based filtering mode.
+	ModeSNI = "sni"
+	// ModeDNS is the DNS-based filtering mode.
+	ModeDNS = "dns"
 
 	// Component names for logging.
 	componentSNI  = "sni"
@@ -39,7 +45,7 @@ const (
 
 var errListenAddrEmpty = errors.New("listenAddr cannot be empty")
 
-// Options contains configuration parameters for network filtering operations.
+// Options contains configuration for network filtering.
 type Options struct {
 	ListenAddr  string
 	DialTimeout int // ms
@@ -48,6 +54,7 @@ type Options struct {
 	Logger      *slog.Logger
 }
 
+// normalizeDomain converts a domain to lowercase ASCII form.
 func normalizeDomain(domain string) string {
 	domain = strings.TrimSpace(strings.ToLower(strings.TrimSuffix(domain, ".")))
 	if domain == "*" {
@@ -62,6 +69,7 @@ func normalizeDomain(domain string) string {
 	return ascii
 }
 
+// allowedHost checks if a host matches the allowlist patterns.
 func allowedHost(host string, allowlist []string) bool {
 	host = normalizeDomain(host)
 
@@ -85,12 +93,12 @@ func allowedHost(host string, allowlist []string) bool {
 	return false
 }
 
-// newDialerFromOptions creates a marked dialer using Options timeout in milliseconds.
+// newDialerFromOptions creates a network dialer with the timeout from Options and SO_MARK set to bypass iptables.
 func newDialerFromOptions(opts Options) *net.Dialer {
 	return newMarkedDialer(time.Duration(opts.DialTimeout) * time.Millisecond)
 }
 
-// timeoutFromOptions converts Options.DialTimeout to time.Duration with default fallback.
+// timeoutFromOptions returns the dial timeout from Options, or defaultTimeout if not configured.
 func timeoutFromOptions(opts Options, defaultTimeout time.Duration) time.Duration {
 	if opts.DialTimeout <= 0 {
 		return defaultTimeout
@@ -99,8 +107,7 @@ func timeoutFromOptions(opts Options, defaultTimeout time.Duration) time.Duratio
 	return time.Duration(opts.DialTimeout) * time.Millisecond
 }
 
-// newMarkedDialer creates a net.Dialer with SO_MARK set to bypass iptables rules.
-// This allows outbound connections to bypass the transparent proxy rules.
+// newMarkedDialer creates a network dialer with SO_MARK set to bypass iptables REDIRECT rules.
 func newMarkedDialer(dialTimeout time.Duration) *net.Dialer {
 	dialer := &net.Dialer{
 		Timeout: dialTimeout,
@@ -125,7 +132,7 @@ func newMarkedDialer(dialTimeout time.Duration) *net.Dialer {
 	return dialer
 }
 
-// setConnTimeouts sets idle timeouts if configured for both connections.
+// setConnTimeouts applies idle timeout deadlines to both client and backend connections if configured.
 func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 	if opts.IdleTimeout > 0 {
 		timeout := time.Duration(opts.IdleTimeout) * time.Millisecond
@@ -134,10 +141,7 @@ func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 	}
 }
 
-// bidirectionalCopy performs bidirectional data copying between connections.
-// The reader parameter can be either *bytes.Buffer (for SNI filter with splice optimization)
-// or *bufio.Reader (for HTTP filter). When reader is *bytes.Buffer and both connections
-// are *net.TCPConn on Linux, this enables zero-copy splice(2) syscall for the bulk transfer.
+// bidirectionalCopy copies data in both directions between connections, using zero-copy splice when possible.
 func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
 	var wg sync.WaitGroup
 
@@ -174,9 +178,7 @@ func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
 	wg.Wait()
 }
 
-// bidirectionalCopyWithBufferedReader is optimized for HTTP filtering where headers
-// are read via bufio.Reader. It flushes any buffered data first, then switches to
-// copying directly from the underlying connection to enable splice(2) on Linux.
+// bidirectionalCopyWithBufferedReader copies data in both directions, flushing buffered data then using splice.
 func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bufio.Reader) {
 	var wg sync.WaitGroup
 
@@ -213,8 +215,7 @@ func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bu
 
 const soOriginalDst = 80 // from linux/netfilter_ipv4.h
 
-// originalDstTCP (IPv4 only) returns "ip:port" that the app originally dialled (before REDIRECT).
-// Uses SO_ORIGINAL_DST via getsockopt() with proper type-safe sockaddr_in structure.
+// originalDstTCP retrieves the original destination address before iptables REDIRECT using SO_ORIGINAL_DST.
 func originalDstTCP(conn *net.TCPConn) (string, error) {
 	raw, err := conn.SyscallConn()
 	if err != nil {
@@ -275,12 +276,10 @@ func originalDstTCP(conn *net.TCPConn) (string, error) {
 	return out, nil
 }
 
-// FlowID returns a deterministic identifier for a network flow based on
-// source IP/port, destination IP/port and protocol. It's suitable for
-// correlating NFLOG records with in-app events.
+// FlowID generates a deterministic hash identifier for a network flow using source, destination, and protocol.
 func FlowID(sourceIP string, sourcePort int, destinationIP string, destinationPort int, proto string) string {
 	hasher := fnv.New32a()
-	// simple canonical representation
+	// simple canonical representation - hash.Write never fails
 	_, _ = hasher.Write([]byte(sourceIP))
 	_, _ = hasher.Write([]byte(":"))
 	_, _ = hasher.Write([]byte(strconv.Itoa(sourcePort)))
@@ -289,25 +288,12 @@ func FlowID(sourceIP string, sourcePort int, destinationIP string, destinationPo
 	_, _ = hasher.Write([]byte(":"))
 	_, _ = hasher.Write([]byte(strconv.Itoa(destinationPort)))
 	_, _ = hasher.Write([]byte("|"))
-
-	// best-effort logging; ignore write errors explicitly
-	err := func() error {
-		_, writeErr := hasher.Write([]byte(strings.ToUpper(proto)))
-		if writeErr != nil {
-			return fmt.Errorf("hash write failed: %w", writeErr)
-		}
-
-		return nil
-	}()
-	_ = err
+	_, _ = hasher.Write([]byte(strings.ToUpper(proto)))
 
 	return strconv.FormatUint(uint64(hasher.Sum32()), 16)
 }
 
-// --- small helpers to remove duplication ---
-
-// parseHostPort returns host and port from a "host:port" string.
-// On error, returns the input string as host and 0 as port.
+// parseHostPort splits a "host:port" string into host and port, returning the input as host and 0 on error.
 func parseHostPort(s string) (string, int) {
 	host, portStr, err := net.SplitHostPort(s)
 	if err != nil {
@@ -319,7 +305,7 @@ func parseHostPort(s string) (string, int) {
 	return host, portInt
 }
 
-// sourceAddr extracts the remote client's IP and port, tolerant of non-standard forms.
+// sourceAddr extracts the remote client's IP address and port from a connection.
 func sourceAddr(conn net.Conn) (string, int) {
 	if conn == nil || conn.RemoteAddr() == nil {
 		return "", 0
@@ -347,7 +333,7 @@ var (
 // suppressWindow is how long to suppress kernel nflog events after seeing a synthetic redirect.
 const suppressWindow = 5 * time.Second
 
-// MarkSynthetic records that a synthetic event for flowID was emitted now.
+// MarkSynthetic records that a synthetic log event was emitted for this flow to prevent duplicate nflog events.
 func MarkSynthetic(flowID string) {
 	if flowID == "" {
 		return
@@ -366,7 +352,7 @@ func MarkSynthetic(flowID string) {
 	}
 }
 
-// IsSyntheticRecent returns true if a synthetic event for flowID was recorded within suppressWindow.
+// IsSyntheticRecent returns true if a synthetic log was emitted for this flow within the suppress window.
 func IsSyntheticRecent(flowID string) bool {
 	if flowID == "" {
 		return false
@@ -382,10 +368,8 @@ func IsSyntheticRecent(flowID string) bool {
 	return false
 }
 
-// EmitSynthetic recovers client and destination fields and emits a synthetic nflog.synthetic
-// log via the provided logger, marks the flow for suppression, and returns the computed flowID.
-// component is e.g. "http" or "sni"; dst is the original destination value (ip:port).
-func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, _ *net.TCPConn, target string) string {
+// EmitSynthetic emits a synthetic nflog event for a TCP redirect and marks the flow to suppress duplicates.
+func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, target string) string {
 	if logger == nil || target == "" {
 		return ""
 	}
@@ -394,10 +378,10 @@ func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, _ *net.
 	sourceIP, sourcePort := sourceAddr(conn)
 
 	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
-	logger.Debug("nflog.synthetic", // was Info
+	logger.Debug("nflog.synthetic",
 		"time", time.Now().UTC().Format(time.RFC3339Nano),
 		"component", component,
-		"action", actionRedirected,
+		"action", ActionRedirected,
 		"protocol", "TCP",
 		"prefix", "redirected",
 		"source_ip", sourceIP,
@@ -413,7 +397,7 @@ func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, _ *net.
 	return flowID
 }
 
-// EmitSyntheticUDP helper to centralise UDP synthetic emission for DNS flows.
+// EmitSyntheticUDP emits a synthetic nflog event for a UDP redirect (DNS) and marks the flow to suppress duplicates.
 func EmitSyntheticUDP(logger *slog.Logger, component, sourceIP string, sourcePort int, dst string) string {
 	if logger == nil || dst == "" {
 		return ""
@@ -421,10 +405,10 @@ func EmitSyntheticUDP(logger *slog.Logger, component, sourceIP string, sourcePor
 
 	destIP, destPort := parseHostPort(dst)
 	flowID := FlowID(sourceIP, sourcePort, destIP, destPort, "udp")
-	logger.Debug("nflog.synthetic", // was Info
+	logger.Debug("nflog.synthetic",
 		"time", time.Now().UTC().Format(time.RFC3339Nano),
 		"component", component,
-		"action", actionRedirected,
+		"action", ActionRedirected,
 		"protocol", "UDP",
 		"prefix", "dns_redirected",
 		"source_ip", sourceIP,
@@ -440,8 +424,7 @@ func EmitSyntheticUDP(logger *slog.Logger, component, sourceIP string, sourcePor
 	return flowID
 }
 
-// serveTCP is a shared function for TCP-based filters (HTTP Host, SNI).
-// It handles listening, accepting connections, and calling the provided handler.
+// serveTCP listens on a TCP address and handles each connection by calling the provided handler function.
 func serveTCP(
 	ctx context.Context,
 	listenAddr string,
@@ -494,7 +477,7 @@ func serveTCP(
 	}
 }
 
-// logAllowedConnection logs an allowed connection with common fields.
+// logAllowedConnection logs when a connection is allowed through the filter.
 func logAllowedConnection(opts Options, component, target, identifier string, conn net.Conn) {
 	if opts.Logger == nil {
 		return
@@ -528,7 +511,7 @@ func logAllowedConnection(opts Options, component, target, identifier string, co
 	)
 }
 
-// logBlockedConnection logs a blocked connection with common fields.
+// logBlockedConnection logs when a connection is blocked by the filter.
 func logBlockedConnection(
 	opts Options, component, reason, identifier string, conn net.Conn, destIP string, destPort int,
 ) {
@@ -572,7 +555,7 @@ func logBlockedConnection(
 	opts.Logger.Info(component+".blocked", fields...)
 }
 
-// logBackendDialError logs backend dial/connect errors for TCP backends.
+// logBackendDialError logs when connecting to the backend target fails.
 func logBackendDialError(opts Options, component string, conn net.Conn, target string, err error) {
 	if opts.Logger == nil {
 		return

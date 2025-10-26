@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/florianl/go-nflog/v2"
+	"github.com/g0lab/g0efilter/internal/filter"
 )
 
 // Test errors defined as static variables to satisfy err113 linter.
@@ -750,16 +751,16 @@ func TestConstants(t *testing.T) {
 	t.Parallel()
 
 	// Test that constants have expected values
-	if actionRedirected != "REDIRECTED" {
-		t.Errorf("Expected actionRedirected to be 'REDIRECTED', got %s", actionRedirected)
+	if filter.ActionRedirected != "REDIRECTED" {
+		t.Errorf("Expected ActionRedirected to be 'REDIRECTED', got %s", filter.ActionRedirected)
 	}
 
-	if modeSNI != "sni" {
-		t.Errorf("Expected modeSNI to be 'sni', got %s", modeSNI)
+	if filter.ModeSNI != "sni" {
+		t.Errorf("Expected ModeSNI to be 'sni', got %s", filter.ModeSNI)
 	}
 
-	if modeDNS != "dns" {
-		t.Errorf("Expected modeDNS to be 'dns', got %s", modeDNS)
+	if filter.ModeDNS != "dns" {
+		t.Errorf("Expected ModeDNS to be 'dns', got %s", filter.ModeDNS)
 	}
 
 	if minPacketSize != 20 {

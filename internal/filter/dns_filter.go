@@ -12,7 +12,7 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Serve53 starts a DNS proxy that enforces an allowlist by QNAME.
+// Serve53 starts a DNS proxy server that filters requests based on an allowlist of domains.
 func Serve53(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
 		opts.ListenAddr = ":53"
@@ -24,7 +24,7 @@ func Serve53(ctx context.Context, allowlist []string, opts Options) error {
 	return runDNSServers(ctx, udpSrv, tcpSrv, opts)
 }
 
-// createDNSHandler creates and configures the DNS handler.
+// createDNSHandler creates a DNS handler with the given allowlist and options.
 func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 	upstreams := defaultUpstreamsFromEnv()
 
@@ -36,7 +36,7 @@ func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 	}
 }
 
-// setupDNSServers creates UDP and TCP DNS servers.
+// setupDNSServers creates UDP and TCP DNS servers using the provided listen address and handler.
 func setupDNSServers(listenAddr string, handler *dnsHandler) (*dns.Server, *dns.Server) {
 	dns.HandleFunc(".", handler.handle)
 
@@ -46,7 +46,7 @@ func setupDNSServers(listenAddr string, handler *dnsHandler) (*dns.Server, *dns.
 	return udpSrv, tcpSrv
 }
 
-// runDNSServers starts the DNS servers and handles shutdown.
+// runDNSServers starts both UDP and TCP DNS servers and manages their lifecycle until context is done.
 func runDNSServers(ctx context.Context, udpSrv, tcpSrv *dns.Server, opts Options) error {
 	if opts.Logger != nil {
 		upstreams := defaultUpstreamsFromEnv()
@@ -79,7 +79,7 @@ func runDNSServers(ctx context.Context, udpSrv, tcpSrv *dns.Server, opts Options
 	}
 }
 
-// startUDPServer starts the UDP DNS server.
+// startUDPServer starts the UDP DNS server in a goroutine and reports errors to the channel.
 func startUDPServer(udpSrv *dns.Server, errCh chan error, opts Options) {
 	go func() {
 		err := udpSrv.ListenAndServe()
@@ -93,7 +93,7 @@ func startUDPServer(udpSrv *dns.Server, errCh chan error, opts Options) {
 	}()
 }
 
-// startTCPServer starts the TCP DNS server.
+// startTCPServer starts the TCP DNS server in a goroutine and reports errors to the channel.
 func startTCPServer(tcpSrv *dns.Server, errCh chan error, opts Options) {
 	go func() {
 		err := tcpSrv.ListenAndServe()
@@ -114,6 +114,7 @@ type dnsHandler struct {
 	timeout   time.Duration
 }
 
+// handle processes incoming DNS requests and enforces the allowlist policy.
 func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	lg := handler.opts.Logger
 
@@ -148,6 +149,7 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	handler.handleAllowedRequest(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
 }
 
+// parseRemoteAddr extracts the IP address and port from the remote client.
 func (handler *dnsHandler) parseRemoteAddr(writer dns.ResponseWriter) (string, int) {
 	remoteAddr := ""
 	remotePort := 0
@@ -171,6 +173,7 @@ func (handler *dnsHandler) parseRemoteAddr(writer dns.ResponseWriter) (string, i
 	return remoteAddr, remotePort
 }
 
+// emitSyntheticEvent emits a synthetic nflog event for this DNS request and returns the flow ID.
 func (handler *dnsHandler) emitSyntheticEvent(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -197,6 +200,7 @@ func (handler *dnsHandler) emitSyntheticEvent(
 	return ""
 }
 
+// respondWithError sends a DNS error response with the specified error code.
 func (handler *dnsHandler) respondWithError(writer dns.ResponseWriter, request *dns.Msg, rcode int) {
 	message := new(dns.Msg)
 	message.SetReply(request)
@@ -204,6 +208,7 @@ func (handler *dnsHandler) respondWithError(writer dns.ResponseWriter, request *
 	_ = writer.WriteMsg(message)
 }
 
+// handleBlockedEnforcedType handles blocked A/AAAA queries by responding with a sinkhole address.
 func (handler *dnsHandler) handleBlockedEnforcedType(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -249,6 +254,7 @@ func (handler *dnsHandler) handleBlockedEnforcedType(
 	_ = writer.WriteMsg(message)
 }
 
+// handleBlockedNonEnforcedType handles blocked non-A/AAAA queries by responding with NXDOMAIN.
 func (handler *dnsHandler) handleBlockedNonEnforcedType(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -276,6 +282,7 @@ func (handler *dnsHandler) handleBlockedNonEnforcedType(
 	handler.respondWithError(writer, request, dns.RcodeNameError)
 }
 
+// handleAllowedRequest forwards allowed DNS queries to upstream servers and returns the response.
 func (handler *dnsHandler) handleAllowedRequest(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -322,6 +329,7 @@ func (handler *dnsHandler) handleAllowedRequest(
 	_ = writer.WriteMsg(resp)
 }
 
+// forward sends a DNS request to upstream servers, trying UDP first then TCP if truncated.
 func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 	// UDP first, then TCP on truncation/need
 	udpClient := &dns.Client{
@@ -359,10 +367,12 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 	return nil, "", os.ErrDeadlineExceeded
 }
 
+// markedDialer creates a network dialer with SO_MARK set to bypass iptables rules.
 func (handler *dnsHandler) markedDialer() *net.Dialer {
 	return newMarkedDialer(handler.timeout)
 }
 
+// durOrDefault returns the duration if positive, otherwise returns the default value.
 func durOrDefault(d, def time.Duration) time.Duration {
 	if d <= 0 {
 		return def
@@ -371,6 +381,7 @@ func durOrDefault(d, def time.Duration) time.Duration {
 	return d
 }
 
+// defaultUpstreamsFromEnv reads DNS upstream servers from DNS_UPSTREAMS environment variable or returns default.
 func defaultUpstreamsFromEnv() []string {
 	// If you want to override, set DNS_UPSTREAMS="8.8.8.8:53,1.1.1.1:53"
 	if v := strings.TrimSpace(os.Getenv("DNS_UPSTREAMS")); v != "" {
@@ -393,6 +404,7 @@ func defaultUpstreamsFromEnv() []string {
 	return []string{"127.0.0.11:53"}
 }
 
+// typeString returns a human-readable string for a DNS query type.
 func typeString(dnsType uint16) string {
 	switch dnsType {
 	case dns.TypeA:
@@ -414,6 +426,7 @@ func typeString(dnsType uint16) string {
 	}
 }
 
+// rcodeString returns a human-readable string for a DNS response code.
 func rcodeString(rc int) string {
 	switch rc {
 	case dns.RcodeSuccess:

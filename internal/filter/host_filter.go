@@ -14,8 +14,7 @@ import (
 	"github.com/g0lab/g0efilter/internal/safeio"
 )
 
-// Serve80 starts an HTTP Host-based egress filter on opts.ListenAddr.
-// Behaviour mirrors the SNI filter: allow/deny, original dst, SO_MARK, splice.
+// Serve80 starts an HTTP Host-based egress filter.
 func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
 		opts.ListenAddr = ":8080" // typical HTTP redirect port
@@ -24,6 +23,7 @@ func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHost, allowlist, opts)
 }
 
+// handleHost processes an individual HTTP connection for Host header filtering.
 func handleHost(conn net.Conn, allowlist []string, opts Options) error {
 	var err error
 	defer safeio.CloseWithErr(&err, conn)
@@ -109,7 +109,7 @@ func getDestinationInfo(
 ) (string, string, int) {
 	tgt, derr := originalDstTCP(tc)
 	if derr == nil {
-		flowID := EmitSynthetic(opts.Logger, "http", conn, tc, tgt)
+		flowID := EmitSynthetic(opts.Logger, "http", conn, tgt)
 		destIP, destPort := parseHostPort(tgt)
 
 		return flowID, destIP, destPort
@@ -125,7 +125,7 @@ func getDestinationInfo(
 	return "", "", 0
 }
 
-// handleAllowedHost handles HTTP requests that are allowed through.
+// handleAllowedHost handles allowed HTTP requests.
 func handleAllowedHost(
 	conn net.Conn,
 	tc *net.TCPConn,
@@ -146,12 +146,12 @@ func handleAllowedHost(
 
 	// Emit a synthetic REDIRECTED event so we have an early producer timestamp
 	if opts.Logger != nil {
-		_ = EmitSynthetic(opts.Logger, "http", conn, tc, target)
-		logAllowedHost(conn, target, host, opts)
+		_ = EmitSynthetic(opts.Logger, "http", conn, target)
+		logAllowedConnection(opts, componentHTTP, target, host, conn)
 	}
 
 	// 3) Connect and splice
-	backend, err := createHTTPDialer(opts).Dial("tcp", target)
+	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
 		logBackendDialError(opts, componentHTTP, conn, target, err)
 
@@ -179,22 +179,7 @@ func handleAllowedHost(
 	return nil
 }
 
-// createHTTPDialer creates a dialer for HTTP backend connections.
-func createHTTPDialer(opts Options) *net.Dialer {
-	return newDialerFromOptions(opts)
-}
-
-// logHTTPBackendError logs HTTP backend connection errors.
-// removed: use common.logBackendDialError
-
-// logAllowedHost logs allowed HTTP connections.
-func logAllowedHost(conn net.Conn, target, host string, opts Options) {
-	logAllowedConnection(opts, componentHTTP, target, host, conn)
-}
-
-// readHeadWithTextproto parses the request line and MIME headers using textproto,
-// returns normalised host (lowercase, trailing dot trimmed, port stripped for checks)
-// and the raw bytes that were consumed (to replay to backend).
+// readHeadWithTextproto parses HTTP headers and returns normalized host and raw bytes.
 func readHeadWithTextproto(br *bufio.Reader) (string, []byte, error) {
 	var buf bytes.Buffer
 

@@ -36,9 +36,8 @@ var (
 
 //nolint:gochecknoinits
 func init() {
-	// preserve build-time variables
 	if version == "" {
-		version = "dev"
+		version = "0.0.0-dev"
 	}
 
 	if date == "" {
@@ -50,6 +49,7 @@ func init() {
 	}
 }
 
+// printVersion prints version information to stderr.
 func printVersion() {
 	short := commit
 	if len(short) >= 7 {
@@ -61,6 +61,7 @@ func printVersion() {
 	fmt.Fprintf(os.Stderr, "Licensed under the %s license\n", licenseType)
 }
 
+// getenv gets an environment variable with a default value if empty.
 func getenv(k, def string) string {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
@@ -70,6 +71,7 @@ func getenv(k, def string) string {
 	return v
 }
 
+// getenvInt gets an integer environment variable with a default value if empty or invalid.
 func getenvInt(k string, def int) int {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
@@ -84,6 +86,7 @@ func getenvInt(k string, def int) int {
 	return i
 }
 
+// getenvFloat gets a float environment variable with a default value if empty or invalid.
 func getenvFloat(k string, def float64) float64 {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
@@ -98,10 +101,12 @@ func getenvFloat(k string, def float64) float64 {
 	return f
 }
 
+// exitCodeError carries a process exit code.
 type exitCodeError int
 
 func (e exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
 
+// buildConfig builds dashboard configuration from environment variables.
 func buildConfig() dashboard.Config {
 	return dashboard.Config{
 		Addr:         getenv("PORT", ":8081"),
@@ -113,10 +118,11 @@ func buildConfig() dashboard.Config {
 		SERetryMs:    getenvInt("SSE_RETRY_MS", defaultSERetryMs),
 		RateRPS:      getenvFloat("RATE_RPS", defaultRateRPS),
 		RateBurst:    getenvFloat("RATE_BURST", defaultRateBurst),
-		WriteTimeout: getenvInt("WRITE_TIMEOUT", 0), // 0 = no timeout (SSE-friendly)
+		WriteTimeout: getenvInt("WRITE_TIMEOUT", 0), // 0 = no timeout for SSE
 	}
 }
 
+// normalizeAddr normalizes the listen address by prefixing with colon if needed.
 func normalizeAddr(cfg *dashboard.Config) {
 	if cfg.Addr != "" && !strings.Contains(cfg.Addr, ":") {
 		_, aerr := strconv.Atoi(cfg.Addr)
@@ -126,13 +132,13 @@ func normalizeAddr(cfg *dashboard.Config) {
 	}
 }
 
+// setupLogging creates and configures the logger, validates API key.
 func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
-	// Structured logger
 	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
 	slog.SetDefault(lg)
 
 	if cfg.APIKey == "" {
-		lg.Error("config.missing_api_key", "msg", "API_KEY is not set; the dashboard requires API_KEY to run")
+		lg.Error("config.missing_api_key", "msg", "API_KEY is required")
 
 		return nil, exitCodeError(1)
 	}
@@ -154,7 +160,6 @@ func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
 }
 
 func main() {
-	// Handle version flag
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--version", "version", "-V", "-v":
@@ -178,7 +183,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Run dashboard server indefinitely
 	ctx := context.Background()
 
 	err = dashboard.Run(ctx, cfg)

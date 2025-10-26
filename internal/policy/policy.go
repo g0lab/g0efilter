@@ -1,4 +1,4 @@
-// Package policy parses and validates the allowlist policy file used by g0efilter.
+// Package policy parses and validates the allowlist policy file.
 package policy
 
 import (
@@ -25,6 +25,8 @@ var (
 
 const maxDomainLength = 253
 
+// validateIP validates an IP address or CIDR range, rejecting IPv6 and addresses with ports.
+//
 //nolint:cyclop
 func validateIP(ip string) error {
 	ip = strings.TrimSpace(ip)
@@ -64,7 +66,7 @@ func validateIP(ip string) error {
 	return nil
 }
 
-// Domain patterns: "*", "example.com", "*.example.com".
+// validateDomain validates a domain pattern, accepting wildcards and ensuring valid DNS format.
 func validateDomain(domain string) error {
 	domain = strings.TrimSpace(domain)
 	if domain == "" {
@@ -108,8 +110,7 @@ func validateDomain(domain string) error {
 	return nil
 }
 
-// domainToASCII converts input to ASCII using IDNA and performs basic
-// structural checks (length, dot placement, IP-literal rejection).
+// domainToASCII converts a domain to ASCII using IDNA and validates basic structure.
 func domainToASCII(domain, orig string) (string, error) {
 	ascii, err := idna.Lookup.ToASCII(domain)
 	if err != nil || ascii == "" {
@@ -137,8 +138,7 @@ func domainToASCII(domain, orig string) (string, error) {
 	return ascii, nil
 }
 
-// validateDomainLabels checks each label for length, allowed characters,
-// hyphen placement and ensures the final TLD is not all digits.
+// validateDomainLabels validates each label in a domain for length, character set, and hyphen placement.
 func validateDomainLabels(ascii, orig string) error {
 	labels := strings.Split(ascii, ".")
 	for idx, label := range labels {
@@ -168,8 +168,7 @@ func validateDomainLabels(ascii, orig string) error {
 	return nil
 }
 
-// validateLabelChars ensures label characters are a-z, 0-9 or hyphen
-// (uppercase tolerated via unicode.IsUpper).
+// validateLabelChars ensures a domain label contains only valid characters (a-z, 0-9, hyphen).
 func validateLabelChars(label, orig string) error {
 	for _, r := range label {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
@@ -186,7 +185,7 @@ func validateLabelChars(label, orig string) error {
 	return nil
 }
 
-// isAllDigits returns true if s contains only ASCII digits.
+// isAllDigits returns true if the string contains only numeric digits.
 func isAllDigits(s string) bool {
 	for _, r := range s {
 		if r < '0' || r > '9' {
@@ -197,7 +196,7 @@ func isAllDigits(s string) bool {
 	return true
 }
 
-// AllowList defines the structure for allowed IPs and domains in the policy.
+// AllowList defines allowed IPs and domains.
 type AllowList struct {
 	IPs     []string `yaml:"ips"`
 	Domains []string `yaml:"domains"`
@@ -208,8 +207,7 @@ type Config struct {
 	AllowList AllowList `yaml:"allowlist"`
 }
 
-// loadConfig reads and parses the YAML policy file at path 'file'.
-// It returns a parsed Config or an error; callers should handle logging.
+// loadConfig reads and parses a YAML policy file with path validation.
 func loadConfig(file string) (Config, error) {
 	var cfg Config
 
@@ -247,8 +245,7 @@ func loadConfig(file string) (Config, error) {
 	return cfg, nil
 }
 
-// ReadPolicy reads the YAML policy file at path 'file', validates entries,
-// and returns cleaned lists of allowed IPs and domains.
+// ReadPolicy loads and validates the allowlist policy file, returning normalized IPs and domains.
 func ReadPolicy(file string) ([]string, []string, error) {
 	lg := slog.Default()
 	if lg != nil {
@@ -287,7 +284,7 @@ func ReadPolicy(file string) ([]string, []string, error) {
 	return cleanIPs, cleanDomains, nil
 }
 
-// validateIPs iterates through a slice of IPs, validates them, and returns a clean slice.
+// validateIPs validates and filters a list of IP addresses, logging and rejecting invalid entries.
 func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
 	cleanIPs := make([]string, 0, len(ips))
 
@@ -319,7 +316,7 @@ func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
 	return cleanIPs, nil
 }
 
-// validateDomains iterates through a slice of domains, validates them, and returns a clean slice.
+// validateDomains validates and filters a list of domain patterns, logging and rejecting invalid entries.
 func validateDomains(lg *slog.Logger, file string, domains []string) ([]string, error) {
 	cleanDomains := make([]string, 0, len(domains))
 

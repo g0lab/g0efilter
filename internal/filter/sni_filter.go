@@ -25,6 +25,7 @@ func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, allowlist, opts)
 }
 
+// handle processes an individual TLS connection for SNI filtering.
 func handle(conn net.Conn, allowlist []string, opts Options) error {
 	defer safeio.CloseWithErr(nil, conn)
 
@@ -102,7 +103,7 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 
 	tgt, derr := originalDstTCP(tc)
 	if derr == nil {
-		_ = EmitSynthetic(opts.Logger, "sni", conn, tc, tgt)
+		_ = EmitSynthetic(opts.Logger, "sni", conn, tgt)
 		destIP, destPort = parseHostPort(tgt)
 	} else {
 		opts.Logger.Debug("sni.orig_dst_unavailable_for_blocked",
@@ -129,22 +130,17 @@ func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni str
 
 	// Emit synthetic event and log
 	if opts.Logger != nil {
-		_ = EmitSynthetic(opts.Logger, "sni", conn, tc, target)
-		logAllowedSNI(conn, target, sni, opts)
+		_ = EmitSynthetic(opts.Logger, "sni", conn, target)
+		logAllowedConnection(opts, componentSNI, target, sni, conn)
 	}
 
 	// Connect and splice
 	return connectAndSpliceSNI(conn, buf, target, opts)
 }
 
-// logAllowedSNI logs allowed SNI connections.
-func logAllowedSNI(conn net.Conn, target, sni string, opts Options) {
-	logAllowedConnection(opts, componentSNI, target, sni, conn)
-}
-
 // connectAndSpliceSNI connects to backend and splices data.
 func connectAndSpliceSNI(conn net.Conn, buf *bytes.Buffer, target string, opts Options) error {
-	backend, err := createMarkedDialer(opts).Dial("tcp", target)
+	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
 		logBackendDialError(opts, componentSNI, conn, target, err)
 
@@ -159,16 +155,9 @@ func connectAndSpliceSNI(conn net.Conn, buf *bytes.Buffer, target string, opts O
 	return nil
 }
 
-// createMarkedDialer creates a dialer with SO_MARK set.
-func createMarkedDialer(opts Options) *net.Dialer {
-	return newDialerFromOptions(opts)
-}
-
-// logBackendDialError logs backend connection errors.
-// removed: use common.logBackendDialError
-
 // TLS ClientHello peek helpers
 
+// roConn wraps a reader to provide a read-only net.Conn for TLS handshake peeking.
 type roConn struct{ r io.Reader }
 
 func (c roConn) Read(p []byte) (int, error) {
@@ -188,6 +177,7 @@ func (c roConn) SetDeadline(time.Time) error      { return nil }
 func (c roConn) SetReadDeadline(time.Time) error  { return nil }
 func (c roConn) SetWriteDeadline(time.Time) error { return nil }
 
+// peekClientHello extracts TLS ClientHello info while preserving the data.
 func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, *bytes.Buffer, error) {
 	buf := new(bytes.Buffer)
 
@@ -199,6 +189,7 @@ func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, *bytes.Buffer, err
 	return hello, buf, nil
 }
 
+// readClientHello captures TLS ClientHello info without completing the handshake.
 func readClientHello(r io.Reader) (*tls.ClientHelloInfo, error) {
 	var hello *tls.ClientHelloInfo
 	//nolint:gosec // TLS MinVersion intentionally low to capture ClientHello from older clients

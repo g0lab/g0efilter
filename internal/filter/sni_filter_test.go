@@ -43,7 +43,7 @@ func TestCreateMarkedDialer(t *testing.T) {
 	}
 
 	// Test creating marked dialer
-	dialer := createMarkedDialer(options)
+	dialer := newDialerFromOptions(options)
 	if dialer == nil {
 		t.Error("Expected non-nil marked dialer")
 
@@ -169,7 +169,7 @@ func TestSetConnectionTimeouts(t *testing.T) {
 		IdleTimeout: 30000,
 	}
 
-	dialer := createMarkedDialer(options)
+	dialer := newDialerFromOptions(options)
 
 	// Should have the configured timeout
 	expectedTimeout := time.Duration(options.DialTimeout) * time.Millisecond

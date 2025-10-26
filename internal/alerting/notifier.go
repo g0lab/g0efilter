@@ -1,5 +1,4 @@
 // Package alerting provides notification capabilities for security events.
-// This is a separate alerting feature that can be easily removed if not needed.
 package alerting
 
 import (
@@ -29,8 +28,7 @@ type Notifier struct {
 	backoffPeriod time.Duration
 }
 
-// NewNotifier creates a new notification client.
-// Returns nil if notification is not configured.
+// NewNotifier creates a new notification client. Returns nil if not configured.
 func NewNotifier() *Notifier {
 	// Alerting feature - can be removed if not needed
 	host := strings.TrimSpace(os.Getenv("NOTIFICATION_HOST"))
@@ -80,7 +78,6 @@ func NewNotifier() *Notifier {
 }
 
 // BlockedConnectionInfo contains details about a blocked connection.
-// This is part of the alerting feature.
 type BlockedConnectionInfo struct {
 	SourceIP        string
 	SourcePort      string
@@ -91,8 +88,7 @@ type BlockedConnectionInfo struct {
 	Component       string // dns, http, sni, etc.
 }
 
-// NotifyBlock sends a notification for a blocked connection.
-// This is part of the alerting feature.
+// NotifyBlock sends an alert notification for a blocked connection, with rate limiting to prevent spam.
 func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) {
 	if n == nil || !n.enabled {
 		return
@@ -114,7 +110,7 @@ func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) 
 	go n.sendNotification(ctx, info)
 }
 
-// Close cleans up the notifier resources.
+// Close releases notifier resources and stops sending new alerts.
 func (n *Notifier) Close() {
 	if n == nil {
 		return
@@ -131,7 +127,7 @@ func (n *Notifier) Close() {
 	n.mu.Unlock()
 }
 
-// shouldSendAlert checks if enough time has passed since the last alert for this connection.
+// shouldSendAlert returns false if an alert was recently sent for this connection to prevent notification spam.
 func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
 	// Build key using helper (keeps DNS backoff keyed by domain where possible)
 	key := fmt.Sprintf("%s->%s:%s", info.SourceIP, destKeyFor(info), info.Component)
@@ -157,9 +153,7 @@ func (n *Notifier) shouldSendAlert(info BlockedConnectionInfo) bool {
 	return true
 }
 
-// destKeyFor derives a destination key for backoff. For DNS it prefers the
-// looked-up domain (info.Destination) to avoid collapsing many queries to
-// 0.0.0.0 into the same key.
+// destKeyFor creates a unique key for rate limiting based on destination type (domain for DNS, IP:port otherwise).
 func destKeyFor(info BlockedConnectionInfo) string {
 	switch {
 	case info.Component == "dns" && info.Destination != "":
@@ -173,7 +167,7 @@ func destKeyFor(info BlockedConnectionInfo) string {
 	}
 }
 
-// cleanupOldAlerts removes entries older than 2x backoffPeriod. Caller must hold n.mu.
+// cleanupOldAlerts removes alert entries older than twice the backoff period to prevent memory leaks.
 func (n *Notifier) cleanupOldAlerts(now time.Time) {
 	if n.recentAlerts == nil {
 		return
@@ -187,7 +181,7 @@ func (n *Notifier) cleanupOldAlerts(now time.Time) {
 	}
 }
 
-// isIPOnlyDestination checks if the destination contains only IP information (no domain name).
+// isIPOnlyDestination returns true if the destination has no domain name, only an IP address.
 func isIPOnlyDestination(destination, destinationIP, ipPort string) bool {
 	return destination == "" ||
 		destination == "unknown destination" ||
@@ -195,7 +189,7 @@ func isIPOnlyDestination(destination, destinationIP, ipPort string) bool {
 		destination == ipPort
 }
 
-// buildSourceString formats the source address with optional port.
+// buildSourceString formats the source IP and port into an address string.
 func buildSourceString(sourceIP, sourcePort string) string {
 	if sourcePort != "" {
 		return fmt.Sprintf("%s:%s", sourceIP, sourcePort)
@@ -204,7 +198,7 @@ func buildSourceString(sourceIP, sourcePort string) string {
 	return sourceIP
 }
 
-// buildDestinationString formats the destination address with domain and IP information.
+// buildDestinationString formats the destination, including both domain name and IP:port when available.
 func buildDestinationString(info BlockedConnectionInfo) string {
 	destination := info.Destination
 	if info.DestinationIP != "" && info.DestinationPort != "" {
@@ -220,7 +214,7 @@ func buildDestinationString(info BlockedConnectionInfo) string {
 	return destination
 }
 
-// createNotificationRequest creates and configures the HTTP request for Gotify.
+// createNotificationRequest builds an HTTP POST request for sending a Gotify notification.
 func (n *Notifier) createNotificationRequest(ctx context.Context, title, message string) (*http.Request, error) {
 	vals := url.Values{}
 	vals.Set("title", title)
@@ -241,8 +235,7 @@ func (n *Notifier) createNotificationRequest(ctx context.Context, title, message
 	return req, nil
 }
 
-// sendNotification performs the actual HTTP notification.
-// Alerting feature implementation.
+// sendNotification sends the blocked connection alert to the Gotify notification server.
 func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionInfo) {
 	source := buildSourceString(info.SourceIP, info.SourcePort)
 	destination := buildDestinationString(info)

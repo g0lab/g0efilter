@@ -1,5 +1,4 @@
-// Package dashboard provides the embedded web UI and HTTP API server for ingesting and
-// viewing log events from g0efilter.
+// Package dashboard provides the web UI and HTTP API server.
 //
 //nolint:tagliatelle,funlen,lll,noinlineerr
 package dashboard
@@ -21,10 +20,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/g0lab/g0efilter/internal/logging"
 )
-
-const actionRedirected = "REDIRECTED"
 
 var (
 	errAPIKeyRequired       = errors.New("API_KEY is required")
@@ -63,14 +61,8 @@ type Config struct {
 	WriteTimeout int     // optional (default 0 = no timeout) - HTTP write timeout in seconds
 }
 
-// Run starts the dashboard HTTP server and stops when ctx is done.
-//
-//nolint:cyclop,funlen
-func Run(ctx context.Context, cfg Config) error {
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		return errAPIKeyRequired
-	}
-
+// normalizeConfig applies defaults to unset config fields.
+func normalizeConfig(cfg *Config) {
 	if cfg.BufferSize <= 0 {
 		cfg.BufferSize = 5000
 	}
@@ -90,11 +82,21 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.RateBurst <= 0 {
 		cfg.RateBurst = 100
 	}
-
-	// WriteTimeout defaults to 0 (no timeout) for SSE compatibility
+	// WriteTimeout defaults to 0 for SSE
 	if cfg.WriteTimeout < 0 {
 		cfg.WriteTimeout = 0
 	}
+}
+
+// Run starts the dashboard HTTP server.
+//
+//nolint:funlen
+func Run(ctx context.Context, cfg Config) error {
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return errAPIKeyRequired
+	}
+
+	normalizeConfig(&cfg)
 
 	// Logger
 	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
@@ -199,6 +201,7 @@ type memStore struct {
 	nextID int64
 }
 
+// newMemStore creates a new in-memory circular buffer log store with the specified capacity.
 func newMemStore(n int) *memStore {
 	if n < 1 {
 		n = 1
@@ -211,6 +214,7 @@ func newMemStore(n int) *memStore {
 	}
 }
 
+// Insert adds a log entry to the store and returns its assigned ID.
 func (s *memStore) Insert(_ context.Context, e *LogEntry) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -241,6 +245,7 @@ func (s *memStore) Insert(_ context.Context, e *LogEntry) (int64, error) {
 	return e.ID, nil
 }
 
+// Clear removes all log entries from the store.
 func (s *memStore) Clear(_ context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -252,7 +257,7 @@ func (s *memStore) Clear(_ context.Context) error {
 	return nil
 }
 
-// Query returns latest items (DESC by ID).
+// Query returns log entries matching the query string and ID filter, sorted by ID descending.
 func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) ([]LogEntry, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 200
@@ -292,6 +297,7 @@ func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) 
 	return out, nil
 }
 
+// shouldSkipEntry returns true if the entry should be filtered out based on ID or query string.
 func (s *memStore) shouldSkipEntry(entry LogEntry, q string, sinceID int64) bool {
 	// ID filter
 	if sinceID > 0 && entry.ID <= sinceID {
@@ -312,6 +318,7 @@ func (s *memStore) shouldSkipEntry(entry LogEntry, q string, sinceID int64) bool
 	return false
 }
 
+// prevIndex returns the previous index in the circular buffer, wrapping around if necessary.
 func (s *memStore) prevIndex(idx int) int {
 	if idx == 0 {
 		return s.size - 1
@@ -320,6 +327,7 @@ func (s *memStore) prevIndex(idx int) int {
 	return idx - 1
 }
 
+// enrichLogEntry extracts and populates flattened fields from the Fields JSON for API convenience.
 func (s *memStore) enrichLogEntry(it *LogEntry) {
 	var m map[string]any
 
@@ -356,6 +364,7 @@ func (s *memStore) enrichLogEntry(it *LogEntry) {
    Router
    ========================= */
 
+// newMux creates the HTTP router with all API and UI endpoints configured.
 func newMux(lg *slog.Logger, st *memStore, bus *broadcaster, apiKey string, defaultReadLimit int, sseRetry time.Duration, rateRPS, rateBurst float64) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -401,6 +410,7 @@ func rateLimitMiddleware(rl *rateLimiter, next http.Handler) http.Handler {
    Handlers
    ========================= */
 
+// ingestHandler processes incoming log events and stores them in the buffer.
 func ingestHandler(lg *slog.Logger, st *memStore, bus *broadcaster, rl *rateLimiter) http.Handler {
 	const maxBody = 1 << 20 // 1 MiB
 
@@ -422,6 +432,7 @@ func ingestHandler(lg *slog.Logger, st *memStore, bus *broadcaster, rl *rateLimi
 	})
 }
 
+// validateIngestRequest validates HTTP method, content type, and rate limit for ingest requests.
 func validateIngestRequest(w http.ResponseWriter, r *http.Request, rl *rateLimiter) bool {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -447,6 +458,7 @@ func validateIngestRequest(w http.ResponseWriter, r *http.Request, rl *rateLimit
 	return true
 }
 
+// parseRequestBody reads and validates the JSON request body, returning array of log payloads.
 func parseRequestBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]map[string]any, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
@@ -525,7 +537,7 @@ func validateLogPayload(payload map[string]any) error {
 	return validateStringFields(payload)
 }
 
-// validateMessageField validates the message field.
+// validateMessageField ensures the msg field exists, is a string, and is not too long.
 func validateMessageField(payload map[string]any) error {
 	msg, hasMsgField := payload["msg"]
 	if !hasMsgField {
@@ -549,7 +561,7 @@ func validateMessageField(payload map[string]any) error {
 	return nil
 }
 
-// validateActionField validates the action field.
+// validateActionField ensures the action field exists and is a valid action type.
 func validateActionField(payload map[string]any) error {
 	// Skip action validation for probe messages
 	if msgStr, ok := payload["msg"].(string); ok && msgStr == "_dashboard_probe" {
@@ -580,7 +592,7 @@ func validateActionField(payload map[string]any) error {
 	return nil
 }
 
-// validateNumericFields validates numeric fields.
+// validateNumericFields validates that port and payload_len fields are numeric and in valid ranges.
 func validateNumericFields(payload map[string]any) error {
 	numericFields := []string{"source_port", "destination_port", "payload_len"}
 	for _, field := range numericFields {
@@ -594,7 +606,7 @@ func validateNumericFields(payload map[string]any) error {
 	return nil
 }
 
-// validateNumericField validates a single numeric field.
+// validateNumericField validates that a field value is numeric and within the valid range.
 func validateNumericField(field string, val any) error {
 	switch v := val.(type) {
 	case float64:
@@ -608,7 +620,7 @@ func validateNumericField(field string, val any) error {
 	}
 }
 
-// validateFloatRange checks if a float64 value is within valid port range.
+// validateFloatRange ensures a float64 value is within the valid port range (0-65535).
 func validateFloatRange(field string, v float64) error {
 	if v < 0 || v > 65535 {
 		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
@@ -617,7 +629,7 @@ func validateFloatRange(field string, v float64) error {
 	return nil
 }
 
-// validateIntRange checks if an int value is within valid port range.
+// validateIntRange ensures an int value is within the valid port range (0-65535).
 func validateIntRange(field string, v int) error {
 	if v < 0 || v > 65535 {
 		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
@@ -626,7 +638,7 @@ func validateIntRange(field string, v int) error {
 	return nil
 }
 
-// validateStringNumeric validates string numeric fields by parsing and range checking.
+// validateStringNumeric parses a string as a number and validates it's within the port range.
 func validateStringNumeric(field string, v string) error {
 	if v == "" {
 		return nil // Allow empty strings
@@ -644,7 +656,7 @@ func validateStringNumeric(field string, v string) error {
 	return nil
 }
 
-// validateStringFields validates string length limits.
+// validateStringFields ensures string fields don't exceed maximum length limits.
 func validateStringFields(payload map[string]any) error {
 	stringFields := map[string]int{
 		"protocol":       20,
@@ -669,6 +681,7 @@ func validateStringFields(payload map[string]any) error {
 	return nil
 }
 
+// processPayloads converts raw payloads to LogEntry structs, inserts them, and broadcasts to SSE clients.
 func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *broadcaster, payloads []map[string]any, remoteIP string) []map[string]any {
 	results := make([]map[string]any, 0, len(payloads))
 
@@ -701,12 +714,13 @@ func sanitizeJSONForSSE(jsonData []byte) []byte {
 	return buf.Bytes()
 }
 
+// processPayload converts a raw log payload map into a LogEntry struct with enriched fields.
 func processPayload(in map[string]any, remoteIP string) *LogEntry {
 	msg := toStr(in["msg"])
 
 	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
 	act := strings.ToUpper(strings.TrimSpace(toStr(in["action"])))
-	if act != "ALLOWED" && act != "BLOCKED" && act != actionRedirected {
+	if act != "ALLOWED" && act != "BLOCKED" && act != filter.ActionRedirected {
 		return nil // Skip quietly
 	}
 
@@ -741,6 +755,7 @@ func processPayload(in map[string]any, remoteIP string) *LogEntry {
 	return entry
 }
 
+// parseTimestamp extracts and parses the timestamp from a log payload, defaulting to current UTC time.
 func parseTimestamp(in map[string]any) time.Time {
 	ts := time.Now().UTC()
 
@@ -755,6 +770,7 @@ func parseTimestamp(in map[string]any) time.Time {
 	return ts
 }
 
+// buildFieldsMap constructs a map of log fields from the input payload, merging nested fields.
 func buildFieldsMap(in map[string]any) map[string]any {
 	fieldsMap := map[string]any{}
 
@@ -785,6 +801,7 @@ func buildFieldsMap(in map[string]any) map[string]any {
 	return fieldsMap
 }
 
+// marshalFields converts the fields map to JSON, returning "null" if empty or on error.
 func marshalFields(fieldsMap map[string]any) json.RawMessage {
 	fieldsRaw := json.RawMessage("null")
 
@@ -797,6 +814,7 @@ func marshalFields(fieldsMap map[string]any) json.RawMessage {
 	return fieldsRaw
 }
 
+// determineProtocol extracts the protocol from the payload or infers it from the component type.
 func determineProtocol(in map[string]any) string {
 	if protocol := toStr(in["protocol"]); protocol != "" {
 		return protocol
@@ -813,6 +831,7 @@ func determineProtocol(in map[string]any) string {
 	}
 }
 
+// listLogsHandler handles GET /logs requests and returns filtered log entries as JSON.
 func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -855,6 +874,7 @@ func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
 	})
 }
 
+// sseHandler handles Server-Sent Events streaming of log entries to connected clients.
 func sseHandler(bus *broadcaster, retry time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// SSE headers
@@ -928,6 +948,7 @@ func sseHandler(bus *broadcaster, retry time.Duration) http.Handler {
 	})
 }
 
+// clearLogsHandler handles POST /logs/clear requests to empty the log buffer.
 func clearLogsHandler(lg *slog.Logger, st *memStore, bus *broadcaster) http.Handler {
 	type resp struct {
 		Status string `json:"status"`
@@ -954,6 +975,7 @@ func clearLogsHandler(lg *slog.Logger, st *memStore, bus *broadcaster) http.Hand
 	})
 }
 
+// withCommon wraps an HTTP handler with security headers, CSP, and request logging.
 func withCommon(lg *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Add security headers
@@ -985,17 +1007,20 @@ type respWrap struct {
 	code int
 }
 
+// WriteHeader captures the HTTP status code for logging.
 func (w *respWrap) WriteHeader(code int) {
 	w.code = code
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// Flush flushes buffered data to the client if the underlying ResponseWriter supports it.
 func (w *respWrap) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
 }
 
+// Hijack takes over the HTTP connection if the underlying ResponseWriter supports hijacking.
 func (w *respWrap) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
 		conn, rw, err := h.Hijack()
@@ -1023,6 +1048,7 @@ func (w *respWrap) Push(target string, opts *http.PushOptions) error {
 	return http.ErrNotSupported
 }
 
+// apiKeyMiddleware validates the X-Api-Key header before allowing access to protected endpoints.
 func apiKeyMiddleware(expected string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got := r.Header.Get("X-Api-Key")
@@ -1072,6 +1098,7 @@ func validateAPIKey(expected, got string) error {
 	return nil
 }
 
+// remoteIP extracts the client IP address from the request.
 func remoteIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
@@ -1081,6 +1108,7 @@ func remoteIP(r *http.Request) string {
 	return host
 }
 
+// toStr converts any value to a string, handling nil and various types.
 func toStr(v any) string {
 	if v == nil {
 		return ""
@@ -1096,6 +1124,7 @@ func toStr(v any) string {
 	}
 }
 
+// toInt converts any value to an int, handling nil and various numeric types.
 func toInt(v any) int {
 	if v == nil {
 		return 0
@@ -1121,6 +1150,7 @@ func toInt(v any) int {
 	return 0
 }
 
+// firstNonEmpty returns the first non-empty string from the arguments.
 func firstNonEmpty(ss ...string) string {
 	for _, s := range ss {
 		if strings.TrimSpace(s) != "" {
@@ -1131,7 +1161,7 @@ func firstNonEmpty(ss ...string) string {
 	return ""
 }
 
-// helpers (query-time).
+// strFrom extracts a string value from a map, handling various types and nil values.
 func strFrom(m map[string]any, k string) string {
 	if m == nil {
 		return ""
@@ -1151,6 +1181,7 @@ func strFrom(m map[string]any, k string) string {
 	return ""
 }
 
+// intFrom extracts an integer value from a map, handling various numeric types and nil values.
 func intFrom(m map[string]any, k string) int {
 	if m == nil {
 		return 0
@@ -1182,10 +1213,12 @@ type broadcaster struct {
 	clients map[chan []byte]struct{}
 }
 
+// newBroadcaster creates a new SSE broadcaster for distributing log events to connected clients.
 func newBroadcaster() *broadcaster {
 	return &broadcaster{clients: make(map[chan []byte]struct{})}
 }
 
+// add registers a new SSE client and returns its message channel.
 func (b *broadcaster) add() chan []byte {
 	ch := make(chan []byte, 64)
 
@@ -1196,6 +1229,7 @@ func (b *broadcaster) add() chan []byte {
 	return ch
 }
 
+// remove unregisters an SSE client and closes its channel.
 func (b *broadcaster) remove(ch chan []byte) {
 	b.mu.Lock()
 	delete(b.clients, ch)
@@ -1203,6 +1237,7 @@ func (b *broadcaster) remove(ch chan []byte) {
 	close(ch)
 }
 
+// send broadcasts a message to all connected SSE clients, dropping messages for slow consumers.
 func (b *broadcaster) send(p []byte) {
 	b.mu.RLock()
 
@@ -1227,6 +1262,7 @@ type rateLimiter struct {
 	lastCleanup time.Time
 }
 
+// newRateLimiter creates a token bucket rate limiter with the specified requests per second and burst size.
 func newRateLimiter(rps, burst float64) *rateLimiter {
 	if rps <= 0 {
 		rps = 50
@@ -1246,6 +1282,7 @@ func newRateLimiter(rps, burst float64) *rateLimiter {
 	}
 }
 
+// allow checks if a request from the given key (IP) is permitted under the rate limit.
 func (rl *rateLimiter) allow(key string) bool {
 	now := time.Now()
 
@@ -1287,6 +1324,7 @@ func (rl *rateLimiter) cleanup(now time.Time) {
 	}
 }
 
+// mathMin returns the smaller of two float64 values.
 func mathMin(a, b float64) float64 {
 	if a < b {
 		return a

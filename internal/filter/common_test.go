@@ -529,7 +529,6 @@ func testEmitSyntheticCase(t *testing.T, tt struct {
 		tt.logger,
 		tt.component,
 		mockConn,
-		nil, // backend connection can be nil
 		tt.target,
 	)
 

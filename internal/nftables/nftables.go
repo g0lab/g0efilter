@@ -1,4 +1,4 @@
-// Package nftables provides netfilter nftables integration for g0efilter.
+// Package nftables provides nftables integration.
 package nftables
 
 import (
@@ -20,16 +20,26 @@ import (
 )
 
 const (
-	actionRedirected = "REDIRECTED"
-	modeSNI          = "sni"
-	modeDNS          = "dns"
-	minPacketSize    = 20
+	minPacketSize = 20
 )
 
 var errPortOutOfRange = errors.New("port out of range")
 
-// ApplyNftRulesAuto applies nftables rules automatically using environment variables.
-// It reads FILTER_MODE (defaults to "sni") and DNS_PORT (defaults to "53").
+// parsePort validates and converts a port string to an integer between 1 and 65535.
+func parsePort(s, name string) (int, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s port %q: %w", name, s, err)
+	}
+
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%w: %s port %d", errPortOutOfRange, name, port)
+	}
+
+	return port, nil
+}
+
+// ApplyNftRulesAuto applies nftables rules using port numbers from environment variables or defaults.
 func ApplyNftRulesAuto(allowlist []string, httpsPortStr, httpPortStr string) error {
 	dnsPortStr := strings.TrimSpace(os.Getenv("DNS_PORT"))
 	if dnsPortStr == "" {
@@ -39,6 +49,7 @@ func ApplyNftRulesAuto(allowlist []string, httpsPortStr, httpPortStr string) err
 	return ApplyNftRules(allowlist, httpsPortStr, httpPortStr, dnsPortStr)
 }
 
+// validateAndParseRuleset validates nftables ruleset syntax without applying it.
 func validateAndParseRuleset(ruleset string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -60,6 +71,7 @@ func validateAndParseRuleset(ruleset string) error {
 	return nil
 }
 
+// applyRuleset applies the given nftables ruleset to the kernel.
 func applyRuleset(ruleset string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -81,40 +93,11 @@ func applyRuleset(ruleset string) error {
 	return nil
 }
 
-// ApplyNftRules installs nftables rules for either SNI or DNS mode,
-// selected by FILTER_MODE env var (default "sni").
-//
-// In "sni" mode:
-//   - Redirects TCP/80 -> local HTTP proxy, TCP/443 -> local SNI proxy.
-//   - No DNS redirection.
-//
-// In "dns" mode:
-//   - Redirects UDP/TCP 53 -> local DNS proxy.
-//   - No HTTP/HTTPS redirection.
-//
-// In both modes:
-//   - Allows loopback and local proxy ports on 127.0.0.1.
-//   - Exempts SO_MARK=0x1 traffic (set by the proxies) to avoid recursion.
-//   - Allows egress to allow-listed destination IPs (ALLOW_DADDR_V4 set).
-
-// ApplyNftRules installs nftables rules for either SNI or DNS mode.
+// ApplyNftRules validates and applies nftables rules for the specified filter mode and ports.
 func ApplyNftRules(allowlist []string, httpsPortStr, httpPortStr, dnsPortStr string) error {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("FILTER_MODE")))
 	if mode == "" {
-		mode = modeSNI
-	}
-
-	parsePort := func(s, name string) (int, error) {
-		port, err := strconv.Atoi(strings.TrimSpace(s))
-		if err != nil {
-			return 0, fmt.Errorf("invalid %s port %q: %w", name, s, err)
-		}
-
-		if port < 1 || port > 65535 {
-			return 0, fmt.Errorf("%w: %s port %d", errPortOutOfRange, name, port)
-		}
-
-		return port, nil
+		mode = filter.ModeSNI
 	}
 
 	httpsPort, err := parsePort(httpsPortStr, "HTTPS")
@@ -149,6 +132,7 @@ func ApplyNftRules(allowlist []string, httpsPortStr, httpPortStr, dnsPortStr str
 	return applyRuleset(ruleset)
 }
 
+// generateDNSFilterRules creates nftables filter rules for DNS mode that block non-allowlisted traffic.
 func generateDNSFilterRules(allowSet string, dnsPort int) string {
 	return fmt.Sprintf(`
 table ip filter_v4 {
@@ -185,6 +169,7 @@ table ip filter_v4 {
 `, allowSet, dnsPort, dnsPort)
 }
 
+// generateSNIFilterRules creates nftables filter rules for SNI mode with logging and allowlist enforcement.
 func generateSNIFilterRules(allowSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip filter_v4 {
@@ -225,6 +210,7 @@ table ip filter_v4 {
 `, allowSet, httpPort, httpsPort)
 }
 
+// generateDNSNATRules creates nftables NAT rules that redirect all DNS traffic to the local DNS proxy.
 func generateDNSNATRules(allowSet string, dnsPort int) string {
 	return fmt.Sprintf(`
 table ip nat_v4 {
@@ -256,6 +242,7 @@ table ip nat_v4 {
 `, allowSet, dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
+// generateSNINATRules creates nftables NAT rules that redirect HTTP/HTTPS to local proxies for non-allowlisted IPs.
 func generateSNINATRules(allowSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip nat_v4 {
@@ -286,11 +273,11 @@ table ip nat_v4 {
 `, allowSet, httpPort, httpsPort)
 }
 
-// GenerateNftRuleset generates nftables rules for the specified mode and ports.
+// GenerateNftRuleset generates a complete nftables ruleset for the specified mode, ports, and allowlist.
 func GenerateNftRuleset(allowlist []string, httpsPort, httpPort, dnsPort int, mode string) string {
 	mode = strings.ToLower(mode)
-	if mode != modeDNS {
-		mode = modeSNI
+	if mode != filter.ModeDNS {
+		mode = filter.ModeSNI
 	}
 
 	allowSet := strings.Join(allowlist, ", ")
@@ -299,14 +286,14 @@ func GenerateNftRuleset(allowlist []string, httpsPort, httpPort, dnsPort int, mo
 	}
 
 	var filterRules string
-	if mode == modeDNS {
+	if mode == filter.ModeDNS {
 		filterRules = generateDNSFilterRules(allowSet, dnsPort)
 	} else {
 		filterRules = generateSNIFilterRules(allowSet, httpPort, httpsPort)
 	}
 
 	var natRules string
-	if mode == modeDNS {
+	if mode == filter.ModeDNS {
 		natRules = generateDNSNATRules(allowSet, dnsPort)
 	} else {
 		natRules = generateSNINATRules(allowSet, httpPort, httpsPort)
@@ -315,6 +302,7 @@ func GenerateNftRuleset(allowlist []string, httpsPort, httpPort, dnsPort int, mo
 	return filterRules + "\n" + natRules
 }
 
+// deleteTableIfExists removes an nftables table if it exists, returning nil if table doesn't exist.
 func deleteTableIfExists(family, table string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -345,11 +333,12 @@ func deleteTableIfExists(family, table string) error {
 	return nil
 }
 
-// StreamNfLog streams netfilter log events using the default logger.
+// StreamNfLog starts streaming netfilter log events using the default logger.
 func StreamNfLog() error {
 	return StreamNfLogWithLogger(context.Background(), slog.Default())
 }
 
+// parseNflogConfig reads NFLOG_BUFSIZE and NFLOG_QTHRESH from environment or returns defaults.
 func parseNflogConfig() (uint32, uint32) {
 	dfltBuf := uint32(96)
 	dfltQ := uint32(50)
@@ -371,6 +360,7 @@ func parseNflogConfig() (uint32, uint32) {
 	return dfltBuf, dfltQ
 }
 
+// setupLogger creates a logger with component, hostname, and tenant_id context fields.
 func setupLogger(lg *slog.Logger) *slog.Logger {
 	hostname := strings.TrimSpace(os.Getenv("HOSTNAME"))
 	if hostname == "" {
@@ -392,6 +382,7 @@ func setupLogger(lg *slog.Logger) *slog.Logger {
 	return lg.With(base...)
 }
 
+// parsePacketInfo extracts network layer information from a raw packet payload.
 func parsePacketInfo(payload []byte) (string, string, string, string, string, int, int) {
 	packet := gopacket.NewPacket(payload, layers.LayerTypeIPv4, gopacket.Default)
 
@@ -432,12 +423,13 @@ func parsePacketInfo(payload []byte) (string, string, string, string, string, in
 	return src, dst, proto, sourceIP, destinationIP, sourcePort, destinationPort
 }
 
+// mapPrefixToAction maps nftables log prefix strings to action types.
 func mapPrefixToAction(prefix string) string {
 	pl := strings.ToLower(prefix)
 
 	switch {
 	case strings.Contains(pl, "redirect"):
-		return actionRedirected
+		return filter.ActionRedirected
 	case strings.Contains(pl, "block") || strings.Contains(pl, "blocked"):
 		return "BLOCKED"
 	case strings.Contains(pl, "allow") || strings.Contains(pl, "allowed"):
@@ -447,6 +439,7 @@ func mapPrefixToAction(prefix string) string {
 	}
 }
 
+// buildLogFields constructs a slice of structured log fields from packet information.
 func buildLogFields(
 	src, dst, proto, sourceIP, destinationIP, flowID string, sourcePort, destinationPort, payloadLen int,
 ) []any {
@@ -489,6 +482,7 @@ func buildLogFields(
 	return fields
 }
 
+// processActionEvent logs nflog events, suppressing duplicate synthetic events when appropriate.
 func processActionEvent(
 	lg *slog.Logger,
 	action, flowID string,
@@ -496,7 +490,7 @@ func processActionEvent(
 	sourcePort, destinationPort, payloadLen int,
 ) {
 	// If we have a recent synthetic for this flow, suppress kernel nflog REDIRECTED to avoid duplicates
-	if action == actionRedirected && flowID != "" && filter.IsSyntheticRecent(flowID) {
+	if action == filter.ActionRedirected && flowID != "" && filter.IsSyntheticRecent(flowID) {
 		return // handled, skip logging
 	}
 
@@ -504,13 +498,14 @@ func processActionEvent(
 	fields = append(fields, "action", action)
 
 	// Level policy: REDIRECTED at DEBUG, ALLOWED/BLOCKED at INFO
-	if action == actionRedirected {
+	if action == filter.ActionRedirected {
 		lg.Debug("nflog.event", fields...)
 	} else {
 		lg.Info("nflog.event", fields...)
 	}
 }
 
+// createNflogHook creates a callback function that processes each nflog packet and logs it.
 func createNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
 	return func(attrs nflog.Attribute) int {
 		prefix := ""
@@ -560,7 +555,7 @@ func createNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
 	}
 }
 
-// StreamNfLogWithLogger streams netfilter log events using the provided logger.
+// StreamNfLogWithLogger streams netfilter log events from group 0 using the provided logger until context is done.
 func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 	dfltBuf, dfltQ := parseNflogConfig()
 	lg = setupLogger(lg)

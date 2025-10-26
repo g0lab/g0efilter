@@ -45,7 +45,7 @@ func TestCreateHTTPDialer(t *testing.T) {
 	}
 
 	// Test creating HTTP dialer
-	dialer := createHTTPDialer(options)
+	dialer := newDialerFromOptions(options)
 	if dialer == nil {
 		t.Error("Expected non-nil HTTP dialer")
 
@@ -215,7 +215,7 @@ func TestSetHTTPTimeouts(t *testing.T) {
 		IdleTimeout: 30000,
 	}
 
-	dialer := createHTTPDialer(options)
+	dialer := newDialerFromOptions(options)
 
 	// Should have the configured timeout
 	expectedTimeout := time.Duration(options.DialTimeout) * time.Millisecond
@@ -365,7 +365,7 @@ func TestHTTPTimeouts(t *testing.T) {
 		IdleTimeout: 30000,
 	}
 
-	dialer := createHTTPDialer(options)
+	dialer := newDialerFromOptions(options)
 
 	// Test with real dialer
 	if dialer.Timeout != time.Duration(options.DialTimeout)*time.Millisecond {

@@ -1,5 +1,4 @@
-// Package safeio provides small helpers to safely drain and close readers and to
-// propagate close errors without losing earlier errors.
+// Package safeio provides helpers to safely drain and close readers.
 package safeio
 
 import (
@@ -7,8 +6,7 @@ import (
 	"io"
 )
 
-// DrainAndClose drains all data from rc to io.Discard and then closes rc.
-// It returns a wrapped error if the drain or close operation fails.
+// DrainAndClose drains all data from rc and then closes it.
 func DrainAndClose(rc io.ReadCloser) error {
 	if rc == nil {
 		return nil
@@ -29,9 +27,7 @@ func DrainAndClose(rc io.ReadCloser) error {
 	return nil
 }
 
-// CloseWithErr closes c and, if dstErr is non-nil and not already set, stores
-// the close error into *dstErr. This helps preserve the first error while
-// ensuring resources are closed.
+// CloseWithErr closes c and stores close error in *dstErr if not already set.
 func CloseWithErr(dstErr *error, c io.Closer) {
 	if c == nil {
 		return

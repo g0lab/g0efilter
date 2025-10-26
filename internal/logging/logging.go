@@ -1,4 +1,4 @@
-// Package logging provides application logging helpers.
+// Package logging provides logging helpers.
 package logging
 
 import (
@@ -19,19 +19,17 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/alerting"
+	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/g0lab/g0efilter/internal/safeio"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
-//nolint:gochecknoglobals // Global logger mutex is necessary for thread safety
+//nolint:gochecknoglobals // Mutex needed for thread safety
 var globalLoggerMutex sync.Mutex
 
-// setGlobalLogger sets the global zerolog.Logger for libraries.
-// This is protected by a mutex to prevent race conditions during testing.
-//
-
+// setGlobalLogger sets the global zerolog.Logger.
 func setGlobalLogger(zl zerolog.Logger) {
 	globalLoggerMutex.Lock()
 	defer globalLoggerMutex.Unlock()
@@ -40,8 +38,7 @@ func setGlobalLogger(zl zerolog.Logger) {
 }
 
 const (
-	actionRedirected = "REDIRECTED"
-	// LevelTrace defines a trace-level log severity, lower than slog.LevelDebug.
+	// LevelTrace is below slog.LevelDebug.
 	LevelTrace slog.Level = -8
 
 	defaultQueueSize         = 1024
@@ -62,6 +59,7 @@ var (
 	defaultPoster *poster //nolint:gochecknoglobals
 )
 
+// parseLevel converts a log level string to slog.Leveler, defaulting to INFO.
 func parseLevel(s string) slog.Leveler {
 	switch strings.ToUpper(strings.TrimSpace(s)) {
 	case "TRACE":
@@ -99,10 +97,13 @@ type poster struct {
 
 type nopLogger struct{}
 
+// Printf implements a no-op logger for the HTTP client.
 func (n *nopLogger) Printf(string, ...any) {}
-func (n *nopLogger) Println(...any)        {}
 
-// shouldRetry returns true if we should retry the request based on the response or error.
+// Println implements a no-op logger for the HTTP client.
+func (n *nopLogger) Println(...any) {}
+
+// shouldRetry determines if an HTTP request should be retried based on the response code or error.
 func shouldRetry(resp *http.Response, err error) bool {
 	if err != nil {
 		// Retry on network errors
@@ -113,17 +114,18 @@ func shouldRetry(resp *http.Response, err error) bool {
 		return false
 	}
 
-	// Retry on 5xx server errors and 429 (rate limited), but not on 4xx client errors
+	// Retry on 5xx and 429, not on 4xx
 	return resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests
 }
 
-// newPoster is a convenience wrapper retained for tests; production uses newPosterWithCtx.
+// newPoster is a convenience wrapper for tests.
 //
-//nolint:unparam // apiKey repetition occurs only in tests; in production a real key flows via environment
+//nolint:unparam
 func newPoster(url, apiKey string, zl zerolog.Logger, debug bool) *poster {
 	return newPosterWithCtx(context.Background(), url, apiKey, zl, debug)
 }
 
+// newPosterWithCtx creates a new HTTP poster for sending log events to a dashboard endpoint.
 func newPosterWithCtx(ctx context.Context, url, apiKey string, zl zerolog.Logger, debug bool) *poster {
 	poster := &poster{
 		url:    url,
@@ -151,7 +153,7 @@ func newPosterWithCtx(ctx context.Context, url, apiKey string, zl zerolog.Logger
 	poster.retryWaitMin = defaultRetryWait
 	poster.retryWaitMax = defaultRetryWaitMax
 
-	// Start the worker after a small startup delay (DASHBOARD_START_DELAY, default 5s)
+	// Start worker after startup delay (default 5s)
 	startDelay := defaultStartDelay
 
 	if v := strings.TrimSpace(os.Getenv("DASHBOARD_START_DELAY")); v != "" {
@@ -191,7 +193,7 @@ func (p *poster) Stop(timeout time.Duration) {
 }
 
 func (p *poster) Enqueue(payload []byte) {
-	// Non-blocking send with immediate drop if queue is full
+	// Non-blocking send, drop if queue full
 	select {
 	case p.q <- payload:
 		if p.debug {
@@ -286,7 +288,7 @@ func (p *poster) startWorker(ctx context.Context) {
 	p.worker(ctx)  // closes p.done when it exits
 }
 
-// setAPIAuthHeaders de-duplicates setting both API key headers everywhere.
+// setAPIAuthHeaders sets both API key headers.
 func setAPIAuthHeaders(headers http.Header, apiKey string) {
 	if apiKey == "" {
 		return
@@ -337,11 +339,11 @@ func (p *poster) handlePostPayload(ctx context.Context, payload []byte) {
 	}
 }
 
-// addJitter adds a random factor between 0.5 and 1.0 to the duration.
+// addJitter adds random factor (0.5 to 1.0) to duration.
 func addJitter(d time.Duration) time.Duration {
 	jitterBig, err := rand.Int(rand.Reader, big.NewInt(500)) // 0-499
 	if err != nil {
-		return d // Fallback to no jitter if random generation fails
+		return d // Fallback if random generation fails
 	}
 
 	jitter := 0.5 + float64(jitterBig.Int64())/1000.0 // 0.5 to 0.999
@@ -477,13 +479,12 @@ func (p *poster) worker(ctx context.Context) {
 // ---------- zerolog bridge as a slog.Handler ----------
 
 // zerologHandler implements slog.Handler using zerolog.
-// Includes optional alerting feature for BLOCKED events.
 type zerologHandler struct {
 	zl        zerolog.Logger
 	termLevel slog.Level
 	poster    *poster
 	hostname  string
-	notifier  *alerting.Notifier // alerting feature - can be removed if not needed
+	notifier  *alerting.Notifier
 }
 
 func (z *zerologHandler) Enabled(_ context.Context, l slog.Level) bool {
@@ -511,14 +512,13 @@ func toZerologLevel(l slog.Level) zerolog.Level {
 }
 
 // Canonical keys the dashboard accepts.
-// Note: include both "host" and "http_host" so either can be shipped without extra mapping.
 var dashboardKeys = []string{ //nolint:gochecknoglobals
 	"component", "source_ip", "source_port",
 	"destination_ip", "destination_port",
 	"protocol", "policy_hit", "payload_len",
 	"sni", "http_host", "host", // HTTP
 	"qname", "qtype", "rcode", // DNS
-	"reason", "note", // context (blocked reason / sinkhole etc.)
+	"reason", "note", // context
 	"src", "dst", // 5-tuple strings
 	"hostname", "flow_id",
 }
@@ -587,7 +587,7 @@ func shipToDashboard(
 		act = strings.ToUpper(fmt.Sprint(v))
 	}
 
-	if act != "BLOCKED" && act != actionRedirected && act != "ALLOWED" {
+	if act != "BLOCKED" && act != filter.ActionRedirected && act != "ALLOWED" {
 		return
 	}
 
@@ -611,7 +611,6 @@ func shipToDashboard(
 }
 
 // handleBlockedAlert processes BLOCKED events and sends notifications.
-// This is part of the alerting feature.
 func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs map[string]any) {
 	if notifier == nil {
 		return
@@ -657,7 +656,6 @@ func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs 
 }
 
 // extractStringAttr safely extracts a string attribute.
-// Alerting feature helper function.
 func extractStringAttr(attrs map[string]any, key string) string {
 	if v, ok := attrs[key]; ok && v != nil {
 		return fmt.Sprint(v)
@@ -667,7 +665,6 @@ func extractStringAttr(attrs map[string]any, key string) string {
 }
 
 // buildDestinationString creates a human-readable destination string.
-// Alerting feature helper function.
 func buildDestinationString(attrs map[string]any) string {
 	// Try domain names first (SNI, hostname, DNS query name)
 	if sni := extractStringAttr(attrs, "sni"); sni != "" {
@@ -809,16 +806,15 @@ func (z *zerologHandler) WithGroup(name string) slog.Handler {
 
 // ---------- constructors ----------
 
-// NewWithContext builds a slog.Logger backed by zerolog for terminal/file output.
-// 'format' and 'addSource' are kept for API compatibility; terminal/file output is console,
-// and JSON is used only for API shipping via the poster.
+// NewWithContext builds a slog.Logger backed by zerolog.
+// Format and addSource are kept for API compatibility.
 //
 //nolint:cyclop,funlen
 func NewWithContext(ctx context.Context, level, format string, out io.Writer, addSource bool) *slog.Logger {
 	_ = format
 	_ = addSource
 
-	// Writer (stdout or file, depending on LOG_FILE)
+	// Writer (stdout or file)
 	writer := out
 	if logFile := strings.TrimSpace(os.Getenv("LOG_FILE")); logFile != "" {
 		writer = &lumberjack.Logger{
@@ -916,15 +912,15 @@ func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Lo
 	return NewWithContext(context.Background(), level, format, out, addSource)
 }
 
-// NewFromEnv creates a logger configured from environment variables.
+// NewFromEnv creates a logger from environment variables.
 func NewFromEnv() *slog.Logger {
 	return NewWithFormat(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"), os.Stdout, false)
 }
 
-// New returns a logger with the provided level string.
+// New returns a logger with the provided level.
 func New(l string) *slog.Logger { return NewWithFormat(l, "json", os.Stdout, false) }
 
-// Shutdown stops the default poster (if any) and waits up to the provided timeout.
+// Shutdown stops the default poster and waits up to timeout.
 func Shutdown(timeout time.Duration) {
 	if defaultPoster != nil {
 		defaultPoster.Stop(timeout)

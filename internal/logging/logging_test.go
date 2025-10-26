@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/rs/zerolog"
 )
 
@@ -778,8 +779,8 @@ func TestConstants(t *testing.T) {
 	t.Parallel()
 
 	// Test that constants have expected values
-	if actionRedirected != "REDIRECTED" {
-		t.Errorf("Expected actionRedirected to be 'REDIRECTED', got %s", actionRedirected)
+	if filter.ActionRedirected != "REDIRECTED" {
+		t.Errorf("Expected ActionRedirected to be 'REDIRECTED', got %s", filter.ActionRedirected)
 	}
 
 	if LevelTrace.Level() != -8 {
