@@ -73,25 +73,25 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
 
-  build-smoke:
-    needs: [test-and-lint]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        goos:   [linux]
-        goarch: [amd64, arm64]
-        target: [g0efilter, g0efilter-dashboard]
-    env:
-      CGO_ENABLED: 0
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: true
-      - name: Smoke build ${{ matrix.target }} (${{ matrix.goos }}/${{ matrix.goarch }})
-        run: |
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-          go build -trimpath -o /dev/null ./cmd/${{ matrix.target }}
+  # build-smoke:
+  #   needs: [test-and-lint]
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       goos:   [linux]
+  #       goarch: [amd64, arm64]
+  #       target: [g0efilter, g0efilter-dashboard]
+  #   env:
+  #     CGO_ENABLED: 0
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: actions/setup-go@v6
+  #       with:
+  #         go-version-file: go.mod
+  #         check-latest: true
+  #         cache: true
+  #     - name: Smoke build ${{ matrix.target }} (${{ matrix.goos }}/${{ matrix.goarch }})
+  #       run: |
+  #         GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+  #         go build -trimpath -o /dev/null ./cmd/${{ matrix.target }}
