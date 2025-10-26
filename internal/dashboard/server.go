@@ -341,7 +341,6 @@ func (s *Server) routes() http.Handler {
 	r.Use(middleware.Timeout(60 * time.Second))
 
 	// Public routes
-	r.Get("/", IndexHandler(s.sseRetry).ServeHTTP)
 	r.Get("/health", s.healthHandler)
 
 	// API v1 routes
@@ -359,6 +358,9 @@ func (s *Server) routes() http.Handler {
 			r.Post("/logs", s.ingestHandler)
 		})
 	})
+
+	// Serve static UI files
+	r.Mount("/", IndexHandler(s.sseRetry))
 
 	return r
 }

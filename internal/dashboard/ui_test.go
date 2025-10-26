@@ -20,6 +20,7 @@ func TestIndexHandler(t *testing.T) {
 			t.Parallel()
 
 			handler := IndexHandler(tc.timeout)
+			// http.FileServer automatically serves index.html for directory requests
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rr := httptest.NewRecorder()
 
@@ -66,13 +67,13 @@ func validateHTMLStructure(t *testing.T, bodyStr string) {
 	t.Helper()
 
 	// Check that it's valid HTML
-	if !strings.HasPrefix(bodyStr, "<!doctype html>") {
+	if !strings.HasPrefix(bodyStr, "<!DOCTYPE html>") && !strings.HasPrefix(bodyStr, "<!doctype html>") {
 		t.Error("Response should start with HTML doctype")
 	}
 
 	// Check for essential HTML elements
 	requiredElements := []string{
-		"<html>", "<head>", "<title>g0efilter dashboard</title>",
+		"<html", "<head>", "<title>g0efilter dashboard</title>",
 		"<body>", "<header>", "<main>", "</html>",
 	}
 
@@ -86,13 +87,13 @@ func validateHTMLStructure(t *testing.T, bodyStr string) {
 func validateHTMLContent(t *testing.T, bodyStr string) {
 	t.Helper()
 
-	// Check for JavaScript and CSS
-	if !strings.Contains(bodyStr, "<style>") {
-		t.Error("HTML should contain CSS styles")
+	// Check for CSS and JavaScript links (now external files)
+	if !strings.Contains(bodyStr, `href="style.css"`) {
+		t.Error("HTML should contain link to CSS file (style.css)")
 	}
 
-	if !strings.Contains(bodyStr, "<script>") {
-		t.Error("HTML should contain JavaScript")
+	if !strings.Contains(bodyStr, `src="app.js"`) {
+		t.Error("HTML should contain link to JavaScript file (app.js)")
 	}
 }
 
@@ -100,8 +101,9 @@ func validateContentType(t *testing.T, rr *httptest.ResponseRecorder) {
 	t.Helper()
 
 	contentType := rr.Header().Get("Content-Type")
-	if contentType != "text/html; charset=utf-8" {
-		t.Errorf("Expected Content-Type 'text/html; charset=utf-8', got %q", contentType)
+	// http.FileServer sets "text/html; charset=utf-8" for .html files
+	if !strings.HasPrefix(contentType, "text/html") {
+		t.Errorf("Expected Content-Type to start with 'text/html', got %q", contentType)
 	}
 }
 
@@ -110,18 +112,18 @@ func TestIndexHandlerWithDifferentMethods(t *testing.T) {
 
 	handler := IndexHandler(10 * time.Second)
 
-	methods := []string{"GET", "POST", "PUT", "DELETE", "HEAD"}
+	methods := []string{"GET", "HEAD"}
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
 			t.Parallel()
 
+			// http.FileServer only supports GET and HEAD
 			req := httptest.NewRequest(method, "/", nil)
 			rr := httptest.NewRecorder()
 
 			handler.ServeHTTP(rr, req)
 
-			// Should return 200 for all methods (it's just serving static HTML)
 			if rr.Code != http.StatusOK {
 				t.Errorf("Expected status %d for %s method, got %d", http.StatusOK, method, rr.Code)
 			}

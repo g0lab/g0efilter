@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>g0efilter dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>g0efilter</h1>
+  <div class="controls">
+    <label><input type="checkbox" id="autoRefresh"/> Live <span id="connectionStatus"></span></label>
+    <label>Action
+      <select id="actionFilter">
+        <option value="">All</option>
+        <option value="ALLOWED">ALLOWED</option>
+        <option value="BLOCKED">BLOCKED</option>
+        <option value="REDIRECTED">REDIRECTED</option>
+      </select>
+    </label>
+    <label>Component
+      <select id="componentFilter">
+        <option value="">Any</option>
+        <option value="sni">sni</option>
+        <option value="http">http</option>
+        <option value="dns">dns</option>
+      </select>
+    </label>
+    <input id="search" type="search" placeholder="Search host/SNI/src/dst/flow_id/hostname…" />
+    <button id="apply" class="primary">Apply</button>
+    <button id="clearBtn" title="Clear all logs">Clear Logs</button>
+  </div>
+  <div class="tabs">
+    <button class="tab active" id="tabStream">Stream</button>
+    <button class="tab" id="tabAgg">Aggregates</button>
+  </div>
+</header>
+
+<main>
+  <!-- Stream -->
+  <section id="streamView">
+    <div id="streamBox" class="box">
+      <table class="table">
+        <colgroup>
+          <col style="width:110px">  <!-- Action -->
+          <col style="width:84px">   <!-- Comp -->
+          <col style="width:300px">  <!-- Host/SNI -->
+          <col style="width:220px">  <!-- Src -->
+          <col style="width:240px">  <!-- Dst -->
+          <col style="width:180px">  <!-- Hostname -->
+          <col style="width:120px">  <!-- Flow ID -->
+          <col style="width:100px">  <!-- Version -->
+          <col style="width:200px">  <!-- Time -->
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Comp</th>
+            <th>Host/SNI</th>
+            <th>Src</th>
+            <th>Dst</th>
+            <th>Hostname</th>
+            <th>Flow ID</th>
+            <th>Version</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody id="streamBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Aggregates (simplified) -->
+  <section id="aggView" style="display:none">
+    <div id="aggBox" class="box">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <small id="aggStats"></small>
+        <button id="aggRefresh" class="primary">Refresh</button>
+      </div>
+      <table class="table">
+      <colgroup>
+        <col>                       <!-- Key -->
+        <col style="width:100px">   <!-- Total -->
+        <col style="width:120px">   <!-- Action -->
+        <col style="width:220px">   <!-- Last Seen -->
+      </colgroup>
+      <thead>
+        <tr>
+          <th style="text-align:left">Key (SNI/Host/IP)</th>
+          <th>Total</th>
+          <th>Action</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+        <tbody id="aggBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
+

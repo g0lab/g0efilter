@@ -1,0 +1,56 @@
+:root{
+  --bg:#0b0f14;--panel:#0d1220;--border:#1c2433;--text:#e5e7eb;--muted:#9ca3af;
+  --ok:#10b981;--warn:#f59e0b;--err:#ef4444;--chip:#111827;--chip2:#1f2937;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+  display:flex;flex-direction:column;min-height:0
+}
+header{
+  flex:0 0 auto;position:sticky;top:0;z-index:10;padding:10px 14px;
+  background:#111827;border-bottom:1px solid var(--border);
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap
+}
+header h1{margin:0;font-size:16px}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.controls select,input,button{background:#0f172a;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px}
+button{cursor:pointer}
+button.primary{background:#1e293b}
+.tabs{display:flex;gap:6px;margin-left:auto}
+.tab{padding:6px 10px;border:1px solid var(--border);border-radius:999px;background:#0f172a;font-size:12px;cursor:pointer}
+.tab.active{background:#1e293b}
+
+main{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding:10px 12px}
+.box{
+  background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:10px;display:flex;flex-direction:column;min-height:0;height:100%
+}
+#streamView,#aggView{flex:1 1 auto;display:flex;min-height:0}
+#streamBox,#aggBox{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:auto}
+
+/* Tables */
+.table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-variant-numeric:tabular-nums}
+.table th,.table td{
+  padding:6px 8px;border-bottom:1px solid var(--border);
+  font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0
+}
+.table th{
+  color:#cbd5e1;font-weight:600;background:#0f172a;position:sticky;top:0;z-index:5;
+  text-align:left;
+}
+.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+
+/* Badges */
+.badge{display:inline-block;border-radius:999px;padding:2px 6px;font-size:11px;border:1px solid var(--border)}
+.badge-ALLOWED{background:rgba(16,185,129,.15);color:#d1fae5;border-color:rgba(16,185,129,.35)}
+.badge-BLOCKED{background:rgba(239,68,68,.15);color:#fee2e2;border-color:rgba(239,68,68,.35)}
+.badge-REDIRECTED{background:rgba(245,158,11,.15);color:#fef3c7;border-color:rgba(245,158,11,.35)}
+
+small{color:var(--muted);font-size:11px}
+#connectionStatus{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-left:4px}
+#connectionStatus.disconnected{background:var(--err)}
+
+input[type="search"]{min-width:220px}
