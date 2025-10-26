@@ -3,7 +3,8 @@ module github.com/g0lab/g0efilter
 go 1.24.7
 
 require (
-	github.com/florianl/go-nflog/v2 v2.1.0
+	github.com/florianl/go-nflog/v2 v2.2.0
+	github.com/go-chi/chi/v5 v5.2.3
 	github.com/goccy/go-yaml v1.18.0
 	github.com/google/gopacket v1.1.19
 	github.com/miekg/dns v1.1.68

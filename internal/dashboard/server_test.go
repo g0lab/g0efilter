@@ -1,4 +1,4 @@
-//nolint:testpackage // Need access to internal implementation details
+//nolint:testpackage // Testing internal functions
 package dashboard
 
 import (
@@ -6,592 +6,919 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestConfig_Defaults(t *testing.T) {
+const (
+	testActionBlocked    = "BLOCKED"
+	testActionAllowed    = "ALLOWED"
+	testActionRedirected = "REDIRECTED"
+)
+
+// TestNormalizeConfig tests the configuration normalization function.
+//
+//nolint:funlen
+func TestNormalizeConfig(t *testing.T) {
 	t.Parallel()
 
-	tests := getConfigDefaultsTests()
+	tests := []struct {
+		name     string
+		input    Config
+		expected Config
+	}{
+		{
+			name:  "all defaults",
+			input: Config{},
+			expected: Config{
+				BufferSize:   10000,
+				ReadLimit:    500,
+				SERetryMs:    2000,
+				RateRPS:      50,
+				RateBurst:    100,
+				WriteTimeout: 0,
+			},
+		},
+		{
+			name: "custom values preserved",
+			input: Config{
+				BufferSize:   1000,
+				ReadLimit:    100,
+				SERetryMs:    1000,
+				RateRPS:      25,
+				RateBurst:    50,
+				WriteTimeout: 30,
+			},
+			expected: Config{
+				BufferSize:   1000,
+				ReadLimit:    100,
+				SERetryMs:    1000,
+				RateRPS:      25,
+				RateBurst:    50,
+				WriteTimeout: 30,
+			},
+		},
+		{
+			name: "negative WriteTimeout normalized to 0",
+			input: Config{
+				WriteTimeout: -5,
+			},
+			expected: Config{
+				BufferSize:   10000,
+				ReadLimit:    500,
+				SERetryMs:    2000,
+				RateRPS:      50,
+				RateBurst:    100,
+				WriteTimeout: 0,
+			},
+		},
+	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			cfg := tt.input
-			applyConfigDefaults(&cfg)
+			normalizeConfig(&cfg)
 
-			if cfg != tt.expected {
-				t.Errorf("Config defaults mismatch.\nGot: %+v\nWant: %+v", cfg, tt.expected)
+			if cfg.BufferSize != tt.expected.BufferSize {
+				t.Errorf("BufferSize = %d, want %d", cfg.BufferSize, tt.expected.BufferSize)
+			}
+
+			if cfg.ReadLimit != tt.expected.ReadLimit {
+				t.Errorf("ReadLimit = %d, want %d", cfg.ReadLimit, tt.expected.ReadLimit)
+			}
+
+			if cfg.SERetryMs != tt.expected.SERetryMs {
+				t.Errorf("SERetryMs = %d, want %d", cfg.SERetryMs, tt.expected.SERetryMs)
+			}
+
+			if cfg.RateRPS != tt.expected.RateRPS {
+				t.Errorf("RateRPS = %f, want %f", cfg.RateRPS, tt.expected.RateRPS)
+			}
+
+			if cfg.RateBurst != tt.expected.RateBurst {
+				t.Errorf("RateBurst = %f, want %f", cfg.RateBurst, tt.expected.RateBurst)
+			}
+
+			if cfg.WriteTimeout != tt.expected.WriteTimeout {
+				t.Errorf("WriteTimeout = %d, want %d", cfg.WriteTimeout, tt.expected.WriteTimeout)
 			}
 		})
 	}
 }
 
-func getConfigDefaultsTestCases() []struct {
-	name     string
-	input    Config
-	expected Config
-} {
-	return []struct {
-		name     string
-		input    Config
-		expected Config
-	}{
-		{
-			name: "all defaults applied",
-			input: Config{
-				Addr:      ":8081",
-				APIKey:    "test-key",
-				LogLevel:  "INFO",
-				LogFormat: "json",
-			},
-			expected: Config{
-				Addr:       ":8081",
-				APIKey:     "test-key",
-				LogLevel:   "INFO",
-				LogFormat:  "json",
-				BufferSize: 5000,
-				ReadLimit:  500,
-				SERetryMs:  2000,
-				RateRPS:    50,
-				RateBurst:  100,
-			},
-		},
-		{
-			name: "custom values preserved",
-			input: Config{
-				Addr:       ":9000",
-				APIKey:     "custom-key",
-				LogLevel:   "DEBUG",
-				LogFormat:  "console",
-				BufferSize: 1000,
-				ReadLimit:  100,
-				SERetryMs:  1000,
-				RateRPS:    25.0,
-				RateBurst:  50.0,
-			},
-			expected: Config{
-				Addr:       ":9000",
-				APIKey:     "custom-key",
-				LogLevel:   "DEBUG",
-				LogFormat:  "console",
-				BufferSize: 1000,
-				ReadLimit:  100,
-				SERetryMs:  1000,
-				RateRPS:    25.0,
-				RateBurst:  50.0,
-			},
-		},
-	}
-}
-
-// getConfigDefaultsTests returns test cases for config defaults.
-func getConfigDefaultsTests() []struct {
-	name     string
-	input    Config
-	expected Config
-} {
-	testCases := getConfigDefaultsTestCases()
-
-	// Add the zero values test case
-	testCases = append(testCases, struct {
-		name     string
-		input    Config
-		expected Config
-	}{
-		name: "zero values get defaults",
-		input: Config{
-			Addr:       ":8081",
-			APIKey:     "test-key",
-			LogLevel:   "INFO",
-			LogFormat:  "json",
-			BufferSize: 0,
-			ReadLimit:  0,
-			SERetryMs:  0,
-			RateRPS:    0,
-			RateBurst:  0,
-		},
-		expected: Config{
-			Addr:       ":8081",
-			APIKey:     "test-key",
-			LogLevel:   "INFO",
-			LogFormat:  "json",
-			BufferSize: 5000,
-			ReadLimit:  500,
-			SERetryMs:  2000,
-			RateRPS:    50,
-			RateBurst:  100,
-		},
-	})
-
-	return testCases
-}
-
-func applyConfigDefaults(cfg *Config) {
-	// Apply the same defaults logic as Run function
-	if cfg.BufferSize <= 0 {
-		cfg.BufferSize = 5000
-	}
-
-	if cfg.ReadLimit <= 0 {
-		cfg.ReadLimit = 500
-	}
-
-	if cfg.SERetryMs <= 0 {
-		cfg.SERetryMs = 2000
-	}
-
-	if cfg.RateRPS <= 0 {
-		cfg.RateRPS = 50
-	}
-
-	if cfg.RateBurst <= 0 {
-		cfg.RateBurst = 100
-	}
-}
-
-func TestMemStore_NewStore(t *testing.T) {
+// TestMemStore tests the in-memory store operations.
+//
+//nolint:cyclop,funlen
+func TestMemStore(t *testing.T) {
 	t.Parallel()
 
-	t.Run("new store", func(t *testing.T) {
+	t.Run("Insert and Query", func(t *testing.T) {
 		t.Parallel()
 
 		store := newMemStore(10)
-		if store.size != 10 {
-			t.Errorf("Expected size 10, got %d", store.size)
-		}
+		ctx := context.Background()
 
-		if store.count != 0 {
-			t.Errorf("Expected count 0, got %d", store.count)
-		}
-
-		if store.nextID != 1 {
-			t.Errorf("Expected nextID 1, got %d", store.nextID)
-		}
-	})
-
-	t.Run("new store with zero size", func(t *testing.T) {
-		t.Parallel()
-
-		store := newMemStore(0)
-		if store.size != 1 {
-			t.Errorf("Expected size 1 (minimum), got %d", store.size)
-		}
-	})
-}
-
-func TestMemStore_InsertAndQuery(t *testing.T) {
-	t.Parallel()
-
-	store := newMemStore(5)
-	ctx := context.Background()
-
-	// Insert a log entry
-	entry := &LogEntry{
-		Message: "test message",
-		Fields:  json.RawMessage(`{"key":"value"}`),
-	}
-
-	id, err := store.Insert(ctx, entry)
-	if err != nil {
-		t.Fatalf("Insert failed: %v", err)
-	}
-
-	if id != 1 {
-		t.Errorf("Expected ID 1, got %d", id)
-	}
-
-	// Query the entry
-	entries, err := store.Query(ctx, "", 0, 10)
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if len(entries) != 1 {
-		t.Errorf("Expected 1 entry, got %d", len(entries))
-	}
-
-	if entries[0].Message != "test message" {
-		t.Errorf("Expected message 'test message', got %s", entries[0].Message)
-	}
-}
-
-func TestMemStore_Clear(t *testing.T) {
-	t.Parallel()
-
-	store := newMemStore(5)
-	ctx := context.Background()
-
-	// Insert an entry
-	entry := &LogEntry{Message: "test"}
-
-	_, err := store.Insert(ctx, entry)
-	if err != nil {
-		t.Fatalf("Insert failed: %v", err)
-	}
-
-	// Clear the store
-	err = store.Clear(ctx)
-	if err != nil {
-		t.Fatalf("Clear failed: %v", err)
-	}
-
-	// Verify empty
-	entries, err := store.Query(ctx, "", 0, 10)
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-
-	if len(entries) != 0 {
-		t.Errorf("Expected 0 entries after clear, got %d", len(entries))
-	}
-}
-
-func TestMemStore_RingBuffer(t *testing.T) {
-	t.Parallel()
-
-	store := newMemStore(2) // Small buffer
-	ctx := context.Background()
-
-	// Insert 3 entries (more than capacity)
-	for i := range 3 {
 		entry := &LogEntry{
-			Message: fmt.Sprintf("message %d", i),
+			Time:      time.Now(),
+			Message:   "test message",
+			Action:    testActionBlocked,
+			SourceIP:  "192.168.1.1",
+			Protocol:  "TCP",
+			RemoteIP:  "10.0.0.1",
+			PolicyHit: "test-policy",
 		}
 
-		_, err := store.Insert(ctx, entry)
+		id, err := store.Insert(ctx, entry)
 		if err != nil {
-			t.Fatalf("Insert %d failed: %v", i, err)
+			t.Fatalf("Insert failed: %v", err)
 		}
+
+		if id != 1 {
+			t.Errorf("First insert ID = %d, want 1", id)
+		}
+
+		results, err := store.Query(ctx, "", 0, 10)
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+
+		if len(results) != 1 {
+			t.Fatalf("Query returned %d results, want 1", len(results))
+		}
+
+		if results[0].Message != "test message" {
+			t.Errorf("Message = %s, want 'test message'", results[0].Message)
+		}
+
+		if results[0].Action != testActionBlocked {
+			t.Errorf("Action = %s, want %s", results[0].Action, testActionBlocked)
+		}
+	})
+
+	t.Run("Clear", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMemStore(10)
+		ctx := context.Background()
+
+		// Insert some entries
+		for range 5 {
+			_, _ = store.Insert(ctx, &LogEntry{
+				Time:    time.Now(),
+				Message: "test",
+				Action:  "ALLOWED",
+			})
+		}
+
+		results, _ := store.Query(ctx, "", 0, 10)
+		if len(results) != 5 {
+			t.Fatalf("Before clear: got %d entries, want 5", len(results))
+		}
+
+		err := store.Clear(ctx)
+		if err != nil {
+			t.Fatalf("Clear failed: %v", err)
+		}
+
+		results, _ = store.Query(ctx, "", 0, 10)
+		if len(results) != 0 {
+			t.Errorf("After clear: got %d entries, want 0", len(results))
+		}
+	})
+
+	t.Run("Circular buffer wrap", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMemStore(3)
+		ctx := context.Background()
+
+		// Insert 5 entries into a buffer of size 3
+		for i := 1; i <= 5; i++ {
+			_, _ = store.Insert(ctx, &LogEntry{
+				Time:    time.Now(),
+				Message: "msg" + string(rune('0'+i)),
+				Action:  "ALLOWED",
+			})
+		}
+
+		results, _ := store.Query(ctx, "", 0, 10)
+		if len(results) != 3 {
+			t.Errorf("Circular buffer: got %d entries, want 3", len(results))
+		}
+	})
+
+	t.Run("Query with filter", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMemStore(10)
+		ctx := context.Background()
+
+		_, _ = store.Insert(ctx, &LogEntry{
+			Time:     time.Now(),
+			Message:  "blocked connection",
+			Action:   testActionBlocked,
+			SourceIP: "192.168.1.1",
+		})
+
+		_, _ = store.Insert(ctx, &LogEntry{
+			Time:     time.Now(),
+			Message:  "allowed connection",
+			Action:   testActionAllowed,
+			SourceIP: "192.168.1.2",
+		})
+
+		results, _ := store.Query(ctx, "blocked", 0, 10)
+		if len(results) != 1 {
+			t.Errorf("Filtered query: got %d results, want 1", len(results))
+		}
+
+		if results[0].Action != testActionBlocked {
+			t.Errorf("Filtered result action = %s, want %s", results[0].Action, testActionBlocked)
+		}
+	})
+
+	t.Run("Query with sinceID", func(t *testing.T) {
+		t.Parallel()
+
+		store := newMemStore(10)
+		ctx := context.Background()
+
+		id1, _ := store.Insert(ctx, &LogEntry{Time: time.Now(), Message: "first", Action: "ALLOWED"})
+		_, _ = store.Insert(ctx, &LogEntry{Time: time.Now(), Message: "second", Action: "ALLOWED"})
+		_, _ = store.Insert(ctx, &LogEntry{Time: time.Now(), Message: "third", Action: "ALLOWED"})
+
+		results, _ := store.Query(ctx, "", id1, 10)
+		if len(results) != 2 {
+			t.Errorf("Query with sinceID: got %d results, want 2", len(results))
+		}
+	})
+}
+
+// TestExtractFieldsMap tests the field extraction helper.
+func TestExtractFieldsMap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    map[string]any
+		expected map[string]any
+	}{
+		{
+			name: "nested fields merged with top-level",
+			input: map[string]any{
+				"fields": map[string]any{
+					"custom_field": "value1",
+				},
+				"action":    "BLOCKED",
+				"source_ip": "192.168.1.1",
+				"version":   "1.0.0",
+			},
+			expected: map[string]any{
+				"custom_field": "value1",
+				"action":       "BLOCKED",
+				"source_ip":    "192.168.1.1",
+				"version":      "1.0.0",
+			},
+		},
+		{
+			name: "no nested fields",
+			input: map[string]any{
+				"action":    "ALLOWED",
+				"source_ip": "10.0.0.1",
+			},
+			expected: map[string]any{
+				"action":    "ALLOWED",
+				"source_ip": "10.0.0.1",
+			},
+		},
+		{
+			name: "nil values excluded",
+			input: map[string]any{
+				"action":    "BLOCKED",
+				"source_ip": nil,
+			},
+			expected: map[string]any{
+				"action": "BLOCKED",
+			},
+		},
 	}
 
-	// Should only have the last 2 entries
-	entries, err := store.Query(ctx, "", 0, 10)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := extractFieldsMap(tt.input)
+
+			for k, v := range tt.expected {
+				if result[k] != v {
+					t.Errorf("Field %s = %v, want %v", k, result[k], v)
+				}
+			}
+		})
+	}
+}
+
+// TestDeriveProtocol tests protocol derivation logic.
+func TestDeriveProtocol(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    map[string]any
+		expected string
+	}{
+		{
+			name:     "explicit protocol",
+			input:    map[string]any{"protocol": "TCP"},
+			expected: "TCP",
+		},
+		{
+			name:     "derived from http component",
+			input:    map[string]any{"component": "http"},
+			expected: "TCP",
+		},
+		{
+			name:     "derived from sni component",
+			input:    map[string]any{"component": "sni"},
+			expected: "TCP",
+		},
+		{
+			name:     "derived from dns component",
+			input:    map[string]any{"component": "dns"},
+			expected: "UDP",
+		},
+		{
+			name:     "no protocol info",
+			input:    map[string]any{},
+			expected: "",
+		},
+		{
+			name:     "unknown component",
+			input:    map[string]any{"component": "unknown"},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := deriveProtocol(tt.input)
+			if result != tt.expected {
+				t.Errorf("deriveProtocol() = %s, want %s", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetStringFromPayload tests string extraction from payload.
+func TestGetStringFromPayload(t *testing.T) {
+	t.Parallel()
+
+	payload := map[string]any{
+		"field1": "value1",
+		"field2": "",
+		"field3": "value3",
+	}
+
+	tests := []struct {
+		name     string
+		keys     []string
+		expected string
+	}{
+		{
+			name:     "first key exists",
+			keys:     []string{"field1"},
+			expected: "value1",
+		},
+		{
+			name:     "fallback to second key",
+			keys:     []string{"field2", "field3"},
+			expected: "value3",
+		},
+		{
+			name:     "no match",
+			keys:     []string{"nonexistent"},
+			expected: "",
+		},
+		{
+			name:     "empty string skipped",
+			keys:     []string{"field2", "field1"},
+			expected: "value1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := getStringFromPayload(payload, tt.keys...)
+			if result != tt.expected {
+				t.Errorf("getStringFromPayload() = %s, want %s", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestGetIntFromPayload tests integer extraction from payload.
+func TestGetIntFromPayload(t *testing.T) {
+	t.Parallel()
+
+	payload := map[string]any{
+		"port":    float64(8080),
+		"missing": "not a number",
+	}
+
+	if result := getIntFromPayload(payload, "port"); result != 8080 {
+		t.Errorf("getIntFromPayload(port) = %d, want 8080", result)
+	}
+
+	if result := getIntFromPayload(payload, "missing"); result != 0 {
+		t.Errorf("getIntFromPayload(missing) = %d, want 0", result)
+	}
+
+	if result := getIntFromPayload(payload, "nonexistent"); result != 0 {
+		t.Errorf("getIntFromPayload(nonexistent) = %d, want 0", result)
+	}
+}
+
+// TestProcessPayload tests the main payload processing logic.
+//
+//nolint:gocognit,cyclop,funlen
+func TestProcessPayload(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	srv := &Server{logger: logger}
+
+	t.Run("valid BLOCKED payload", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":         "connection blocked",
+			"action":      "blocked",
+			"source_ip":   "192.168.1.1",
+			"source_port": float64(12345),
+			"protocol":    "TCP",
+			"version":     "1.0.0",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry == nil {
+			t.Fatal("processPayload returned nil for valid payload")
+		}
+
+		if entry.Message != "connection blocked" {
+			t.Errorf("Message = %s, want 'connection blocked'", entry.Message)
+		}
+
+		if entry.Action != testActionBlocked {
+			t.Errorf("Action = %s, want %s", entry.Action, testActionBlocked)
+		}
+
+		if entry.SourceIP != "192.168.1.1" {
+			t.Errorf("SourceIP = %s, want 192.168.1.1", entry.SourceIP)
+		}
+
+		if entry.SourcePort != 12345 {
+			t.Errorf("SourcePort = %d, want 12345", entry.SourcePort)
+		}
+
+		if entry.Protocol != "TCP" {
+			t.Errorf("Protocol = %s, want TCP", entry.Protocol)
+		}
+
+		if entry.RemoteIP != "10.0.0.1" {
+			t.Errorf("RemoteIP = %s, want 10.0.0.1", entry.RemoteIP)
+		}
+
+		if entry.Version != "1.0.0" {
+			t.Errorf("Version = %s, want 1.0.0", entry.Version)
+		}
+	})
+
+	t.Run("empty message returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":    "",
+			"action": "BLOCKED",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry != nil {
+			t.Error("processPayload should return nil for empty message")
+		}
+	})
+
+	t.Run("invalid action returns nil", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":    "test",
+			"action": "INVALID",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry != nil {
+			t.Error("processPayload should return nil for invalid action")
+		}
+	})
+
+	t.Run("allowed action", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":    "connection allowed",
+			"action": "allowed",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry == nil {
+			t.Fatal("processPayload returned nil for ALLOWED action")
+		}
+
+		if entry.Action != testActionAllowed {
+			t.Errorf("Action = %s, want %s", entry.Action, testActionAllowed)
+		}
+	})
+
+	t.Run("redirected action", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":    "connection redirected",
+			"action": "REDIRECTED",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry == nil {
+			t.Fatal("processPayload returned nil for REDIRECTED action")
+		}
+
+		if entry.Action != testActionRedirected {
+			t.Errorf("Action = %s, want %s", entry.Action, testActionRedirected)
+		}
+	})
+
+	t.Run("SNI extraction priority", func(t *testing.T) {
+		t.Parallel()
+
+		payload := map[string]any{
+			"msg":       "test",
+			"action":    "BLOCKED",
+			"http_host": "example.com",
+			"host":      "fallback.com",
+			"sni":       "last.com",
+			"qname":     "dns.com",
+		}
+
+		entry := srv.processPayload(payload, "10.0.0.1")
+		if entry == nil {
+			t.Fatal("processPayload returned nil")
+		}
+
+		// http_host should be first priority
+		if entry.SNI != "example.com" {
+			t.Errorf("SNI = %s, want example.com (http_host priority)", entry.SNI)
+		}
+
+		if entry.HTTPHost != "example.com" {
+			t.Errorf("HTTPHost = %s, want example.com", entry.HTTPHost)
+		}
+	})
+}
+
+// Helper function to create a test server.
+func newTestServer() *Server {
+	logger := slog.New(slog.DiscardHandler)
+	cfg := Config{
+		APIKey:     "test-api-key",
+		BufferSize: 100,
+		ReadLimit:  50,
+		RateRPS:    100,
+		RateBurst:  200,
+	}
+	normalizeConfig(&cfg)
+
+	return newServer(logger, cfg)
+}
+
+// TestHealthHandler tests the health check endpoint.
+func TestHealthHandler(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	w := httptest.NewRecorder()
+
+	srv.healthHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var response map[string]string
+
+	err := json.NewDecoder(w.Body).Decode(&response)
 	if err != nil {
-		t.Fatalf("Query failed: %v", err)
+		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if len(entries) != 2 {
-		t.Errorf("Expected 2 entries (ring buffer), got %d", len(entries))
+	if response["status"] != "ok" {
+		t.Errorf("status = %s, want ok", response["status"])
 	}
 
-	// Should be in reverse order (newest first)
-	if entries[0].Message != "message 2" {
-		t.Errorf("Expected newest message first, got %s", entries[0].Message)
-	}
-
-	if entries[1].Message != "message 1" {
-		t.Errorf("Expected second newest message, got %s", entries[1].Message)
+	if response["service"] != "g0efilter-dashboard" {
+		t.Errorf("service = %s, want g0efilter-dashboard", response["service"])
 	}
 }
 
-func TestBroadcaster(t *testing.T) {
+// TestIngestHandler tests the log ingestion endpoint.
+//
+//nolint:funlen
+func TestIngestHandler(t *testing.T) {
 	t.Parallel()
 
-	t.Run("add and remove clients", func(t *testing.T) {
+	srv := newTestServer()
+
+	t.Run("single valid log", func(t *testing.T) {
 		t.Parallel()
 
-		b := newBroadcaster()
-
-		ch1 := b.add()
-		ch2 := b.add()
-
-		if len(b.clients) != 2 {
-			t.Errorf("Expected 2 clients, got %d", len(b.clients))
+		payload := map[string]any{
+			"msg":       "test message",
+			"action":    "BLOCKED",
+			"source_ip": "192.168.1.1",
 		}
 
-		b.remove(ch1)
+		body, _ := json.Marshal(payload)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 
-		if len(b.clients) != 1 {
-			t.Errorf("Expected 1 client after removal, got %d", len(b.clients))
+		w := httptest.NewRecorder()
+
+		srv.ingestHandler(w, req)
+
+		if w.Code != http.StatusCreated {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusCreated)
 		}
 
-		b.remove(ch2)
+		var response map[string]any
 
-		if len(b.clients) != 0 {
-			t.Errorf("Expected 0 clients after all removed, got %d", len(b.clients))
+		err := json.NewDecoder(w.Body).Decode(&response)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		created, ok := response["created"].(float64)
+		if !ok || created != 1 {
+			t.Errorf("created = %v, want 1", response["created"])
 		}
 	})
 
-	t.Run("send to clients", func(t *testing.T) {
+	t.Run("array of logs", func(t *testing.T) {
 		t.Parallel()
 
-		b := newBroadcaster()
-
-		ch1 := b.add()
-		ch2 := b.add()
-
-		message := []byte("test message")
-		b.send(message)
-
-		// Check both clients received the message
-		select {
-		case msg := <-ch1:
-			if !bytes.Equal(msg, message) {
-				t.Errorf("Client 1 got wrong message: %s", msg)
-			}
-		case <-time.After(100 * time.Millisecond):
-			t.Error("Client 1 didn't receive message")
+		payload := []map[string]any{
+			{"msg": "test1", "action": "BLOCKED"},
+			{"msg": "test2", "action": "ALLOWED"},
 		}
 
-		select {
-		case msg := <-ch2:
-			if !bytes.Equal(msg, message) {
-				t.Errorf("Client 2 got wrong message: %s", msg)
-			}
-		case <-time.After(100 * time.Millisecond):
-			t.Error("Client 2 didn't receive message")
-		}
+		body, _ := json.Marshal(payload)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
 
-		b.remove(ch1)
-		b.remove(ch2)
-	})
-}
+		w := httptest.NewRecorder()
 
-func TestRateLimiter(t *testing.T) {
-	t.Parallel()
+		srv.ingestHandler(w, req)
 
-	t.Run("allows requests under limit", func(t *testing.T) {
-		t.Parallel()
-
-		rl := newRateLimiter(10, 10) // 10 RPS, burst 10
-
-		// Should allow first request
-		if !rl.allow("test-ip") {
-			t.Error("Expected first request to be allowed")
+		if w.Code != http.StatusCreated {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusCreated)
 		}
 	})
 
-	t.Run("blocks when over burst", func(t *testing.T) {
+	t.Run("invalid JSON", func(t *testing.T) {
 		t.Parallel()
 
-		rl := newRateLimiter(1, 2) // 1 RPS, burst 2
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader("invalid json"))
+		req.Header.Set("Content-Type", "application/json")
 
-		// First 2 should be allowed (burst)
-		if !rl.allow("test-ip") {
-			t.Error("Expected first request to be allowed")
-		}
+		w := httptest.NewRecorder()
 
-		if !rl.allow("test-ip") {
-			t.Error("Expected second request to be allowed")
-		}
+		srv.ingestHandler(w, req)
 
-		// Third should be blocked
-		if rl.allow("test-ip") {
-			t.Error("Expected third request to be blocked")
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
 		}
 	})
 
-	t.Run("different IPs have separate limits", func(t *testing.T) {
+	t.Run("empty payload", func(t *testing.T) {
 		t.Parallel()
 
-		rl := newRateLimiter(1, 1) // 1 RPS, burst 1
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", strings.NewReader("[]"))
+		req.Header.Set("Content-Type", "application/json")
 
-		// Both IPs should be allowed their first request
-		if !rl.allow("ip1") {
-			t.Error("Expected first IP to be allowed")
-		}
+		w := httptest.NewRecorder()
 
-		if !rl.allow("ip2") {
-			t.Error("Expected second IP to be allowed")
-		}
+		srv.ingestHandler(w, req)
 
-		// Both should be blocked on second request
-		if rl.allow("ip1") {
-			t.Error("Expected ip1 second request to be blocked")
-		}
-
-		if rl.allow("ip2") {
-			t.Error("Expected ip2 second request to be blocked")
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusBadRequest)
 		}
 	})
 }
 
-func TestToStr(t *testing.T) {
+// TestListLogsHandler tests the log listing endpoint.
+//
+//nolint:cyclop,funlen
+func TestListLogsHandler(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		input    interface{}
-		expected string
-	}{
-		{nil, ""},
-		{"hello", "hello"},
-		{123, "123"},
-		{123.45, "123.45"},
-		{true, "true"},
+	srv := newTestServer()
+	ctx := context.Background()
+
+	// Insert test data
+	_, _ = srv.store.Insert(ctx, &LogEntry{
+		Time:     time.Now(),
+		Message:  "blocked connection",
+		Action:   "BLOCKED",
+		SourceIP: "192.168.1.1",
+	})
+
+	_, _ = srv.store.Insert(ctx, &LogEntry{
+		Time:     time.Now(),
+		Message:  "allowed connection",
+		Action:   "ALLOWED",
+		SourceIP: "192.168.1.2",
+	})
+
+	t.Run("list all logs", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/logs", nil)
+		w := httptest.NewRecorder()
+
+		srv.listLogsHandler(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+		}
+
+		var logs []LogEntry
+
+		err := json.NewDecoder(w.Body).Decode(&logs)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(logs) != 2 {
+			t.Errorf("Got %d logs, want 2", len(logs))
+		}
+	})
+
+	t.Run("filter by query", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/logs?q=blocked", nil)
+		w := httptest.NewRecorder()
+
+		srv.listLogsHandler(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+		}
+
+		var logs []LogEntry
+
+		err := json.NewDecoder(w.Body).Decode(&logs)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(logs) != 1 {
+			t.Errorf("Filtered query: got %d logs, want 1", len(logs))
+		}
+
+		if logs[0].Action != "BLOCKED" {
+			t.Errorf("Action = %s, want BLOCKED", logs[0].Action)
+		}
+	})
+
+	t.Run("limit results", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/logs?limit=1", nil)
+		w := httptest.NewRecorder()
+
+		srv.listLogsHandler(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
+		}
+
+		var logs []LogEntry
+
+		err := json.NewDecoder(w.Body).Decode(&logs)
+		if err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+
+		if len(logs) != 1 {
+			t.Errorf("Limited query: got %d logs, want 1", len(logs))
+		}
+	})
+}
+
+// TestClearLogsHandler tests the clear logs endpoint.
+func TestClearLogsHandler(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+	ctx := context.Background()
+
+	// Insert test data
+	_, _ = srv.store.Insert(ctx, &LogEntry{
+		Time:    time.Now(),
+		Message: "test",
+		Action:  "BLOCKED",
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/logs", nil)
+	w := httptest.NewRecorder()
+
+	srv.clearLogsHandler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input_%v", tt.input), func(t *testing.T) {
-			t.Parallel()
+	var response map[string]string
 
-			result := toStr(tt.input)
-			if result != tt.expected {
-				t.Errorf("toStr(%v) = %s, want %s", tt.input, result, tt.expected)
-			}
-		})
+	err := json.NewDecoder(w.Body).Decode(&response)
+	if err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if response["status"] != "ok" {
+		t.Errorf("status = %s, want ok", response["status"])
+	}
+
+	// Verify logs are cleared
+	logs, _ := srv.store.Query(ctx, "", 0, 10)
+	if len(logs) != 0 {
+		t.Errorf("After clear: got %d logs, want 0", len(logs))
 	}
 }
 
-func TestToInt(t *testing.T) {
+// TestRequireAPIKey tests the API key middleware.
+func TestRequireAPIKey(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		input    interface{}
-		expected int
-	}{
-		{nil, 0},
-		{123, 123},
-		{int64(456), 456},
-		{123.45, 123},
-		{"789", 789},
-		{"invalid", 0},
-	}
-
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("input_%v", tt.input), func(t *testing.T) {
-			t.Parallel()
-
-			result := toInt(tt.input)
-			if result != tt.expected {
-				t.Errorf("toInt(%v) = %d, want %d", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestFirstNonEmpty(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    []string
-		expected string
-	}{
-		{"empty slice", []string{}, ""},
-		{"all empty", []string{"", "", ""}, ""},
-		{"second non-empty", []string{"", "second", "third"}, "second"},
-		{"first non-empty", []string{"first", "second"}, "first"},
-		{"whitespace trimmed", []string{"  ", "trimmed"}, "trimmed"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := firstNonEmpty(tt.input...)
-			if result != tt.expected {
-				t.Errorf("firstNonEmpty(%v) = %s, want %s", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestRemoteIP(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		remoteAddr string
-		expected   string
-	}{
-		{"IPv4 with port", "192.168.1.1:12345", "192.168.1.1"},
-		{"IPv6 with port", "[::1]:8080", "::1"},
-		{"invalid format", "invalid", "invalid"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := &http.Request{RemoteAddr: tt.remoteAddr}
-
-			result := remoteIP(req)
-			if result != tt.expected {
-				t.Errorf("remoteIP with addr %s = %s, want %s", tt.remoteAddr, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestMathMin(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		a, b     float64
-		expected float64
-	}{
-		{"a smaller", 1.0, 2.0, 1.0},
-		{"b smaller", 2.0, 1.0, 1.0},
-		{"equal", 1.0, 1.0, 1.0},
-		{"negative", -1.0, 1.0, -1.0},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := mathMin(tt.a, tt.b)
-			if result != tt.expected {
-				t.Errorf("mathMin(%f, %f) = %f, want %f", tt.a, tt.b, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestAPIKeyMiddleware(t *testing.T) {
-	t.Parallel()
-
-	expectedKey := "test-api-key"
-	handler := apiKeyMiddleware(expectedKey, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	srv := newTestServer()
+	handler := srv.requireAPIKey()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("success"))
 	}))
 
 	t.Run("valid API key", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("X-Api-Key", expectedKey)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", nil)
+		req.Header.Set("X-Api-Key", "test-api-key")
 
 		w := httptest.NewRecorder()
 
 		handler.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
-			t.Errorf("Expected status 200, got %d", w.Code)
-		}
-
-		if w.Body.String() != "success" {
-			t.Errorf("Expected success message, got %s", w.Body.String())
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusOK)
 		}
 	})
 
 	t.Run("missing API key", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", nil)
 		w := httptest.NewRecorder()
 
 		handler.ServeHTTP(w, req)
 
 		if w.Code != http.StatusUnauthorized {
-			t.Errorf("Expected status 401, got %d", w.Code)
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
 		}
 	})
 
 	t.Run("invalid API key", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/logs", nil)
 		req.Header.Set("X-Api-Key", "wrong-key")
 
 		w := httptest.NewRecorder()
@@ -599,972 +926,278 @@ func TestAPIKeyMiddleware(t *testing.T) {
 		handler.ServeHTTP(w, req)
 
 		if w.Code != http.StatusUnauthorized {
-			t.Errorf("Expected status 401, got %d", w.Code)
+			t.Errorf("Status = %d, want %d", w.Code, http.StatusUnauthorized)
 		}
 	})
 }
 
-func TestHealthzHandler(t *testing.T) {
+// TestRateLimiter tests the rate limiting logic.
+func TestRateLimiter(t *testing.T) {
 	t.Parallel()
 
-	store := newMemStore(10)
-	bus := newBroadcaster()
-	mux := newMux(nil, store, bus, "test-key", 100, time.Second, 50, 100)
-
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	w := httptest.NewRecorder()
-
-	mux.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	body := w.Body.String()
-	if !strings.Contains(body, "ok") {
-		t.Errorf("Expected 'ok' in response, got %s", body)
-	}
-}
-
-func setupTestStore() *memStore {
-	store := newMemStore(10)
-	ctx := context.Background()
-
-	// Insert test data
-	entries := []*LogEntry{
-		{Message: "info message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
-		{Message: "error message", Fields: json.RawMessage(`{"action":"BLOCKED"}`)},
-		{Message: "debug message", Fields: json.RawMessage(`{"action":"ALLOWED"}`)},
-	}
-
-	for _, entry := range entries {
-		_, err := store.Insert(ctx, entry)
-		if err != nil {
-			panic(fmt.Sprintf("Failed to insert test data: %v", err))
-		}
-	}
-
-	return store
-}
-
-func TestListLogsHandler_GetAllLogs(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore()
-	handler := listLogsHandler(store, 100)
-
-	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var logs []LogEntry
-
-	err := json.Unmarshal(w.Body.Bytes(), &logs)
-	if err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	if len(logs) != 3 {
-		t.Errorf("Expected 3 logs, got %d", len(logs))
-	}
-}
-
-func TestListLogsHandler_FilterByQuery(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore()
-	handler := listLogsHandler(store, 100)
-
-	req := httptest.NewRequest(http.MethodGet, "/logs?q=error", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var logs []LogEntry
-
-	err := json.Unmarshal(w.Body.Bytes(), &logs)
-	if err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	if len(logs) != 1 {
-		t.Errorf("Expected 1 log with 'error', got %d", len(logs))
-	}
-
-	if !strings.Contains(logs[0].Message, "error") {
-		t.Errorf("Expected message containing 'error', got %s", logs[0].Message)
-	}
-}
-
-func TestListLogsHandler_SearchQuery(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore()
-	handler := listLogsHandler(store, 100)
-
-	req := httptest.NewRequest(http.MethodGet, "/logs?q=info", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var logs []LogEntry
-
-	err := json.Unmarshal(w.Body.Bytes(), &logs)
-	if err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	if len(logs) != 1 {
-		t.Errorf("Expected 1 log matching 'info', got %d", len(logs))
-	}
-}
-
-func TestListLogsHandler_LimitResults(t *testing.T) {
-	t.Parallel()
-
-	store := setupTestStore()
-	handler := listLogsHandler(store, 100)
-
-	req := httptest.NewRequest(http.MethodGet, "/logs?limit=2", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	var logs []LogEntry
-
-	err := json.Unmarshal(w.Body.Bytes(), &logs)
-	if err != nil {
-		t.Fatalf("Failed to parse response: %v", err)
-	}
-
-	if len(logs) != 2 {
-		t.Errorf("Expected 2 logs with limit, got %d", len(logs))
-	}
-}
-
-func TestRespWrap(t *testing.T) {
-	t.Parallel()
-
-	t.Run("tracks status code", func(t *testing.T) {
+	t.Run("allows requests within limit", func(t *testing.T) {
 		t.Parallel()
 
-		w := httptest.NewRecorder()
-		wrap := &respWrap{
-			ResponseWriter: w,
-			code:           200,
-		}
+		rl := newRateLimiter(10, 10) // 10 RPS, burst 10
 
-		wrap.WriteHeader(http.StatusNotFound)
-
-		if wrap.code != 404 {
-			t.Errorf("Expected code 404, got %d", wrap.code)
-		}
-
-		// Verify the underlying ResponseWriter was also called
-		if w.Code != http.StatusNotFound {
-			t.Errorf("Expected underlying ResponseWriter code 404, got %d", w.Code)
+		for i := range 10 {
+			if !rl.Allow("test-client") {
+				t.Errorf("Request %d was blocked but should be allowed", i+1)
+			}
 		}
 	})
 
-	t.Run("default code is preserved", func(t *testing.T) {
+	t.Run("blocks requests exceeding burst", func(t *testing.T) {
 		t.Parallel()
 
-		w := httptest.NewRecorder()
-		wrap := &respWrap{
-			ResponseWriter: w,
-			code:           200,
+		rl := newRateLimiter(1, 5) // 1 RPS, burst 5
+
+		// First 5 should succeed
+		for i := range 5 {
+			if !rl.Allow("test-client") {
+				t.Errorf("Request %d was blocked but should be allowed", i+1)
+			}
 		}
 
-		// Don't call WriteHeader, should keep default
-		if wrap.code != 200 {
-			t.Errorf("Expected default code 200, got %d", wrap.code)
+		// Next should be blocked
+		if rl.Allow("test-client") {
+			t.Error("Request should be blocked after exceeding burst")
+		}
+	})
+
+	t.Run("different keys have separate limits", func(t *testing.T) {
+		t.Parallel()
+
+		rl := newRateLimiter(1, 2) // 1 RPS, burst 2
+
+		// Client 1 uses its burst
+		if !rl.Allow("client1") {
+			t.Error("Client1 first request should be allowed")
 		}
 
-		// Write some data to verify the embedded ResponseWriter works
-		_, err := wrap.Write([]byte("test"))
-		if err != nil {
-			t.Errorf("Write failed: %v", err)
+		if !rl.Allow("client1") {
+			t.Error("Client1 second request should be allowed")
 		}
 
-		if w.Body.String() != "test" {
-			t.Errorf("Expected body 'test', got %s", w.Body.String())
+		// Client 2 should still have its full burst available
+		if !rl.Allow("client2") {
+			t.Error("Client2 first request should be allowed")
+		}
+
+		if !rl.Allow("client2") {
+			t.Error("Client2 second request should be allowed")
 		}
 	})
 }
 
-// Test HTTP handler functions with various scenarios.
-func TestHTTPHandlers(t *testing.T) {
+// TestRoutes tests that all routes are properly registered.
+func TestRoutes(t *testing.T) {
 	t.Parallel()
 
-	t.Run("ingest handler", func(t *testing.T) {
-		t.Parallel()
-		testIngestHandler(t)
-	})
-
-	t.Run("API key authentication", func(t *testing.T) {
-		t.Parallel()
-		testAPIKeyAuthentication(t)
-	})
-
-	t.Run("logs list handler", func(t *testing.T) {
-		t.Parallel()
-		testLogsListHandler(t)
-	})
-}
-
-func testIngestHandler(t *testing.T) {
-	t.Helper()
-
-	// Create components
-	st := newMemStore(1000)
-	bus := newBroadcaster()
-	rl := newRateLimiter(50, 100)
-
-	handler := ingestHandler(nil, st, bus, rl)
-
-	t.Run("valid request with JSON content type", func(t *testing.T) {
-		testValidJSONRequest(t, handler)
-	})
-
-	t.Run("reject request without JSON content type", func(t *testing.T) {
-		testInvalidContentType(t, handler)
-	})
-
-	t.Run("accept request with JSON content type and charset", func(t *testing.T) {
-		testJSONWithCharset(t, handler)
-	})
-}
-
-func testValidJSONRequest(t *testing.T, handler http.Handler) {
-	t.Helper()
-
-	// Valid log entry
-	logEntry := map[string]any{
-		"time":   time.Now().UTC().Format(time.RFC3339Nano),
-		"msg":    "test message",
-		"action": "BLOCKED",
-	}
-
-	jsonData, err := json.Marshal(logEntry)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json")
-
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusAccepted {
-		t.Errorf("Expected status %d, got %d", http.StatusAccepted, w.Code)
-	}
-}
-
-func testInvalidContentType(t *testing.T, handler http.Handler) {
-	t.Helper()
-
-	logEntry := map[string]any{
-		"msg":    "test message",
-		"action": "BLOCKED",
-	}
-
-	jsonData, err := json.Marshal(logEntry)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "text/plain") // Wrong content type
-
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusUnsupportedMediaType {
-		t.Errorf("Expected status %d for wrong content type, got %d", http.StatusUnsupportedMediaType, w.Code)
-	}
-}
-
-func testJSONWithCharset(t *testing.T, handler http.Handler) {
-	t.Helper()
-
-	logEntry := map[string]any{
-		"msg":    "test message",
-		"action": "BLOCKED",
-	}
-
-	jsonData, err := json.Marshal(logEntry)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/ingest", bytes.NewReader(jsonData))
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusAccepted {
-		t.Errorf("Expected status %d for JSON with charset, got %d", http.StatusAccepted, w.Code)
-	}
-}
-
-func testAPIKeyAuthentication(t *testing.T) {
-	t.Helper()
-
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ /* r */ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	protectedHandler := apiKeyMiddleware("test-secret-key", testHandler)
+	srv := newTestServer()
+	router := srv.routes()
 
 	tests := []struct {
-		name         string
-		apiKey       string
-		expectedCode int
+		method     string
+		path       string
+		wantStatus int
 	}{
-		{"valid API key", "test-secret-key", http.StatusOK},
-		{"invalid API key", "wrong-key", http.StatusUnauthorized},
-		{"missing API key", "", http.StatusUnauthorized},
+		{http.MethodGet, "/health", http.StatusOK},
+		{http.MethodGet, "/", http.StatusOK}, // UI handler
+
+		// Public endpoints (protected by Traefik in production)
+		{http.MethodGet, "/api/v1/logs", http.StatusOK},
+		{http.MethodDelete, "/api/v1/logs", http.StatusOK},
+		// Note: /api/v1/events is SSE and runs indefinitely, tested separately
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			t.Parallel()
 
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
-			if tt.apiKey != "" {
-				req.Header.Set("X-Api-Key", tt.apiKey)
-			}
-
+			req := httptest.NewRequest(tt.method, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			protectedHandler.ServeHTTP(w, req)
+			router.ServeHTTP(w, req)
 
-			if w.Code != tt.expectedCode {
-				t.Errorf("Expected status %d, got %d", tt.expectedCode, w.Code)
+			if tt.wantStatus > 0 && w.Code != tt.wantStatus {
+				t.Errorf("Status = %d, want %d", w.Code, tt.wantStatus)
+			} else if tt.wantStatus == 0 && w.Code == http.StatusNotFound {
+				t.Errorf("Route %s %s returned 404", tt.method, tt.path)
 			}
 		})
 	}
 }
 
-func testLogsListHandler(t *testing.T) {
-	t.Helper()
+// TestRunValidation tests the Run function's validation.
+func TestRunValidation(t *testing.T) {
+	t.Parallel()
 
-	st := newMemStore(1000)
+	t.Run("missing API key", func(t *testing.T) {
+		t.Parallel()
 
-	// Add a test log entry
+		cfg := Config{
+			APIKey: "",
+		}
+
+		err := Run(context.Background(), cfg)
+		if !errors.Is(err, errAPIKeyRequired) {
+			t.Errorf("Expected errAPIKeyRequired, got %v", err)
+		}
+	})
+
+	t.Run("whitespace-only API key", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := Config{
+			APIKey: "   ",
+		}
+
+		err := Run(context.Background(), cfg)
+		if !errors.Is(err, errAPIKeyRequired) {
+			t.Errorf("Expected errAPIKeyRequired for whitespace key, got %v", err)
+		}
+	})
+}
+
+// BenchmarkProcessPayload benchmarks the payload processing.
+func BenchmarkProcessPayload(b *testing.B) {
+	logger := slog.New(slog.DiscardHandler)
+	srv := &Server{logger: logger}
+
+	payload := map[string]any{
+		"msg":              "test message",
+		"action":           "BLOCKED",
+		"source_ip":        "192.168.1.1",
+		"source_port":      float64(12345),
+		"destination_ip":   "10.0.0.1",
+		"destination_port": float64(80),
+		"protocol":         "TCP",
+		"version":          "1.0.0",
+	}
+
+	b.ResetTimer()
+
+	for range b.N {
+		_ = srv.processPayload(payload, "10.0.0.1")
+	}
+}
+
+// BenchmarkMemStoreInsert benchmarks store insertions.
+func BenchmarkMemStoreInsert(b *testing.B) {
+	store := newMemStore(10000)
+	ctx := context.Background()
+
 	entry := &LogEntry{
-		Time:    time.Now().UTC(),
-		Message: "test message",
-		Action:  "BLOCKED",
+		Time:     time.Now(),
+		Message:  "test message",
+		Action:   "BLOCKED",
+		SourceIP: "192.168.1.1",
 	}
 
-	_, err := st.Insert(context.Background(), entry)
-	if err != nil {
-		t.Fatal(err)
-	}
+	b.ResetTimer()
 
-	handler := listLogsHandler(st, 500)
-
-	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
-	w := httptest.NewRecorder()
-
-	handler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status %d, got %d", http.StatusOK, w.Code)
-	}
-
-	// Parse response
-	var logs []LogEntry
-
-	err = json.Unmarshal(w.Body.Bytes(), &logs)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(logs) != 1 {
-		t.Errorf("Expected 1 log entry, got %d", len(logs))
+	for range b.N {
+		_, _ = store.Insert(ctx, entry)
 	}
 }
 
-// Test error conditions and edge cases.
-func TestErrorConditions(t *testing.T) {
-	t.Parallel()
+// BenchmarkMemStoreQuery benchmarks store queries.
+func BenchmarkMemStoreQuery(b *testing.B) {
+	store := newMemStore(1000)
+	ctx := context.Background()
 
-	t.Run("ingest handler errors", func(t *testing.T) {
-		t.Parallel()
-		testIngestHandlerErrors(t)
-	})
-
-	t.Run("config validation", func(t *testing.T) {
-		t.Parallel()
-		testConfigValidation(t)
-	})
-
-	t.Run("memory store operations", func(t *testing.T) {
-		t.Parallel()
-		testMemoryStoreOperations(t)
-	})
-}
-
-func testIngestHandlerErrors(t *testing.T) {
-	t.Helper()
-
-	st := newMemStore(2)
-	bus := newBroadcaster()
-	rl := newRateLimiter(50, 100)
-
-	// Test invalid JSON
-	t.Run("invalid JSON", func(t *testing.T) {
-		t.Parallel()
-
-		handler := ingestHandler(nil, st, bus, rl)
-
-		req := httptest.NewRequest(http.MethodPost, "/ingest", strings.NewReader("invalid-json"))
-		req.Header.Set("Content-Type", "application/json")
-
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("Expected status %d, got %d", http.StatusBadRequest, w.Code)
-		}
-	})
-
-	// Test wrong HTTP method
-	t.Run("wrong method", func(t *testing.T) {
-		t.Parallel()
-
-		handler := ingestHandler(nil, st, bus, rl)
-
-		req := httptest.NewRequest(http.MethodGet, "/ingest", nil)
-		w := httptest.NewRecorder()
-
-		handler.ServeHTTP(w, req)
-
-		if w.Code != http.StatusMethodNotAllowed {
-			t.Errorf("Expected status %d, got %d", http.StatusMethodNotAllowed, w.Code)
-		}
-	})
-}
-
-func testConfigValidation(t *testing.T) {
-	t.Helper()
-
-	invalidCfg := Config{
-		Addr:     "",
-		APIKey:   "",
-		LogLevel: "",
-	}
-
-	applyConfigDefaults(&invalidCfg)
-
-	if invalidCfg.BufferSize <= 0 {
-		t.Error("Config BufferSize should have positive default value")
-	}
-
-	if invalidCfg.ReadLimit <= 0 {
-		t.Error("Config ReadLimit should have positive default value")
-	}
-}
-
-func testMemoryStoreOperations(t *testing.T) {
-	t.Helper()
-
-	st := newMemStore(5)
-
-	// Test inserting entries
-	for i := range 3 {
-		entry := &LogEntry{
-			Time:    time.Now().UTC(),
-			Message: fmt.Sprintf("test message %d", i),
-			Action:  "BLOCKED",
-		}
-
-		id, err := st.Insert(context.Background(), entry)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if id <= 0 {
-			t.Errorf("Expected positive ID, got %d", id)
-		}
-	}
-
-	// Test querying
-	logs, err := st.Query(context.Background(), "", 0, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(logs) != 3 {
-		t.Errorf("Expected 3 logs, got %d", len(logs))
-	}
-}
-
-// Test rate limiter allow functionality.
-func TestRateLimiterAllow(t *testing.T) {
-	t.Parallel()
-
-	rl := newRateLimiter(2.0, 3.0) // 2 RPS, burst of 3
-
-	// Test that initial requests are allowed
-	for i := range 3 {
-		if !rl.allow("127.0.0.1") {
-			t.Errorf("Expected request %d to be allowed", i)
-		}
-	}
-
-	// The 4th request should be rate limited
-	if rl.allow("127.0.0.1") {
-		t.Error("Expected 4th request to be rate limited")
-	}
-
-	// Different IPs should have independent limits
-	if !rl.allow("192.168.1.1") {
-		t.Error("Expected request from different IP to be allowed")
-	}
-}
-
-// Test functions with 0% coverage.
-func TestRun(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	t.Cleanup(cancel)
-
-	tests := []struct {
-		name      string
-		config    Config
-		expectErr bool
-	}{
-		{
-			name: "missing API key",
-			config: Config{
-				Addr:     ":0",
-				APIKey:   "",
-				LogLevel: "INFO",
-			},
-			expectErr: true,
-		},
-		{
-			name: "valid config",
-			config: Config{
-				Addr:     ":0",
-				APIKey:   "test-key-123",
-				LogLevel: "INFO",
-			},
-			expectErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			err := Run(ctx, tt.config)
-
-			if tt.expectErr {
-				if err == nil {
-					t.Error("Expected error but got nil")
-				}
-			} else {
-				// For valid config, we expect context timeout since server would start
-				if err != nil && !errors.Is(err, context.DeadlineExceeded) {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			}
+	// Populate store
+	for range 1000 {
+		_, _ = store.Insert(ctx, &LogEntry{
+			Time:     time.Now(),
+			Message:  "test message",
+			Action:   "BLOCKED",
+			SourceIP: "192.168.1.1",
 		})
 	}
-}
 
-func TestWithCommon(t *testing.T) {
-	t.Parallel()
+	b.ResetTimer()
 
-	// Import needed for logger
-	logger := slog.Default()
-
-	// Create a test handler
-	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("test response"))
-	})
-
-	// Wrap it with withCommon
-	wrappedHandler := withCommon(logger, testHandler)
-
-	// Test the wrapped handler
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
-	w := httptest.NewRecorder()
-
-	wrappedHandler.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
-	}
-
-	// Check that the response was written
-	body := w.Body.String()
-	if body != "test response" {
-		t.Errorf("Expected 'test response', got %s", body)
+	for range b.N {
+		_, _ = store.Query(ctx, "", 0, 100)
 	}
 }
 
-func TestFlush(t *testing.T) {
+// TestBroadcaster tests the SSE broadcaster.
+func TestBroadcaster(t *testing.T) {
 	t.Parallel()
 
-	// Create a response writer wrapper
-	w := httptest.NewRecorder()
-	wrapper := &respWrap{
-		ResponseWriter: w,
+	bc := newBroadcaster()
+
+	// Create a subscriber
+	ch := bc.Add()
+
+	// Send a message
+	testMsg := []byte("test message")
+	bc.Send(testMsg)
+
+	// Verify we receive it
+	select {
+	case msg := <-ch:
+		if string(msg) != string(testMsg) {
+			t.Errorf("Received %s, want %s", msg, testMsg)
+		}
+	case <-time.After(1 * time.Second):
+		t.Error("Timeout waiting for broadcast message")
 	}
 
-	// Test Flush method
-	wrapper.Flush()
-	// Verify it doesn't panic and can be called
-	// The actual flush behavior depends on the underlying ResponseWriter
-}
+	// Remove subscriber
+	bc.Remove(ch)
 
-func TestHijack(t *testing.T) {
-	t.Parallel()
-
-	// Create a mock connection that can be hijacked
-	w := httptest.NewRecorder()
-	wrapper := &respWrap{
-		ResponseWriter: w,
-	}
-
-	// Test Hijack method
-	_, _, err := wrapper.Hijack()
-
-	// For httptest.ResponseRecorder, Hijack is not supported
-	// so we expect an error, but the method should not panic
-	if err == nil {
-		t.Log("Hijack unexpectedly succeeded")
-	} else {
-		t.Logf("Hijack failed as expected: %v", err)
-	}
-}
-
-func TestPush(t *testing.T) {
-	t.Parallel()
-
-	w := httptest.NewRecorder()
-	wrapper := &respWrap{
-		ResponseWriter: w,
-	}
-
-	// Test Push method
-	err := wrapper.Push("/test-resource", nil)
-
-	// For httptest.ResponseRecorder, Push is not supported
-	// but the method should not panic
-	if err == nil {
-		t.Log("Push unexpectedly succeeded")
-	} else {
-		t.Logf("Push failed as expected: %v", err)
+	// Verify channel is closed after removal
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Error("Channel should be closed after removal")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Channel should be closed immediately after removal")
 	}
 }
 
-func TestIntFrom(t *testing.T) {
+// TestBroadcasterMultipleClients tests broadcasting to multiple clients.
+func TestBroadcasterMultipleClients(t *testing.T) {
 	t.Parallel()
 
-	tests := getIntFromTestCases()
+	bc := newBroadcaster()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	// Create multiple subscribers
+	ch1 := bc.Add()
+	ch2 := bc.Add()
+	ch3 := bc.Add()
 
-			result := intFrom(tt.m, tt.k)
-			if result != tt.expected {
-				t.Errorf("intFrom(%v, %q) = %d, want %d", tt.m, tt.k, result, tt.expected)
+	// Send a message
+	testMsg := []byte("broadcast to all")
+	bc.Send(testMsg)
+
+	// Verify all receive it
+	for i, ch := range []chan []byte{ch1, ch2, ch3} {
+		select {
+		case msg := <-ch:
+			if string(msg) != string(testMsg) {
+				t.Errorf("Client %d received %s, want %s", i+1, msg, testMsg)
 			}
-		})
+		case <-time.After(1 * time.Second):
+			t.Errorf("Client %d timeout waiting for message", i+1)
+		}
 	}
+
+	// Cleanup
+	bc.Remove(ch1)
+	bc.Remove(ch2)
+	bc.Remove(ch3)
 }
 
-func getIntFromTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected int
-} {
-	var cases []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected int
-	}
+// TestMain can be used for setup/teardown if needed.
+func TestMain(m *testing.M) {
+	// Suppress logger output during tests
+	slog.SetDefault(slog.New(slog.DiscardHandler))
 
-	cases = append(cases, getIntFromBasicTestCases()...)
-	cases = append(cases, getIntFromNumericTestCases()...)
-	cases = append(cases, getIntFromEdgeTestCases()...)
-
-	return cases
-}
-
-func getIntFromBasicTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected int
-} {
-	return []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected int
-	}{
-		{
-			name:     "nil map",
-			m:        nil,
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "key not found",
-			m:        map[string]any{"other": 123},
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "nil value",
-			m:        map[string]any{"test": nil},
-			k:        "test",
-			expected: 0,
-		},
-	}
-}
-
-func getIntFromNumericTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected int
-} {
-	return []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected int
-	}{
-		{
-			name:     "int value",
-			m:        map[string]any{"test": 42},
-			k:        "test",
-			expected: 42,
-		},
-		{
-			name:     "negative int value",
-			m:        map[string]any{"test": -15},
-			k:        "test",
-			expected: -15,
-		},
-		{
-			name:     "float64 value",
-			m:        map[string]any{"test": 3.14},
-			k:        "test",
-			expected: 3,
-		},
-		{
-			name:     "float64 negative value",
-			m:        map[string]any{"test": -2.8},
-			k:        "test",
-			expected: -2,
-		},
-	}
-}
-
-func getIntFromEdgeTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected int
-} {
-	return []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected int
-	}{
-		{
-			name:     "string numeric value",
-			m:        map[string]any{"test": "123"},
-			k:        "test",
-			expected: 123,
-		},
-		{
-			name:     "string non-numeric value",
-			m:        map[string]any{"test": "abc"},
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "string empty value",
-			m:        map[string]any{"test": ""},
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "bool value",
-			m:        map[string]any{"test": true},
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "slice value",
-			m:        map[string]any{"test": []int{1, 2, 3}},
-			k:        "test",
-			expected: 0,
-		},
-		{
-			name:     "map value",
-			m:        map[string]any{"test": map[string]int{"nested": 42}},
-			k:        "test",
-			expected: 0,
-		},
-	}
-}
-
-func TestStrFrom(t *testing.T) {
-	t.Parallel()
-
-	tests := getStrFromTestCases()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := strFrom(tt.m, tt.k)
-			if result != tt.expected {
-				t.Errorf("strFrom(%v, %q) = %q, want %q", tt.m, tt.k, result, tt.expected)
-			}
-		})
-	}
-}
-
-func getStrFromTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected string
-} {
-	var cases []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected string
-	}
-
-	cases = append(cases, getStrFromBasicTestCases()...)
-	cases = append(cases, getStrFromTypeTestCases()...)
-
-	return cases
-}
-
-func getStrFromBasicTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected string
-} {
-	return []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected string
-	}{
-		{
-			name:     "nil map",
-			m:        nil,
-			k:        "test",
-			expected: "",
-		},
-		{
-			name:     "key not found",
-			m:        map[string]any{"other": "value"},
-			k:        "test",
-			expected: "",
-		},
-		{
-			name:     "nil value",
-			m:        map[string]any{"test": nil},
-			k:        "test",
-			expected: "",
-		},
-		{
-			name:     "string value",
-			m:        map[string]any{"test": "hello"},
-			k:        "test",
-			expected: "hello",
-		},
-		{
-			name:     "empty string value",
-			m:        map[string]any{"test": ""},
-			k:        "test",
-			expected: "",
-		},
-	}
-}
-
-func getStrFromTypeTestCases() []struct {
-	name     string
-	m        map[string]any
-	k        string
-	expected string
-} {
-	return []struct {
-		name     string
-		m        map[string]any
-		k        string
-		expected string
-	}{
-		{
-			name:     "int value",
-			m:        map[string]any{"test": 42},
-			k:        "test",
-			expected: "42",
-		},
-		{
-			name:     "bool value",
-			m:        map[string]any{"test": true},
-			k:        "test",
-			expected: "true",
-		},
-		{
-			name:     "float value",
-			m:        map[string]any{"test": 3.14},
-			k:        "test",
-			expected: "3.14",
-		},
-		{
-			name:     "slice value",
-			m:        map[string]any{"test": []int{1, 2, 3}},
-			k:        "test",
-			expected: "[1 2 3]",
-		},
-	}
+	os.Exit(m.Run())
 }

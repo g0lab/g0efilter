@@ -57,7 +57,7 @@ main{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding:10px 
 }
 .table th{
   color:#cbd5e1;font-weight:600;background:#0f172a;position:sticky;top:0;z-index:5;
-  text-align:left; /* ← add this */
+  text-align:left;
 }
 .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
 
@@ -97,8 +97,7 @@ input[type="search"]{min-width:220px}
     </label>
     <input id="search" type="search" placeholder="Search host/SNI/src/dst/flow_id/hostname…" />
     <button id="apply" class="primary">Apply</button>
-    <input id="apiKey" placeholder="API key (for clear)" size="16" type="password"/>
-    <button id="clearBtn" title="requires API key">Clear</button>
+    <button id="clearBtn" title="Clear all logs">Clear Logs</button>
   </div>
   <div class="tabs">
     <button class="tab active" id="tabStream">Stream</button>
@@ -119,6 +118,7 @@ input[type="search"]{min-width:220px}
           <col style="width:240px">  <!-- Dst -->
           <col style="width:180px">  <!-- Hostname -->
           <col style="width:120px">  <!-- Flow ID -->
+          <col style="width:100px">  <!-- Version -->
           <col style="width:200px">  <!-- Time -->
         </colgroup>
         <thead>
@@ -130,6 +130,7 @@ input[type="search"]{min-width:220px}
             <th>Dst</th>
             <th>Hostname</th>
             <th>Flow ID</th>
+            <th>Version</th>
             <th>Time</th>
           </tr>
         </thead>
@@ -193,8 +194,8 @@ function setView(v){
   VIEW = v; localStorage.setItem('view', v);
   tabStream.classList.toggle('active', v==='stream');
   tabAgg.classList.toggle('active', v==='agg');
-  streamView.style.display = (v==='stream')?'block':'none';
-  aggView.style.display = (v==='agg')?'block':'none';
+  streamView.style.display = (v==='stream')?'flex':'none';
+  aggView.style.display = (v==='agg')?'flex':'none';
 }
 setView(VIEW);
 tabStream.onclick = function(){
@@ -209,10 +210,8 @@ tabAgg.onclick = function(){
 /* controls */
 document.getElementById('apply').onclick = function(){ renderStream(true); if(VIEW==='agg') renderAgg(); };
 document.getElementById('clearBtn').onclick = async function(){
-  var key = (apiKeyEl.value||'').trim();
-  if(!key){ alert('Enter API key'); return; }
   if(!confirm('Clear all logs?')) return;
-  await fetch('/logs/clear', {method:'POST', headers:{'X-Api-Key': key}});
+  await fetch('/api/v1/logs', {method:'DELETE'});
   streamBody.innerHTML=''; allItems.length=0; renderAgg();
 };
 autoRefreshEl.addEventListener('change', function(){
@@ -232,6 +231,7 @@ function dstOf(it){if(it&&it.dst)return it.dst; if(it&&it.destination_ip&&it.des
 function srcOf(it){if(it&&it.src)return it.src; if(it&&it.source_ip&&it.source_port)return it.source_ip+':'+it.source_port; return it&&it.source_ip?it.source_ip:'';}
 function hostnameOf(it){return it.hostname || ((it.fields&&it.fields.hostname)||'');}
 function flowIdOf(it){return it.flow_id || ((it.fields&&it.fields.flow_id)||'');}
+function versionOf(it){return it.version || ((it.fields&&it.fields.version)||'');}
 
 /* filter */
 function matches(it){
@@ -241,7 +241,7 @@ function matches(it){
   var act=getAction(it); if(aSel && act!==aSel) return false;
   var comp=getComp(it); if(cSel && comp!==cSel) return false;
   if(!q) return true;
-  var hay=[act, comp, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), flowIdOf(it)].join(' ').toLowerCase();
+  var hay=[act, comp, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), flowIdOf(it), versionOf(it)].join(' ').toLowerCase();
   return hay.indexOf(q)!==-1;
 }
 
@@ -255,6 +255,7 @@ function rowHTML(it){
   var dst  = dstOf(it);
   var hn   = hostnameOf(it);
   var fid  = flowIdOf(it);
+  var ver  = versionOf(it);
   var when = it.time || it.ts || new Date().toISOString();
   var badge = 'badge-'+act;
   return '<tr>' +
@@ -265,6 +266,7 @@ function rowHTML(it){
     '<td class="mono">'+esc(dst)+'</td>' +
     '<td>'+esc(hn)+'</td>' +
     '<td class="mono">'+esc(fid)+'</td>' +
+    '<td class="mono">'+esc(ver)+'</td>' +
     '<td><small>'+esc(new Date(when).toLocaleString())+' <span style="opacity:.6">('+esc(rel(when))+' ago)</span></small></td>' +
   '</tr>';
 }
@@ -338,7 +340,7 @@ document.getElementById('aggRefresh').onclick=function(){ renderAgg(); };
 
 /* --- data load (backfill from memory store) --- */
 async function reload(){
-  var res = await fetch('/logs?limit=500');
+  var res = await fetch('/api/v1/logs?limit=500');
   var items = await res.json();
   for(var i=0;i<items.length;i++) items[i]=norm(items[i]);
   allItems = items;
@@ -350,7 +352,7 @@ async function reload(){
 var es=null;
 function connectSSE(){
   disconnectSSE();
-  es = new EventSource('/events');
+  es = new EventSource('/api/v1/events');
   es.onmessage = function(ev){
     try{
       var it = JSON.parse(ev.data);

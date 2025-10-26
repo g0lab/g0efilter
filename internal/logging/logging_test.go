@@ -582,6 +582,7 @@ func TestBuildDashboardPayload(t *testing.T) {
 	t.Parallel()
 
 	hostname := "test-host"
+	version := "test-version"
 	rTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	rMsg := "test message"
 	act := actionBlocked
@@ -591,7 +592,7 @@ func TestBuildDashboardPayload(t *testing.T) {
 		"protocol":    "TCP",
 	}
 
-	payload := buildDashboardPayload(hostname, rTime, rMsg, act, attrs)
+	payload := buildDashboardPayload(hostname, version, rTime, rMsg, act, attrs)
 
 	// Check required fields
 	requiredFields := map[string]interface{}{
@@ -630,7 +631,7 @@ func TestNewWithFormat(t *testing.T) {
 
 			var buf bytes.Buffer
 
-			logger := NewWithFormat(tt.level, tt.format, &buf, tt.addSource)
+			logger := NewWithFormat(tt.level, tt.format, &buf, tt.addSource, "test-version")
 
 			if logger == nil {
 				t.Fatal("NewWithFormat() returned nil logger")
@@ -1008,7 +1009,7 @@ func TestShipToDashboard_ActionFilter(t *testing.T) {
 	for _, act := range allowed {
 		p, ch := mkPoster()
 		attrs := map[string]any{"action": act}
-		shipToDashboard(p, "host", time.Now(), "msg", attrs)
+		shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
 
 		select {
 		case <-ch:
@@ -1021,7 +1022,7 @@ func TestShipToDashboard_ActionFilter(t *testing.T) {
 	// Disallowed action should not enqueue
 	p, ch := mkPoster()
 	attrs := map[string]any{"action": "OTHER"}
-	shipToDashboard(p, "host", time.Now(), "msg", attrs)
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
 
 	select {
 	case <-ch:
@@ -1299,7 +1300,7 @@ func TestNewWithContext_DashboardIntegration(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	logger := NewWithContext(context.Background(), "DEBUG", "json", &buf, false)
+	logger := NewWithContext(context.Background(), "DEBUG", "json", &buf, false, "test-version")
 
 	if logger == nil {
 		t.Fatal("NewWithContext() returned nil logger")
@@ -1314,7 +1315,7 @@ func TestNewWithContext_LogFile(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	logger := NewWithContext(context.Background(), "INFO", "json", &buf, false)
+	logger := NewWithContext(context.Background(), "INFO", "json", &buf, false, "test-version")
 
 	if logger == nil {
 		t.Fatal("NewWithContext() returned nil logger with LOG_FILE")
@@ -1358,7 +1359,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 	t.Run("empty hostname", func(t *testing.T) {
 		t.Parallel()
 
-		payload := buildDashboardPayload("", rTime, "msg", "BLOCKED", map[string]any{})
+		payload := buildDashboardPayload("", "", rTime, "msg", "BLOCKED", map[string]any{})
 		if _, exists := payload["hostname"]; exists {
 			t.Error("Expected no hostname field for empty hostname")
 		}
@@ -1369,7 +1370,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 
 		attrs := map[string]any{"hostname": "attr-host"}
 
-		payload := buildDashboardPayload("param-host", rTime, "msg", "BLOCKED", attrs)
+		payload := buildDashboardPayload("param-host", "test-version", rTime, "msg", "BLOCKED", attrs)
 		if payload["hostname"] != "attr-host" {
 			t.Errorf("Expected hostname from attrs, got %v", payload["hostname"])
 		}
@@ -1380,7 +1381,7 @@ func TestBuildDashboardPayload_HostnameHandling(t *testing.T) {
 
 		attrs := map[string]any{"hostname": ""}
 
-		payload := buildDashboardPayload("param-host", rTime, "msg", "BLOCKED", attrs)
+		payload := buildDashboardPayload("param-host", "test-version", rTime, "msg", "BLOCKED", attrs)
 		if payload["hostname"] != "param-host" {
 			t.Errorf("Expected param hostname, got %v", payload["hostname"])
 		}

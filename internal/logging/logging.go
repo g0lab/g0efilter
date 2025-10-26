@@ -484,6 +484,7 @@ type zerologHandler struct {
 	termLevel slog.Level
 	poster    *poster
 	hostname  string
+	version   string
 	notifier  *alerting.Notifier
 }
 
@@ -520,7 +521,7 @@ var dashboardKeys = []string{ //nolint:gochecknoglobals
 	"qname", "qtype", "rcode", // DNS
 	"reason", "note", // context
 	"src", "dst", // 5-tuple strings
-	"hostname", "flow_id",
+	"hostname", "flow_id", "version",
 }
 
 func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
@@ -539,7 +540,7 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 
 	// Ship action events to the dashboard if configured
 	if z.poster != nil {
-		shipToDashboard(z.poster, z.hostname, record.Time, record.Message, attrs)
+		shipToDashboard(z.poster, z.hostname, z.version, record.Time, record.Message, attrs)
 	}
 
 	// Alerting feature - send notifications for BLOCKED events
@@ -579,7 +580,7 @@ func logToTerminal(zl zerolog.Logger, level slog.Level, msg string, attrs map[st
 }
 
 func shipToDashboard(
-	poster *poster, hostname string, rTime time.Time, rMsg string, attrs map[string]any,
+	poster *poster, hostname string, version string, rTime time.Time, rMsg string, attrs map[string]any,
 ) {
 	act := ""
 
@@ -591,7 +592,7 @@ func shipToDashboard(
 		return
 	}
 
-	payload := buildDashboardPayload(hostname, rTime, rMsg, act, attrs)
+	payload := buildDashboardPayload(hostname, version, rTime, rMsg, act, attrs)
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -740,8 +741,11 @@ func normalizeAttributeKeys(attrs map[string]any) {
 	}
 }
 
+// buildDashboardPayload constructs a payload map for dashboard logging.
+//
+//nolint:cyclop
 func buildDashboardPayload(
-	hostname string, rTime time.Time, rMsg, act string, attrs map[string]any,
+	hostname string, version string, rTime time.Time, rMsg, act string, attrs map[string]any,
 ) map[string]any {
 	payload := map[string]any{
 		"producer_time": rTime.Format(time.RFC3339Nano),
@@ -757,6 +761,13 @@ func buildDashboardPayload(
 	if hostname != "" {
 		if _, ok := attrs["hostname"]; !ok || fmt.Sprint(attrs["hostname"]) == "" {
 			payload["hostname"] = hostname
+		}
+	}
+
+	// Include client version if available
+	if version != "" {
+		if _, ok := attrs["version"]; !ok || fmt.Sprint(attrs["version"]) == "" {
+			payload["version"] = version
 		}
 	}
 
@@ -794,6 +805,7 @@ func (z *zerologHandler) WithAttrs(a []slog.Attr) slog.Handler {
 		termLevel: z.termLevel,
 		poster:    z.poster,
 		hostname:  z.hostname,
+		version:   z.version,
 		notifier:  z.notifier,
 	}
 }
@@ -810,7 +822,9 @@ func (z *zerologHandler) WithGroup(name string) slog.Handler {
 // Format and addSource are kept for API compatibility.
 //
 //nolint:cyclop,funlen
-func NewWithContext(ctx context.Context, level, format string, out io.Writer, addSource bool) *slog.Logger {
+func NewWithContext(
+	ctx context.Context, level, format string, out io.Writer, addSource bool, version string,
+) *slog.Logger {
 	_ = format
 	_ = addSource
 
@@ -876,7 +890,7 @@ func NewWithContext(ctx context.Context, level, format string, out io.Writer, ad
 			dhost = "http://" + dhost
 		}
 
-		durl := strings.TrimRight(dhost, "/") + "/ingest"
+		durl := strings.TrimRight(dhost, "/") + "/api/v1/logs"
 		dapi := strings.TrimSpace(os.Getenv("DASHBOARD_API_KEY"))
 		debugEnabled := lvl <= slog.LevelDebug
 		traceEnabled := lvl <= LevelTrace
@@ -902,23 +916,23 @@ func NewWithContext(ctx context.Context, level, format string, out io.Writer, ad
 	notifier := alerting.NewNotifier()
 
 	// Bridge into slog
-	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname, notifier: notifier}
+	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname, version: version, notifier: notifier}
 
 	return slog.New(h)
 }
 
 // NewWithFormat builds a slog.Logger using defaults, delegating to NewWithContext with a background context.
-func NewWithFormat(level, format string, out io.Writer, addSource bool) *slog.Logger {
-	return NewWithContext(context.Background(), level, format, out, addSource)
+func NewWithFormat(level, format string, out io.Writer, addSource bool, version string) *slog.Logger {
+	return NewWithContext(context.Background(), level, format, out, addSource, version)
 }
 
 // NewFromEnv creates a logger from environment variables.
 func NewFromEnv() *slog.Logger {
-	return NewWithFormat(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"), os.Stdout, false)
+	return NewWithFormat(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"), os.Stdout, false, "")
 }
 
 // New returns a logger with the provided level.
-func New(l string) *slog.Logger { return NewWithFormat(l, "json", os.Stdout, false) }
+func New(l string) *slog.Logger { return NewWithFormat(l, "json", os.Stdout, false, "") }
 
 // Shutdown stops the default poster and waits up to timeout.
 func Shutdown(timeout time.Duration) {

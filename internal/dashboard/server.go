@@ -1,16 +1,16 @@
 // Package dashboard provides the web UI and HTTP API server.
 //
-//nolint:tagliatelle,funlen,lll,noinlineerr
+//nolint:tagliatelle,noinlineerr
 package dashboard
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,37 +20,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 var (
-	errAPIKeyRequired       = errors.New("API_KEY is required")
-	errHijackerNotSupported = errors.New("hijacker not supported")
-
-	// Validation errors.
-	errMsgFieldRequired    = errors.New("missing required field: msg")
-	errMsgTooLong          = errors.New("message too long (max 1000 chars)")
-	errMsgMustBeString     = errors.New("msg must be a string")
-	errActionFieldRequired = errors.New("missing required field: action")
-	errActionCannotBeEmpty = errors.New("action cannot be empty")
-	errActionMustBeString  = errors.New("action must be a string")
-	errActionInvalid       = errors.New("invalid action")
-	errFieldMustBeNumber   = errors.New("field must be a number")
-	errFieldOutOfRange     = errors.New("field must be between 0-65535")
-	errFieldTooLong        = errors.New("field too long")
-
-	// API key validation errors.
-	errAPIKeyNotConfigured = errors.New("API key not configured")
-	errAPIKeyTooShort      = errors.New("API key too short")
-	errAPIKeyInvalidLength = errors.New("invalid API key length")
-	errAPIKeyInvalid       = errors.New("invalid API key")
+	errAPIKeyRequired = errors.New("API_KEY is required")
 )
 
 // Config holds the dashboard server configuration.
 type Config struct {
 	Addr         string  // ":8081"
-	APIKey       string  // required for /ingest and /logs/clear
+	APIKey       string  // required for POST /api/v1/logs and DELETE /api/v1/logs
 	LogLevel     string  // "INFO"
 	LogFormat    string  // "json"
 	BufferSize   int     // optional (default 5000)
@@ -59,12 +41,25 @@ type Config struct {
 	RateRPS      float64 // optional (default 50)
 	RateBurst    float64 // optional (default 100)
 	WriteTimeout int     // optional (default 0 = no timeout) - HTTP write timeout in seconds
+	Version      string  // optional - dashboard version for logging
+}
+
+// Server holds all dependencies for HTTP handlers.
+type Server struct {
+	logger       *slog.Logger
+	store        LogStore         // Interface instead of concrete *memStore
+	broadcaster  EventBroadcaster // Interface instead of concrete *broadcaster
+	apiKey       string
+	readLimit    int
+	sseRetry     time.Duration
+	rateLimiter  RateLimiter // Interface instead of concrete *rateLimiter
+	adminLimiter RateLimiter
 }
 
 // normalizeConfig applies defaults to unset config fields.
 func normalizeConfig(cfg *Config) {
 	if cfg.BufferSize <= 0 {
-		cfg.BufferSize = 5000
+		cfg.BufferSize = 10000
 	}
 
 	if cfg.ReadLimit <= 0 {
@@ -88,9 +83,8 @@ func normalizeConfig(cfg *Config) {
 	}
 }
 
-// Run starts the dashboard HTTP server.
-//
-//nolint:funlen
+// Run starts the dashboard HTTP server with the provided configuration.
+// It validates the API key, normalizes config, and starts the HTTP listener.
 func Run(ctx context.Context, cfg Config) error {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return errAPIKeyRequired
@@ -99,24 +93,16 @@ func Run(ctx context.Context, cfg Config) error {
 	normalizeConfig(&cfg)
 
 	// Logger
-	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
+	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false, cfg.Version)
 	slog.SetDefault(lg)
 
-	// In-memory store + SSE bus
-	st := newMemStore(cfg.BufferSize)
-	bus := newBroadcaster()
+	// Create server with all dependencies
+	srv := newServer(lg, cfg)
 
-	// Router / server
-	mux := newMux(
-		lg, st, bus,
-		cfg.APIKey,
-		cfg.ReadLimit,
-		time.Duration(cfg.SERetryMs)*time.Millisecond,
-		cfg.RateRPS, cfg.RateBurst,
-	)
-	srv := &http.Server{
+	// HTTP server
+	httpSrv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           withCommon(lg, mux),
+		Handler:           srv.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      time.Duration(cfg.WriteTimeout) * time.Second,
@@ -135,7 +121,7 @@ func Run(ctx context.Context, cfg Config) error {
 	errCh := make(chan error, 1)
 
 	go func() {
-		e := srv.Serve(listener)
+		e := httpSrv.Serve(listener)
 		if !errors.Is(e, http.ErrServerClosed) {
 			errCh <- e
 		}
@@ -146,7 +132,7 @@ func Run(ctx context.Context, cfg Config) error {
 		shCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 
-		_ = srv.Shutdown(shCtx)
+		_ = httpSrv.Shutdown(shCtx)
 
 		lg.Info("dashboard.shutdown")
 
@@ -186,6 +172,7 @@ type LogEntry struct {
 	Hostname        string `json:"hostname,omitempty"`
 	Src             string `json:"src,omitempty"`
 	Dst             string `json:"dst,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 
 /* =========================
@@ -286,10 +273,7 @@ func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) 
 			continue
 		}
 
-		// Enrich the entry with convenience fields
-		s.enrichLogEntry(&it)
 		out = append(out, it)
-
 		seen++
 		idx = s.prevIndex(idx)
 	}
@@ -327,376 +311,196 @@ func (s *memStore) prevIndex(idx int) int {
 	return idx - 1
 }
 
-// enrichLogEntry extracts and populates flattened fields from the Fields JSON for API convenience.
-func (s *memStore) enrichLogEntry(it *LogEntry) {
-	var m map[string]any
-
-	_ = json.Unmarshal(it.Fields, &m)
-
-	it.Action = strFrom(m, "action")
-	it.Protocol = strFrom(m, "protocol")
-	it.PolicyHit = strFrom(m, "policy_hit")
-	it.PayloadLen = intFrom(m, "payload_len")
-	it.TenantID = strFrom(m, "tenant_id")
-	it.SourceIP = strFrom(m, "source_ip")
-	it.SourcePort = intFrom(m, "source_port")
-	it.DestinationIP = strFrom(m, "destination_ip")
-	it.DestinationPort = intFrom(m, "destination_port")
-	it.SNI = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"), strFrom(m, "sni"), strFrom(m, "qname"))
-	it.HTTPHost = firstNonEmpty(strFrom(m, "http_host"), strFrom(m, "host"))
-	it.FlowID = strFrom(m, "flow_id")
-	it.Hostname = strFrom(m, "hostname")
-	it.Src = strFrom(m, "src")
-	it.Dst = strFrom(m, "dst")
-
-	if it.Protocol == "" {
-		comp := strings.ToLower(strFrom(m, "component"))
-		switch comp {
-		case "http", "sni":
-			it.Protocol = "TCP"
-		case "dns":
-			it.Protocol = "UDP"
-		}
-	}
-}
-
 /* =========================
    Router
    ========================= */
 
-// newMux creates the HTTP router with all API and UI endpoints configured.
-func newMux(lg *slog.Logger, st *memStore, bus *broadcaster, apiKey string, defaultReadLimit int, sseRetry time.Duration, rateRPS, rateBurst float64) *http.ServeMux {
-	mux := http.NewServeMux()
-
-	// per-IP rate limiter for /ingest
-	rl := newRateLimiter(rateRPS, rateBurst)
-
-	// More restrictive rate limiter for sensitive operations
-	adminRL := newRateLimiter(1.0, 5.0) // 1 req/sec, burst of 5
-
-	// UI + health
-	mux.Handle("/", IndexHandler(sseRetry))
-	mux.Handle("/healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
-	}))
-
-	// Public reads
-	mux.Handle("/logs", listLogsHandler(st, defaultReadLimit))
-	mux.Handle("/events", sseHandler(bus, sseRetry))
-
-	// Protected writes
-	mux.Handle("/ingest", apiKeyMiddleware(apiKey, ingestHandler(lg, st, bus, rl)))
-	mux.Handle("/logs/clear", apiKeyMiddleware(apiKey, rateLimitMiddleware(adminRL, clearLogsHandler(lg, st, bus))))
-
-	return mux
+// newServer creates a new Server with all dependencies initialized.
+func newServer(lg *slog.Logger, cfg Config) *Server {
+	return &Server{
+		logger:       lg,
+		store:        newMemStore(cfg.BufferSize),
+		broadcaster:  newBroadcaster(),
+		apiKey:       cfg.APIKey,
+		readLimit:    cfg.ReadLimit,
+		sseRetry:     time.Duration(cfg.SERetryMs) * time.Millisecond,
+		rateLimiter:  newRateLimiter(cfg.RateRPS, cfg.RateBurst),
+		adminLimiter: newRateLimiter(1.0, 5.0),
+	}
 }
 
-// rateLimitMiddleware applies rate limiting to an HTTP handler.
-func rateLimitMiddleware(rl *rateLimiter, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := remoteIP(r)
-		if !rl.allow(ip) {
-			http.Error(w, "rate limited", http.StatusTooManyRequests)
+// routes configures all HTTP routes and middleware.
+func (s *Server) routes() http.Handler {
+	r := chi.NewRouter()
 
-			return
-		}
+	// Global middleware stack
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(s.loggerMiddleware())
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
 
-		next.ServeHTTP(w, r)
+	// Public routes
+	r.Get("/", IndexHandler(s.sseRetry).ServeHTTP)
+	r.Get("/health", s.healthHandler)
+
+	// API v1 routes
+	r.Route("/api/v1", func(r chi.Router) {
+		// Public endpoints
+		r.Get("/logs", s.listLogsHandler)
+		r.Get("/events", s.sseHandler)
+		r.Delete("/logs", s.clearLogsHandler)
+
+		// Protected endpoints (require API key + rate limiting for remote log ingestion)
+		r.Group(func(r chi.Router) {
+			r.Use(s.requireAPIKey())
+			r.Use(s.rateLimitMiddleware(s.rateLimiter))
+			r.Use(middleware.AllowContentType("application/json"))
+			r.Post("/logs", s.ingestHandler)
+		})
 	})
+
+	return r
+}
+
+// loggerMiddleware logs HTTP requests with structured logging.
+func (s *Server) loggerMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+
+			defer func() {
+				if s.logger != nil {
+					s.logger.Debug("http.req",
+						"method", r.Method,
+						"path", r.URL.Path,
+						"remote", r.RemoteAddr,
+						"code", ww.Status(),
+						"bytes", ww.BytesWritten(),
+						"duration", time.Since(start).String(),
+					)
+				}
+			}()
+
+			next.ServeHTTP(ww, r)
+		})
+	}
+}
+
+// requireAPIKey validates the X-Api-Key header (Chi middleware).
+func (s *Server) requireAPIKey() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got := r.Header.Get("X-Api-Key")
+			if subtle.ConstantTimeCompare([]byte(got), []byte(s.apiKey)) != 1 {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// rateLimitMiddleware applies per-IP rate limiting (Chi middleware).
+func (s *Server) rateLimitMiddleware(rl RateLimiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !rl.Allow(r.RemoteAddr) {
+				http.Error(w, `{"error":"rate limited"}`, http.StatusTooManyRequests)
+
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 /* =========================
    Handlers
    ========================= */
 
+// healthHandler handles health check requests.
+func (s *Server) healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"service": "g0efilter-dashboard",
+	}); err != nil {
+		s.logger.Error("failed to encode health response", "error", err)
+	}
+}
+
 // ingestHandler processes incoming log events and stores them in the buffer.
-func ingestHandler(lg *slog.Logger, st *memStore, bus *broadcaster, rl *rateLimiter) http.Handler {
+func (s *Server) ingestHandler(w http.ResponseWriter, r *http.Request) {
 	const maxBody = 1 << 20 // 1 MiB
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !validateIngestRequest(w, r, rl) {
-			return
-		}
-
-		payloads, ok := parseRequestBody(w, r, maxBody)
-		if !ok {
-			return
-		}
-
-		results := processPayloads(r.Context(), lg, st, bus, payloads, remoteIP(r))
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(results)
-	})
-}
-
-// validateIngestRequest validates HTTP method, content type, and rate limit for ingest requests.
-func validateIngestRequest(w http.ResponseWriter, r *http.Request, rl *rateLimiter) bool {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-
-		return false
-	}
-
-	// Validate Content-Type to prevent CSRF attacks
-	contentType := r.Header.Get("Content-Type")
-	if contentType != "application/json" && !strings.HasPrefix(contentType, "application/json;") {
-		http.Error(w, "unsupported content type", http.StatusUnsupportedMediaType)
-
-		return false
-	}
-
-	ip := remoteIP(r)
-	if !rl.allow(ip) {
-		http.Error(w, "rate limited", http.StatusTooManyRequests)
-
-		return false
-	}
-
-	return true
-}
-
-// parseRequestBody reads and validates the JSON request body, returning array of log payloads.
-func parseRequestBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]map[string]any, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
 	defer func() { _ = r.Body.Close() }()
 
-	buf := new(bytes.Buffer)
-	_, _ = buf.ReadFrom(r.Body)
+	// Read body once into memory
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, `{"error":"failed to read body"}`, http.StatusBadRequest)
 
-	raw := buf.Bytes()
-	if len(raw) == 0 {
-		http.Error(w, "empty body", http.StatusBadRequest)
-
-		return nil, false
+		return
 	}
 
-	// Additional size validation
-	if len(raw) > int(maxBody) {
-		http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+	var payloads []map[string]any
 
-		return nil, false
-	}
-
-	payloads := make([]map[string]any, 0)
-	if b := bytes.TrimSpace(raw); len(b) > 0 && b[0] == '[' {
-		err := json.Unmarshal(b, &payloads)
-		if err != nil {
-			http.Error(w, "bad json array", http.StatusBadRequest)
-
-			return nil, false
-		}
-	} else {
+	// Try array first
+	if err := json.Unmarshal(body, &payloads); err != nil {
+		// Try single object
 		var obj map[string]any
+		if err2 := json.Unmarshal(body, &obj); err2 != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
 
-		err := json.Unmarshal(raw, &obj)
-		if err != nil {
-			http.Error(w, "bad json", http.StatusBadRequest)
-
-			return nil, false
+			return
 		}
 
-		payloads = append(payloads, obj)
+		payloads = []map[string]any{obj}
 	}
 
 	if len(payloads) == 0 {
-		http.Error(w, "no payload", http.StatusBadRequest)
+		http.Error(w, `{"error":"empty payload"}`, http.StatusBadRequest)
 
-		return nil, false
+		return
 	}
 
-	// Validate each payload against expected schema
-	for i, payload := range payloads {
-		if err := validateLogPayload(payload); err != nil {
-			http.Error(w, fmt.Sprintf("invalid payload at index %d: %s", i, err.Error()), http.StatusBadRequest)
+	results := s.processPayloads(r.Context(), payloads, r.RemoteAddr)
 
-			return nil, false
-		}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"created": len(results),
+		"results": results,
+	}); err != nil {
+		s.logger.Error("failed to encode ingest response", "error", err)
 	}
-
-	return payloads, true
-}
-
-// validateLogPayload performs validation for network filtering action payloads.
-func validateLogPayload(payload map[string]any) error {
-	if err := validateMessageField(payload); err != nil {
-		return err
-	}
-
-	if err := validateActionField(payload); err != nil {
-		return err
-	}
-
-	if err := validateNumericFields(payload); err != nil {
-		return err
-	}
-
-	return validateStringFields(payload)
-}
-
-// validateMessageField ensures the msg field exists, is a string, and is not too long.
-func validateMessageField(payload map[string]any) error {
-	msg, hasMsgField := payload["msg"]
-	if !hasMsgField {
-		return errMsgFieldRequired
-	}
-
-	msgStr, ok := msg.(string)
-	if !ok {
-		return errMsgMustBeString
-	}
-
-	if len(msgStr) > 1000 {
-		return errMsgTooLong
-	}
-
-	// Special case: Allow dashboard probe messages (health checks)
-	if msgStr == "_dashboard_probe" {
-		return nil // Probes are valid but don't need action validation
-	}
-
-	return nil
-}
-
-// validateActionField ensures the action field exists and is a valid action type.
-func validateActionField(payload map[string]any) error {
-	// Skip action validation for probe messages
-	if msgStr, ok := payload["msg"].(string); ok && msgStr == "_dashboard_probe" {
-		return nil
-	}
-
-	action, hasActionField := payload["action"]
-	if !hasActionField {
-		return errActionFieldRequired
-	}
-
-	actionStr, ok := action.(string)
-	if !ok {
-		return errActionMustBeString
-	}
-
-	if actionStr == "" {
-		return errActionCannotBeEmpty
-	}
-
-	validActions := map[string]bool{
-		"ALLOWED": true, "BLOCKED": true, "REDIRECTED": true,
-	}
-	if !validActions[strings.ToUpper(actionStr)] {
-		return fmt.Errorf("%w: %s (must be ALLOWED, BLOCKED, or REDIRECTED)", errActionInvalid, actionStr)
-	}
-
-	return nil
-}
-
-// validateNumericFields validates that port and payload_len fields are numeric and in valid ranges.
-func validateNumericFields(payload map[string]any) error {
-	numericFields := []string{"source_port", "destination_port", "payload_len"}
-	for _, field := range numericFields {
-		if val, exists := payload[field]; exists {
-			if err := validateNumericField(field, val); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// validateNumericField validates that a field value is numeric and within the valid range.
-func validateNumericField(field string, val any) error {
-	switch v := val.(type) {
-	case float64:
-		return validateFloatRange(field, v)
-	case int:
-		return validateIntRange(field, v)
-	case string:
-		return validateStringNumeric(field, v)
-	default:
-		return fmt.Errorf("%w: %s", errFieldMustBeNumber, field)
-	}
-}
-
-// validateFloatRange ensures a float64 value is within the valid port range (0-65535).
-func validateFloatRange(field string, v float64) error {
-	if v < 0 || v > 65535 {
-		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
-	}
-
-	return nil
-}
-
-// validateIntRange ensures an int value is within the valid port range (0-65535).
-func validateIntRange(field string, v int) error {
-	if v < 0 || v > 65535 {
-		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
-	}
-
-	return nil
-}
-
-// validateStringNumeric parses a string as a number and validates it's within the port range.
-func validateStringNumeric(field string, v string) error {
-	if v == "" {
-		return nil // Allow empty strings
-	}
-
-	num, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return fmt.Errorf("%w: %s (invalid number format)", errFieldMustBeNumber, field)
-	}
-
-	if num < 0 || num > 65535 {
-		return fmt.Errorf("%w: %s", errFieldOutOfRange, field)
-	}
-
-	return nil
-}
-
-// validateStringFields ensures string fields don't exceed maximum length limits.
-func validateStringFields(payload map[string]any) error {
-	stringFields := map[string]int{
-		"protocol":       20,
-		"source_ip":      45, // IPv6 max length
-		"destination_ip": 45,
-		"hostname":       253, // DNS max
-		"policy_hit":     100,
-		"tenant_id":      50,
-		"flow_id":        32,
-	}
-
-	for field, maxLen := range stringFields {
-		if val, exists := payload[field]; exists {
-			if str, ok := val.(string); ok {
-				if len(str) > maxLen {
-					return fmt.Errorf("%w: %s (max %d chars)", errFieldTooLong, field, maxLen)
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 // processPayloads converts raw payloads to LogEntry structs, inserts them, and broadcasts to SSE clients.
-func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *broadcaster, payloads []map[string]any, remoteIP string) []map[string]any {
+func (s *Server) processPayloads(ctx context.Context, payloads []map[string]any, remoteIP string) []map[string]any {
 	results := make([]map[string]any, 0, len(payloads))
 
 	for _, in := range payloads {
-		if entry := processPayload(in, remoteIP); entry != nil {
-			if id, err := st.Insert(ctx, entry); err != nil {
-				lg.Error("insert.failed", "err", err.Error())
+		if entry := s.processPayload(in, remoteIP); entry != nil {
+			if id, err := s.store.Insert(ctx, entry); err != nil {
+				s.logger.Error("insert.failed", "err", err.Error())
 			} else {
 				entry.ID = id
 				results = append(results, map[string]any{"id": id, "status": "ok"})
 
 				if out, err := json.Marshal(entry); err == nil && out != nil {
-					// Sanitize JSON to prevent XSS attacks while preserving JSON structure
-					sanitized := sanitizeJSONForSSE(out)
-					bus.send(sanitized)
+					s.broadcaster.Send(out)
 				}
 			}
 		}
@@ -705,94 +509,19 @@ func processPayloads(ctx context.Context, lg *slog.Logger, st *memStore, bus *br
 	return results
 }
 
-// sanitizeJSONForSSE HTML-escapes JSON content to prevent XSS attacks
-// while preserving JSON structure for client-side parsing.
-func sanitizeJSONForSSE(jsonData []byte) []byte {
-	var buf bytes.Buffer
-	json.HTMLEscape(&buf, jsonData)
-
-	return buf.Bytes()
-}
-
-// processPayload converts a raw log payload map into a LogEntry struct with enriched fields.
-func processPayload(in map[string]any, remoteIP string) *LogEntry {
-	msg := toStr(in["msg"])
-
-	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
-	act := strings.ToUpper(strings.TrimSpace(toStr(in["action"])))
-	if act != "ALLOWED" && act != "BLOCKED" && act != filter.ActionRedirected {
-		return nil // Skip quietly
-	}
-
-	if msg == "" {
-		return nil
-	}
-
-	ts := parseTimestamp(in)
-	fieldsMap := buildFieldsMap(in)
-	fieldsRaw := marshalFields(fieldsMap)
-
-	entry := &LogEntry{
-		Time:     ts,
-		Message:  msg,
-		Fields:   fieldsRaw,
-		RemoteIP: remoteIP,
-
-		// Enriched top-level copies:
-		Action:          act,
-		Protocol:        determineProtocol(in),
-		PolicyHit:       toStr(in["policy_hit"]),
-		PayloadLen:      toInt(in["payload_len"]),
-		TenantID:        toStr(in["tenant_id"]),
-		SourceIP:        toStr(in["source_ip"]),
-		SourcePort:      toInt(in["source_port"]),
-		DestinationIP:   toStr(in["destination_ip"]),
-		DestinationPort: toInt(in["destination_port"]),
-		SNI:             firstNonEmpty(toStr(in["http_host"]), toStr(in["host"]), toStr(in["sni"]), toStr(in["qname"])),
-		HTTPHost:        firstNonEmpty(toStr(in["http_host"]), toStr(in["host"])),
-	}
-
-	return entry
-}
-
-// parseTimestamp extracts and parses the timestamp from a log payload, defaulting to current UTC time.
-func parseTimestamp(in map[string]any) time.Time {
-	ts := time.Now().UTC()
-
-	if tval, ok := in["time"]; ok && tval != nil {
-		if tsStr, ok := tval.(string); ok && tsStr != "" {
-			if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
-				ts = t.UTC()
-			}
+// extractFieldsMap builds a map of all fields from the payload.
+func extractFieldsMap(in map[string]any) map[string]any {
+	fieldsMap := make(map[string]any)
+	if f, ok := in["fields"].(map[string]any); ok {
+		for k, v := range f {
+			fieldsMap[k] = v
 		}
 	}
 
-	return ts
-}
-
-// buildFieldsMap constructs a map of log fields from the input payload, merging nested fields.
-func buildFieldsMap(in map[string]any) map[string]any {
-	fieldsMap := map[string]any{}
-
-	// Start with nested "fields" if provided
-	if f, ok := in["fields"]; ok && f != nil {
-		if fm, ok := f.(map[string]any); ok {
-			for k, v := range fm {
-				fieldsMap[k] = v
-			}
-		}
-	}
-
-	// Copy normalized keys
-	normKeys := []string{
-		"action", "component", "protocol", "policy_hit", "payload_len",
-		"reason", "tenant_id", "flow_id", "hostname",
-		"source_ip", "source_port", "destination_ip", "destination_port",
-		"src", "dst",
-		"http_host", "host", "sni", "qname", "qtype",
-	}
-
-	for _, k := range normKeys {
+	// Merge top-level fields
+	for _, k := range []string{"action", "component", "protocol", "policy_hit", "payload_len",
+		"reason", "tenant_id", "flow_id", "hostname", "source_ip", "source_port",
+		"destination_ip", "destination_port", "src", "dst", "http_host", "host", "sni", "qname", "qtype", "version"} {
 		if v, ok := in[k]; ok && v != nil {
 			fieldsMap[k] = v
 		}
@@ -801,410 +530,216 @@ func buildFieldsMap(in map[string]any) map[string]any {
 	return fieldsMap
 }
 
-// marshalFields converts the fields map to JSON, returning "null" if empty or on error.
-func marshalFields(fieldsMap map[string]any) json.RawMessage {
-	fieldsRaw := json.RawMessage("null")
-
-	if len(fieldsMap) > 0 {
-		if b, err := json.Marshal(fieldsMap); err == nil {
-			fieldsRaw = json.RawMessage(b)
-		}
-	}
-
-	return fieldsRaw
-}
-
-// determineProtocol extracts the protocol from the payload or infers it from the component type.
-func determineProtocol(in map[string]any) string {
-	if protocol := toStr(in["protocol"]); protocol != "" {
+// deriveProtocol determines the protocol from the payload.
+func deriveProtocol(in map[string]any) string {
+	protocol, _ := in["protocol"].(string)
+	if protocol != "" {
 		return protocol
 	}
 
-	comp := strings.ToLower(toStr(in["component"]))
-	switch comp {
-	case "http", "sni":
-		return "TCP"
-	case "dns":
-		return "UDP"
-	default:
-		return ""
+	if comp, ok := in["component"].(string); ok {
+		switch strings.ToLower(comp) {
+		case "http", "sni":
+			return "TCP"
+		case "dns":
+			return "UDP"
+		}
 	}
+
+	return ""
 }
 
-// listLogsHandler handles GET /logs requests and returns filtered log entries as JSON.
-func listLogsHandler(st *memStore, defaultLimit int) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-
-			return
+// getStringFromPayload gets the first non-empty string from multiple keys.
+func getStringFromPayload(in map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := in[k].(string); ok && v != "" {
+			return v
 		}
+	}
 
-		// Parse & sanitize query params
-		q := strings.TrimSpace(r.URL.Query().Get("q"))
-
-		var sinceID int64
-
-		if v := strings.TrimSpace(r.URL.Query().Get("since_id")); v != "" {
-			if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
-				sinceID = id
-			}
-		}
-
-		limit := defaultLimit
-
-		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
-				limit = n
-			}
-		}
-
-		rows, err := st.Query(r.Context(), q, sinceID, limit)
-		if err != nil {
-			http.Error(w, "store error", http.StatusInternalServerError)
-
-			return
-		}
-
-		// JSON response
-		w.Header().Set("Content-Type", "application/json")
-		enc := json.NewEncoder(w)
-		enc.SetEscapeHTML(true)
-		_ = enc.Encode(rows)
-	})
+	return ""
 }
 
-// sseHandler handles Server-Sent Events streaming of log entries to connected clients.
-func sseHandler(bus *broadcaster, retry time.Duration) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// SSE headers
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache, no-transform")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("X-Accel-Buffering", "no")
-
-		if bus == nil {
-			http.Error(w, "broadcaster not initialized", http.StatusInternalServerError)
-
-			return
-		}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "stream unsupported", http.StatusInternalServerError)
-
-			return
-		}
-
-		ch := bus.add()
-		defer bus.remove(ch)
-
-		// priming write + client retry hint
-		_, _ = fmt.Fprintf(w, "retry: %d\n\n", int(retry.Milliseconds()))
-		_, _ = w.Write([]byte(": connected\n\n"))
-
-		flusher.Flush()
-
-		ctx := r.Context()
-
-		hb := time.NewTicker(15 * time.Second)
-		defer hb.Stop()
-
-		writeEvent := func(b []byte) {
-			// Split on newlines per SSE framing and prefix "data: "
-			for len(b) > 0 {
-				i := bytes.IndexByte(b, '\n')
-				if i == -1 {
-					_, _ = w.Write([]byte("data: "))
-					_, _ = w.Write(b)
-					_, _ = w.Write([]byte("\n"))
-
-					break
-				}
-
-				_, _ = w.Write([]byte("data: "))
-				_, _ = w.Write(b[:i])
-				_, _ = w.Write([]byte("\n"))
-				b = b[i+1:]
-			}
-
-			_, _ = w.Write([]byte("\n"))
-
-			flusher.Flush()
-		}
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case msg := <-ch:
-				writeEvent(msg)
-			case <-hb.C:
-				_, _ = w.Write([]byte(": ping\n\n"))
-
-				flusher.Flush()
-			}
-		}
-	})
-}
-
-// clearLogsHandler handles POST /logs/clear requests to empty the log buffer.
-func clearLogsHandler(lg *slog.Logger, st *memStore, bus *broadcaster) http.Handler {
-	type resp struct {
-		Status string `json:"status"`
-	}
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-
-			return
-		}
-
-		err := st.Clear(r.Context())
-		if err != nil {
-			lg.Error("logs.clear_failed", "err", err.Error())
-			http.Error(w, "store error", http.StatusInternalServerError)
-
-			return
-		}
-
-		bus.send([]byte(`{"type":"cleared"}`))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp{Status: "ok"})
-	})
-}
-
-// withCommon wraps an HTTP handler with security headers, CSP, and request logging.
-func withCommon(lg *slog.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Add security headers
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-XSS-Protection", "1; mode=block")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-
-		// Content Security Policy for dashboard
-		if strings.HasPrefix(r.URL.Path, "/") && r.URL.Path != "/logs" && r.URL.Path != "/events" && r.URL.Path != "/ingest" && r.URL.Path != "/logs/clear" && r.URL.Path != "/healthz" {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline' 'self'; style-src 'unsafe-inline' 'self'; img-src 'self' data:; connect-src 'self'")
-		}
-
-		start := time.Now()
-		ww := &respWrap{ResponseWriter: w, code: 200}
-		next.ServeHTTP(ww, r)
-		lg.Debug("http.req",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"code", ww.code,
-			"t", time.Since(start).String(),
-		)
-	})
-}
-
-type respWrap struct {
-	http.ResponseWriter
-
-	code int
-}
-
-// WriteHeader captures the HTTP status code for logging.
-func (w *respWrap) WriteHeader(code int) {
-	w.code = code
-	w.ResponseWriter.WriteHeader(code)
-}
-
-// Flush flushes buffered data to the client if the underlying ResponseWriter supports it.
-func (w *respWrap) Flush() {
-	if f, ok := w.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-// Hijack takes over the HTTP connection if the underlying ResponseWriter supports hijacking.
-func (w *respWrap) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if h, ok := w.ResponseWriter.(http.Hijacker); ok {
-		conn, rw, err := h.Hijack()
-		if err != nil {
-			return nil, nil, fmt.Errorf("hijack: %w", err)
-		}
-
-		return conn, rw, nil
-	}
-
-	return nil, nil, errHijackerNotSupported
-}
-
-// Push provides passthrough HTTP/2 server push (no-op if not supported).
-func (w *respWrap) Push(target string, opts *http.PushOptions) error {
-	if p, ok := w.ResponseWriter.(http.Pusher); ok {
-		err := p.Push(target, opts)
-		if err != nil {
-			return fmt.Errorf("push: %w", err)
-		}
-
-		return nil
-	}
-
-	return http.ErrNotSupported
-}
-
-// apiKeyMiddleware validates the X-Api-Key header before allowing access to protected endpoints.
-func apiKeyMiddleware(expected string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got := r.Header.Get("X-Api-Key")
-
-		// Enhanced API key validation
-		if err := validateAPIKey(expected, got); err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-// validateAPIKey performs enhanced API key validation.
-func validateAPIKey(expected, got string) error {
-	// Check if API key is configured
-	if expected == "" {
-		return errAPIKeyNotConfigured
-	}
-
-	// Check minimum key length (but allow shorter keys for testing)
-	minLength := 32
-	if strings.HasPrefix(expected, "test-") || os.Getenv("GO_ENV") == "test" {
-		minLength = 8 // Allow shorter keys in test environment
-	}
-
-	if len(expected) < minLength {
-		return fmt.Errorf("%w: minimum %d characters", errAPIKeyTooShort, minLength)
-	}
-
-	// Check if provided key meets requirements
-	if got == "" {
-		return errAPIKeyRequired
-	}
-
-	if len(got) != len(expected) {
-		return errAPIKeyInvalidLength
-	}
-
-	// Constant-time comparison to prevent timing attacks
-	if subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
-		return errAPIKeyInvalid
-	}
-
-	return nil
-}
-
-// remoteIP extracts the client IP address from the request.
-func remoteIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
-}
-
-// toStr converts any value to a string, handling nil and various types.
-func toStr(v any) string {
-	if v == nil {
-		return ""
-	}
-
-	switch t := v.(type) {
-	case string:
-		return t
-	case json.Number:
-		return t.String()
-	default:
-		return fmt.Sprint(t)
-	}
-}
-
-// toInt converts any value to an int, handling nil and various numeric types.
-func toInt(v any) int {
-	if v == nil {
-		return 0
-	}
-
-	switch t := v.(type) {
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return int(i)
-		}
-	case string:
-		if n, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
-			return n
-		}
+// getIntFromPayload gets float64 as int from payload.
+func getIntFromPayload(in map[string]any, key string) int {
+	if v, ok := in[key].(float64); ok {
+		return int(v)
 	}
 
 	return 0
 }
 
-// firstNonEmpty returns the first non-empty string from the arguments.
-func firstNonEmpty(ss ...string) string {
-	for _, s := range ss {
-		if strings.TrimSpace(s) != "" {
-			return s
+// processPayload converts a raw log payload map into a LogEntry struct with enriched fields.
+//
+
+func (s *Server) processPayload(in map[string]any, remoteIP string) *LogEntry {
+	msg, _ := in["msg"].(string)
+	if msg == "" {
+		return nil
+	}
+
+	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
+	action, _ := in["action"].(string)
+
+	act := strings.ToUpper(strings.TrimSpace(action))
+	if act != "ALLOWED" && act != "BLOCKED" && act != "REDIRECTED" {
+		return nil
+	}
+
+	// Parse timestamp
+	ts := time.Now().UTC()
+	if tval, ok := in["time"].(string); ok && tval != "" {
+		if t, err := time.Parse(time.RFC3339Nano, tval); err == nil {
+			ts = t.UTC()
 		}
 	}
 
-	return ""
-}
+	// Build fields JSON
+	fieldsMap := extractFieldsMap(in)
 
-// strFrom extracts a string value from a map, handling various types and nil values.
-func strFrom(m map[string]any, k string) string {
-	if m == nil {
-		return ""
+	fieldsRaw, err := json.Marshal(fieldsMap)
+	if err != nil {
+		s.logger.Error("failed to marshal fields", "error", err)
+
+		return nil
 	}
 
-	if v, ok := m[k]; ok && v != nil {
-		switch t := v.(type) {
-		case string:
-			return t
-		case json.Number:
-			return t.String()
-		default:
-			return fmt.Sprint(t)
+	if fieldsRaw == nil {
+		fieldsRaw = json.RawMessage("null")
+	}
+
+	return &LogEntry{
+		Time:            ts,
+		Message:         msg,
+		Fields:          fieldsRaw,
+		RemoteIP:        remoteIP,
+		Action:          act,
+		Protocol:        deriveProtocol(in),
+		PolicyHit:       getStringFromPayload(in, "policy_hit"),
+		TenantID:        getStringFromPayload(in, "tenant_id"),
+		SourceIP:        getStringFromPayload(in, "source_ip"),
+		DestinationIP:   getStringFromPayload(in, "destination_ip"),
+		SNI:             getStringFromPayload(in, "http_host", "host", "sni", "qname"),
+		HTTPHost:        getStringFromPayload(in, "http_host", "host"),
+		PayloadLen:      getIntFromPayload(in, "payload_len"),
+		SourcePort:      getIntFromPayload(in, "source_port"),
+		DestinationPort: getIntFromPayload(in, "destination_port"),
+		Version:         getStringFromPayload(in, "version"),
+	}
+}
+
+// listLogsHandler handles GET /logs requests and returns filtered log entries as JSON.
+func (s *Server) listLogsHandler(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+
+	var sinceID int64
+
+	if v := strings.TrimSpace(r.URL.Query().Get("since_id")); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+			sinceID = id
 		}
 	}
 
-	return ""
+	limit := s.readLimit
+
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 500 {
+			limit = n
+		}
+	}
+
+	rows, err := s.store.Query(r.Context(), q, sinceID, limit)
+	if err != nil {
+		http.Error(w, "store error", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(rows); err != nil {
+		s.logger.Error("failed to encode query response", "error", err)
+	}
 }
 
-// intFrom extracts an integer value from a map, handling various numeric types and nil values.
-func intFrom(m map[string]any, k string) int {
-	if m == nil {
-		return 0
+// sseHandler handles Server-Sent Events streaming of log entries to connected clients.
+func (s *Server) sseHandler(w http.ResponseWriter, r *http.Request) {
+	// SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "stream unsupported", http.StatusInternalServerError)
+
+		return
 	}
 
-	v, ok := m[k]
-	if !ok || v == nil {
-		return 0
+	ch := s.broadcaster.Add()
+	defer s.broadcaster.Remove(ch)
+
+	// Client retry hint
+	_, _ = fmt.Fprintf(w, "retry: %d\n\n", int(s.sseRetry.Milliseconds()))
+	_, _ = w.Write([]byte(": connected\n\n"))
+
+	flusher.Flush()
+
+	ctx := r.Context()
+
+	hb := time.NewTicker(15 * time.Second)
+	defer hb.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-ch:
+			// Split on newlines per SSE framing
+			for len(msg) > 0 {
+				i := bytes.IndexByte(msg, '\n')
+				if i == -1 {
+					_, _ = w.Write([]byte("data: "))
+					_, _ = w.Write(msg)
+					_, _ = w.Write([]byte("\n\n"))
+
+					break
+				}
+
+				_, _ = w.Write([]byte("data: "))
+				_, _ = w.Write(msg[:i])
+				_, _ = w.Write([]byte("\n"))
+				msg = msg[i+1:]
+			}
+
+			if len(msg) == 0 {
+				_, _ = w.Write([]byte("\n"))
+			}
+
+			flusher.Flush()
+		case <-hb.C:
+			_, _ = w.Write([]byte(": ping\n\n"))
+
+			flusher.Flush()
+		}
+	}
+}
+
+// clearLogsHandler handles DELETE /api/v1/logs requests to empty the log buffer.
+func (s *Server) clearLogsHandler(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.Clear(r.Context()); err != nil {
+		s.logger.Error("logs.clear_failed", "err", err.Error())
+		http.Error(w, `{"error":"failed to clear logs"}`, http.StatusInternalServerError)
+
+		return
 	}
 
-	switch t := v.(type) {
-	case int:
-		return t
-	case float64:
-		return int(t)
-	case string:
-		i, _ := strconv.Atoi(t)
+	s.broadcaster.Send([]byte(`{"type":"cleared"}`))
+	w.Header().Set("Content-Type", "application/json")
 
-		return i
-	default:
-		_ = t
-
-		return 0
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		s.logger.Error("failed to encode clear response", "error", err)
 	}
 }
 
@@ -1218,8 +753,8 @@ func newBroadcaster() *broadcaster {
 	return &broadcaster{clients: make(map[chan []byte]struct{})}
 }
 
-// add registers a new SSE client and returns its message channel.
-func (b *broadcaster) add() chan []byte {
+// Add registers a new SSE client and returns its message channel.
+func (b *broadcaster) Add() chan []byte {
 	ch := make(chan []byte, 64)
 
 	b.mu.Lock()
@@ -1229,16 +764,16 @@ func (b *broadcaster) add() chan []byte {
 	return ch
 }
 
-// remove unregisters an SSE client and closes its channel.
-func (b *broadcaster) remove(ch chan []byte) {
+// Remove unregisters an SSE client and closes its channel.
+func (b *broadcaster) Remove(ch chan []byte) {
 	b.mu.Lock()
 	delete(b.clients, ch)
 	b.mu.Unlock()
 	close(ch)
 }
 
-// send broadcasts a message to all connected SSE clients, dropping messages for slow consumers.
-func (b *broadcaster) send(p []byte) {
+// Send broadcasts a message to all connected SSE clients, dropping messages for slow consumers.
+func (b *broadcaster) Send(p []byte) {
 	b.mu.RLock()
 
 	for ch := range b.clients {
@@ -1282,8 +817,8 @@ func newRateLimiter(rps, burst float64) *rateLimiter {
 	}
 }
 
-// allow checks if a request from the given key (IP) is permitted under the rate limit.
-func (rl *rateLimiter) allow(key string) bool {
+// Allow checks if a request from the given key (IP) is permitted under the rate limit.
+func (rl *rateLimiter) Allow(key string) bool {
 	now := time.Now()
 
 	rl.mu.Lock()
@@ -1298,8 +833,13 @@ func (rl *rateLimiter) allow(key string) bool {
 	t := rl.tokens[key]
 	last := rl.last[key]
 	dt := now.Sub(last).Seconds()
-	// replenish
-	t = mathMin(rl.burst, t+dt*rl.rps)
+
+	// Replenish tokens (cap at burst limit)
+	t += dt * rl.rps
+	if t > rl.burst {
+		t = rl.burst
+	}
+
 	if t < 1.0 {
 		rl.tokens[key] = t
 		rl.last[key] = now
@@ -1322,13 +862,4 @@ func (rl *rateLimiter) cleanup(now time.Time) {
 			delete(rl.last, key)
 		}
 	}
-}
-
-// mathMin returns the smaller of two float64 values.
-func mathMin(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-
-	return b
 }

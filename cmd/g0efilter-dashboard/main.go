@@ -119,6 +119,7 @@ func buildConfig() dashboard.Config {
 		RateRPS:      getenvFloat("RATE_RPS", defaultRateRPS),
 		RateBurst:    getenvFloat("RATE_BURST", defaultRateBurst),
 		WriteTimeout: getenvInt("WRITE_TIMEOUT", 0), // 0 = no timeout for SSE
+		Version:      version,
 	}
 }
 
@@ -134,7 +135,7 @@ func normalizeAddr(cfg *dashboard.Config) {
 
 // setupLogging creates and configures the logger, validates API key.
 func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
-	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false)
+	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false, version)
 	slog.SetDefault(lg)
 
 	if cfg.APIKey == "" {
