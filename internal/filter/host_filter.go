@@ -153,7 +153,7 @@ func handleAllowedHost(
 	// 3) Connect and splice
 	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
-		logBackendDialError(opts, componentHTTP, conn, target, err)
+		logdstConnDialError(opts, componentHTTP, conn, target, err)
 
 		return fmt.Errorf("dial backend: %w", err)
 	}

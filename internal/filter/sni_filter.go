@@ -138,19 +138,19 @@ func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni str
 	return connectAndSpliceSNI(conn, buf, target, opts)
 }
 
-// connectAndSpliceSNI connects to backend and splices data.
+// connectAndSpliceSNI connects to destination server and splices data.
 func connectAndSpliceSNI(conn net.Conn, buf *bytes.Buffer, target string, opts Options) error {
-	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
+	dstConn, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
-		logBackendDialError(opts, componentSNI, conn, target, err)
+		logdstConnDialError(opts, componentSNI, conn, target, err)
 
-		return fmt.Errorf("dial backend %s: %w", target, err)
+		return fmt.Errorf("dial dstConn %s: %w", target, err)
 	}
 
-	defer func() { _ = backend.Close() }()
+	defer func() { _ = dstConn.Close() }()
 
-	setConnTimeouts(conn, backend, opts)
-	bidirectionalCopy(conn, backend, buf)
+	setConnTimeouts(conn, dstConn, opts)
+	bidirectionalCopy(conn, dstConn, buf)
 
 	return nil
 }
@@ -214,3 +214,5 @@ func readClientHello(r io.Reader) (*tls.ClientHelloInfo, error) {
 
 	return hello, nil
 }
+
+// Method taken from https://www.agwa.name/blog/post/writing_an_sni_proxy_in_go

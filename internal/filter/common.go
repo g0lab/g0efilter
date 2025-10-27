@@ -555,15 +555,15 @@ func logBlockedConnection(
 	opts.Logger.Info(component+".blocked", fields...)
 }
 
-// logBackendDialError logs when connecting to the backend target fails.
-func logBackendDialError(opts Options, component string, conn net.Conn, target string, err error) {
+// logdstConnDialError logs when connecting to the destination target fails.
+func logdstConnDialError(opts Options, component string, conn net.Conn, target string, err error) {
 	if opts.Logger == nil {
 		return
 	}
 
 	sourceIP, sourcePort := sourceAddr(conn)
 	destIP, destPort := parseHostPort(target)
-	opts.Logger.Warn(component+".backend_dial_error",
+	opts.Logger.Warn(component+".dst_conn_dial_error",
 		"component", component,
 		"destination_ip", destIP,
 		"destination_port", destPort,
