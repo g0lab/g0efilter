@@ -915,32 +915,92 @@ func TestLogTraceBody_JSONAndText(t *testing.T) {
 	}
 }
 
-func TestShipToDashboard_ActionFilter(t *testing.T) {
+func mkTestPoster() (*poster, chan []byte) {
+	ch := make(chan []byte, 10)
+	p := &poster{q: ch, zl: zerolog.New(io.Discard)}
+
+	return p, ch
+}
+
+func TestShipToDashboard_ActionFilter_Blocked(t *testing.T) {
 	t.Parallel()
 
-	mkPoster := func() (*poster, chan []byte) {
-		ch := make(chan []byte, 10)
-		p := &poster{q: ch, zl: zerolog.New(io.Discard)}
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "BLOCKED"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
 
-		return p, ch
+	select {
+	case <-ch:
+		// ok
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected enqueue for BLOCKED")
 	}
+}
 
-	allowed := []string{"ALLOWED", "BLOCKED", "REDIRECTED"}
-	for _, act := range allowed {
-		p, ch := mkPoster()
-		attrs := map[string]any{"action": act}
-		shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+func TestShipToDashboard_ActionFilter_Redirected(t *testing.T) {
+	t.Parallel()
 
-		select {
-		case <-ch:
-			// ok
-		case <-time.After(100 * time.Millisecond):
-			t.Fatalf("expected enqueue for action %s", act)
-		}
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "REDIRECTED"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+
+	select {
+	case <-ch:
+		// ok
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected enqueue for REDIRECTED")
 	}
+}
 
-	// Disallowed action should not enqueue
-	p, ch := mkPoster()
+func TestShipToDashboard_ActionFilter_AllowedWithSni(t *testing.T) {
+	t.Parallel()
+
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "ALLOWED", "component": "sni"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+
+	select {
+	case <-ch:
+		// ok
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected enqueue for ALLOWED with sni")
+	}
+}
+
+func TestShipToDashboard_ActionFilter_AllowedWithHttp(t *testing.T) {
+	t.Parallel()
+
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "ALLOWED", "component": "http"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+
+	select {
+	case <-ch:
+		// ok
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected enqueue for ALLOWED with http")
+	}
+}
+
+func TestShipToDashboard_ActionFilter_AllowedWithoutComponent(t *testing.T) {
+	t.Parallel()
+
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "ALLOWED"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+
+	select {
+	case <-ch:
+		t.Fatal("did not expect enqueue for ALLOWED without component (IP-based)")
+	case <-time.After(50 * time.Millisecond):
+		// ok: nothing enqueued
+	}
+}
+
+func TestShipToDashboard_ActionFilter_OtherAction(t *testing.T) {
+	t.Parallel()
+
+	p, ch := mkTestPoster()
 	attrs := map[string]any{"action": "OTHER"}
 	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
 

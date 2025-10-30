@@ -602,20 +602,48 @@ func logToTerminal(zl zerolog.Logger, level slog.Level, msg string, attrs map[st
 	ev.Msg(msg)
 }
 
+// shouldShipToDashboard determines if an event should be sent to the dashboard.
+func shouldShipToDashboard(attrs map[string]any) bool {
+	act := extractAction(attrs)
+
+	// Only ship BLOCKED, REDIRECTED, and ALLOWED actions
+	if act != "BLOCKED" && act != filter.ActionRedirected && act != "ALLOWED" {
+		return false
+	}
+
+	// Skip ALLOWED actions from nftables (allowlisted IPs)
+	// Keep ALLOWED from SNI/HTTP/DNS filters (domain matches with wildcards)
+	if act == "ALLOWED" {
+		component := ""
+		if v, ok := attrs["component"]; ok {
+			component = strings.ToLower(fmt.Sprint(v))
+		}
+		// If no component or component is not sni/http/dns, this is an IP-based allow from nftables
+		if component != "sni" && component != "http" && component != "dns" {
+			return false // Skip nftables IP-based allows
+		}
+	}
+
+	return true
+}
+
+// extractAction extracts the action string from attributes.
+func extractAction(attrs map[string]any) string {
+	if v, ok := attrs["action"]; ok {
+		return strings.ToUpper(fmt.Sprint(v))
+	}
+
+	return ""
+}
+
 func shipToDashboard(
 	poster *poster, hostname string, version string, rTime time.Time, rMsg string, attrs map[string]any,
 ) {
-	act := ""
-
-	if v, ok := attrs["action"]; ok {
-		act = strings.ToUpper(fmt.Sprint(v))
-	}
-
-	if act != "BLOCKED" && act != filter.ActionRedirected && act != "ALLOWED" {
+	if !shouldShipToDashboard(attrs) {
 		return
 	}
 
-	payload := buildDashboardPayload(hostname, version, rTime, rMsg, act, attrs)
+	payload := buildDashboardPayload(hostname, version, rTime, rMsg, extractAction(attrs), attrs)
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
