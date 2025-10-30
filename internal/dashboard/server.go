@@ -33,9 +33,8 @@ var (
 // Config holds the dashboard server configuration.
 type Config struct {
 	Addr         string  // ":8081"
-	APIKey       string  // required for POST /api/v1/logs and DELETE /api/v1/logs
+	APIKey       string  // required for POST /api/v1/logs
 	LogLevel     string  // "INFO"
-	LogFormat    string  // "json"
 	BufferSize   int     // optional (default 5000)
 	ReadLimit    int     // optional (default 500)
 	SERetryMs    int     // optional (default 2000) - SSE client retry hint
@@ -94,7 +93,7 @@ func Run(ctx context.Context, cfg Config) error {
 	normalizeConfig(&cfg)
 
 	// Logger
-	lg := logging.NewWithContext(ctx, cfg.LogLevel, cfg.LogFormat, os.Stdout, false, cfg.Version)
+	lg := logging.NewWithContext(ctx, cfg.LogLevel, os.Stdout, cfg.Version)
 	slog.SetDefault(lg)
 
 	// Create server with all dependencies

@@ -613,79 +613,6 @@ func TestBuildDashboardPayload(t *testing.T) {
 	}
 }
 
-func TestNewWithFormat(t *testing.T) {
-	// Note: Cannot use t.Parallel() with t.Setenv() due to Go testing framework limitations
-	tests := getNewWithFormatTests()
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set environment variables for test
-			if tt.logFile != "" {
-				t.Setenv("LOG_FILE", tt.logFile)
-			}
-
-			if tt.hostname != "" {
-				t.Setenv("HOSTNAME", tt.hostname)
-			}
-
-			var buf bytes.Buffer
-
-			logger := NewWithFormat(tt.level, tt.format, &buf, tt.addSource, "test-version")
-
-			if logger == nil {
-				t.Fatal("NewWithFormat() returned nil logger")
-			}
-
-			// Test that logger works
-			logger.Info("test message")
-			// Just verify it doesn't panic and creates a logger
-		})
-	}
-}
-
-func getNewWithFormatTests() []struct {
-	name      string
-	level     string
-	format    string
-	addSource bool
-	logFile   string
-	hostname  string
-} {
-	return []struct {
-		name      string
-		level     string
-		format    string
-		addSource bool
-		logFile   string
-		hostname  string
-	}{
-		{
-			name:      "basic logger",
-			level:     "INFO",
-			format:    "json",
-			addSource: false,
-		},
-		{
-			name:      "debug level",
-			level:     "DEBUG",
-			format:    "console",
-			addSource: true,
-		},
-		{
-			name:     "with hostname",
-			level:    "WARN",
-			format:   "json",
-			hostname: "test-host",
-		},
-		{
-			name:    "empty level defaults",
-			level:   "",
-			format:  "json",
-			logFile: "/tmp/test.log",
-		},
-	}
-}
-
 func TestNewFromEnv(t *testing.T) {
 	// Note: Cannot use t.Parallel() with t.Setenv() due to Go testing framework limitations
 	tests := getNewFromEnvTests()
@@ -694,10 +621,6 @@ func TestNewFromEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.logLevel != "" {
 				t.Setenv("LOG_LEVEL", tt.logLevel)
-			}
-
-			if tt.logFormat != "" {
-				t.Setenv("LOG_FORMAT", tt.logFormat)
 			}
 
 			logger := NewFromEnv()
@@ -713,29 +636,24 @@ func TestNewFromEnv(t *testing.T) {
 }
 
 func getNewFromEnvTests() []struct {
-	name      string
-	logLevel  string
-	logFormat string
+	name     string
+	logLevel string
 } {
 	return []struct {
-		name      string
-		logLevel  string
-		logFormat string
+		name     string
+		logLevel string
 	}{
 		{
-			name:      "default values",
-			logLevel:  "",
-			logFormat: "",
+			name:     "default values",
+			logLevel: "",
 		},
 		{
-			name:      "debug level",
-			logLevel:  "DEBUG",
-			logFormat: "console",
+			name:     "debug level",
+			logLevel: "DEBUG",
 		},
 		{
-			name:      "error level json",
-			logLevel:  "ERROR",
-			logFormat: "json",
+			name:     "error level",
+			logLevel: "ERROR",
 		},
 	}
 }
@@ -1311,7 +1229,7 @@ func TestNewWithContext_DashboardIntegration(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	logger := NewWithContext(context.Background(), "DEBUG", "json", &buf, false, "test-version")
+	logger := NewWithContext(context.Background(), "DEBUG", &buf, "test-version")
 
 	if logger == nil {
 		t.Fatal("NewWithContext() returned nil logger")
@@ -1326,7 +1244,7 @@ func TestNewWithContext_LogFile(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	logger := NewWithContext(context.Background(), "INFO", "json", &buf, false, "test-version")
+	logger := NewWithContext(context.Background(), "INFO", &buf, "test-version")
 
 	if logger == nil {
 		t.Fatal("NewWithContext() returned nil logger with LOG_FILE")

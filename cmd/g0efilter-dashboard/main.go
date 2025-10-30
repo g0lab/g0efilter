@@ -112,7 +112,6 @@ func buildConfig() dashboard.Config {
 		Addr:         getenv("PORT", ":8081"),
 		APIKey:       getenv("API_KEY", ""),
 		LogLevel:     getenv("LOG_LEVEL", "INFO"),
-		LogFormat:    "json",
 		BufferSize:   getenvInt("BUFFER_SIZE", defaultBufferSize),
 		ReadLimit:    getenvInt("READ_LIMIT", defaultReadLimit),
 		SERetryMs:    getenvInt("SSE_RETRY_MS", defaultSERetryMs),
@@ -135,7 +134,7 @@ func normalizeAddr(cfg *dashboard.Config) {
 
 // setupLogging creates and configures the logger, validates API key.
 func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
-	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, cfg.LogFormat, os.Stdout, false, version)
+	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, os.Stdout, version)
 	slog.SetDefault(lg)
 
 	if cfg.APIKey == "" {

@@ -87,19 +87,22 @@ changelog:
     - title: "Added"
       regexp: '^\s*feat(\([^)]+\))?!?:\s+.+$'
       order: 100
-    - title: "Changed"
+    - title: "Security"
+      regexp: '^\s*security(\([^)]+\))?!?:\s+.+$'
+      order: 150
+    - title: "Fixed"
       regexp: '^\s*fix(\([^)]+\))?!?:\s+.+$'
       order: 200
+    - title: "Changed"
+      regexp: '^\s*(refactor|perf|chore)(\([^)]+\))?!?:\s+.+$'
+      order: 300
     - title: "Documentation"
       regexp: '^\s*docs(\([^)]+\))?!?:\s+.+$'
-      order: 300
+      order: 400
     - title: Other
       order: 9999
   filters:
     exclude:
-      - '(?i)^docs?:'
-      - '(?i)^docs\([^:]+\):'
-      - '(?i)^docs\[[^:]+\]:'
       - '(?i)^tests?:'
       - '(?i)^ci:'
       - '(?i)^dev:'

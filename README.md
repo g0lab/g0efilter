@@ -67,7 +67,6 @@ allowlist:
 | Variable            | Description                                        | Default             |
 | ------------------- | -------------------------------------------------- | ------------------- |
 | `LOG_LEVEL`         | Log level (INFO, DEBUG, etc.)                      | `INFO`              |
-| `LOG_FORMAT`        | Log output format (json, console)                  | `json`              |
 | `HOSTNAME`          | To identify which endpoint is sending the logs     | unset               |
 | `HTTP_PORT`         | Local HTTP port                                    | `8080`              |
 | `HTTPS_PORT`        | Local HTTPS port                                   | `8443`              |

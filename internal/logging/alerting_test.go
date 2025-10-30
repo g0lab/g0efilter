@@ -34,7 +34,7 @@ func TestAlertingIntegration(t *testing.T) {
 	t.Setenv("HOSTNAME", "test-g0efilter")
 
 	// Create logger with alerting enabled
-	logger := logging.NewWithFormat("DEBUG", "json", io.Discard, false, "test-version")
+	logger := logging.NewWithContext(context.Background(), "DEBUG", io.Discard, "test-version")
 
 	// Test BLOCKED event
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -152,7 +152,7 @@ func TestAlertingDisabled(t *testing.T) {
 	t.Parallel()
 
 	// Create logger without alerting configuration
-	logger := logging.NewWithFormat("DEBUG", "json", io.Discard, false, "test-version")
+	logger := logging.NewWithContext(context.Background(), "DEBUG", io.Discard, "test-version")
 
 	// Test BLOCKED event - should not panic or cause errors
 	logger.Info("dns.blocked",
@@ -181,7 +181,7 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 	t.Setenv("NOTIFICATION_HOST", server.URL)
 	t.Setenv("NOTIFICATION_KEY", "test-token")
 
-	logger := logging.NewWithFormat("DEBUG", "json", io.Discard, false, "test-version")
+	logger := logging.NewWithContext(context.Background(), "DEBUG", io.Discard, "test-version")
 
 	// Test various actions - only BLOCKED should trigger notification
 	testCases := []struct {

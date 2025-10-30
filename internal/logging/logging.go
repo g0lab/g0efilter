@@ -897,15 +897,9 @@ func parseQueueSize(zl zerolog.Logger) int {
 }
 
 // NewWithContext builds a slog.Logger backed by zerolog.
-// Format and addSource are kept for API compatibility.
 //
 //nolint:cyclop,funlen
-func NewWithContext(
-	ctx context.Context, level, format string, out io.Writer, addSource bool, version string,
-) *slog.Logger {
-	_ = format
-	_ = addSource
-
+func NewWithContext(ctx context.Context, level string, out io.Writer, version string) *slog.Logger {
 	// Writer (stdout or file)
 	writer := out
 	if logFile := strings.TrimSpace(os.Getenv("LOG_FILE")); logFile != "" {
@@ -978,18 +972,15 @@ func NewWithContext(
 	return slog.New(h)
 }
 
-// NewWithFormat builds a slog.Logger using defaults, delegating to NewWithContext with a background context.
-func NewWithFormat(level, format string, out io.Writer, addSource bool, version string) *slog.Logger {
-	return NewWithContext(context.Background(), level, format, out, addSource, version)
-}
-
 // NewFromEnv creates a logger from environment variables.
 func NewFromEnv() *slog.Logger {
-	return NewWithFormat(os.Getenv("LOG_LEVEL"), os.Getenv("LOG_FORMAT"), os.Stdout, false, "")
+	return NewWithContext(context.Background(), os.Getenv("LOG_LEVEL"), os.Stdout, "")
 }
 
 // New returns a logger with the provided level.
-func New(l string) *slog.Logger { return NewWithFormat(l, "json", os.Stdout, false, "") }
+func New(l string) *slog.Logger {
+	return NewWithContext(context.Background(), l, os.Stdout, "")
+}
 
 // Shutdown stops the default poster and waits up to timeout.
 func Shutdown(timeout time.Duration) {

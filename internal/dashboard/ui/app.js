@@ -89,7 +89,8 @@ function versionOf(it){return sanitizeRemoteData(it.version || ((it.fields&&it.f
 function sanitizeInput(s){
   // Sanitize user input to prevent injection attacks
   if(!s) return '';
-  return String(s).replace(/[^\w\s\-.:@]/g, '');
+  // Limit length and strip non-whitelisted characters
+  return String(s).slice(0, 200).replace(/[^\w\s\-.:@]/g, '');
 }
 
 function matches(it){
