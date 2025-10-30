@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -61,15 +62,7 @@ func TestCreateDNSHandler(t *testing.T) {
 
 	// Verify the allowlist contains the expected domains
 	for _, domain := range allowedDomains {
-		found := false
-
-		for _, allowed := range handler.allowlist {
-			if allowed == domain {
-				found = true
-
-				break
-			}
-		}
+		found := slices.Contains(handler.allowlist, domain)
 
 		if !found {
 			t.Errorf("Expected allowlist to contain %q", domain)
@@ -201,7 +194,7 @@ func testDefaultUpstreamsBasicCases(t *testing.T) {
 		upstreams := defaultUpstreamsFromEnv()
 
 		expected := []string{"8.8.8.8:53"}
-		if len(upstreams) != 1 || upstreams[0] != expected[0] {
+		if len(upstreams) != 1 || len(expected) < 1 || upstreams[0] != expected[0] {
 			t.Errorf("Expected %v, got %v", expected, upstreams)
 		}
 	})

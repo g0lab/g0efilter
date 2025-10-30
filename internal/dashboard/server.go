@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -514,10 +515,9 @@ func (s *Server) processPayloads(ctx context.Context, payloads []map[string]any,
 // extractFieldsMap builds a map of all fields from the payload.
 func extractFieldsMap(in map[string]any) map[string]any {
 	fieldsMap := make(map[string]any)
+
 	if f, ok := in["fields"].(map[string]any); ok {
-		for k, v := range f {
-			fieldsMap[k] = v
-		}
+		maps.Copy(fieldsMap, f)
 	}
 
 	// Merge top-level fields
@@ -590,6 +590,7 @@ func (s *Server) processPayload(in map[string]any, remoteIP string) *LogEntry {
 
 	// Parse timestamp
 	ts := time.Now().UTC()
+
 	if tval, ok := in["time"].(string); ok && tval != "" {
 		if t, err := time.Parse(time.RFC3339Nano, tval); err == nil {
 			ts = t.UTC()

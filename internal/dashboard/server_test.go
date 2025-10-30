@@ -1076,9 +1076,7 @@ func BenchmarkProcessPayload(b *testing.B) {
 		"version":          "1.0.0",
 	}
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_ = srv.processPayload(payload, "10.0.0.1")
 	}
 }
@@ -1095,9 +1093,7 @@ func BenchmarkMemStoreInsert(b *testing.B) {
 		SourceIP: "192.168.1.1",
 	}
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_, _ = store.Insert(ctx, entry)
 	}
 }
@@ -1117,9 +1113,7 @@ func BenchmarkMemStoreQuery(b *testing.B) {
 		})
 	}
 
-	b.ResetTimer()
-
-	for range b.N {
+	for b.Loop() {
 		_, _ = store.Query(ctx, "", 0, 100)
 	}
 }

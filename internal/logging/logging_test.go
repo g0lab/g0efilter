@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -520,9 +521,7 @@ func TestNormalizeAttributeKeys(t *testing.T) {
 			t.Parallel()
 
 			attrs := make(map[string]any)
-			for k, v := range tt.input {
-				attrs[k] = v
-			}
+			maps.Copy(attrs, tt.input)
 
 			normalizeAttributeKeys(attrs)
 
@@ -595,7 +594,7 @@ func TestBuildDashboardPayload(t *testing.T) {
 	payload := buildDashboardPayload(hostname, version, rTime, rMsg, act, attrs)
 
 	// Check required fields
-	requiredFields := map[string]interface{}{
+	requiredFields := map[string]any{
 		"producer_time": "2023-01-01T12:00:00Z",
 		"msg":           "test message",
 		"action":        "BLOCKED",
@@ -861,6 +860,7 @@ func TestZerologHandlerWithGroup(t *testing.T) {
 func TestLogToTerminal(t *testing.T) {
 	// Ensure global level allows info logs regardless of other tests
 	orig := zerolog.GlobalLevel()
+
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
 
@@ -924,6 +924,7 @@ func TestLogPosterResponse_NotTrace(t *testing.T) {
 func TestLogPosterResponse_TraceJSON(t *testing.T) {
 	// Ensure trace logs are enabled regardless of global level set by other tests
 	orig := zerolog.GlobalLevel()
+
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
 
@@ -959,6 +960,7 @@ func TestLogPosterResponse_TraceJSON(t *testing.T) {
 func TestLogTraceBody_JSONAndText(t *testing.T) {
 	// Ensure trace logs are enabled regardless of global level set by other tests
 	orig := zerolog.GlobalLevel()
+
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	t.Cleanup(func() { zerolog.SetGlobalLevel(orig) })
 
@@ -1156,6 +1158,7 @@ func TestPosterQueueOverflow(t *testing.T) {
 
 	// Ensure debug level is enabled for this test
 	origLevel := zerolog.GlobalLevel()
+
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	t.Cleanup(func() { zerolog.SetGlobalLevel(origLevel) })
 
@@ -1177,7 +1180,7 @@ func TestPosterQueueOverflow(t *testing.T) {
 
 	// With unbuffered channel (size 0), all enqueues should fail immediately
 	for i := range 5 {
-		payload := []byte(fmt.Sprintf(`{"test":"data-%d"}`, i))
+		payload := fmt.Appendf(nil, `{"test":"data-%d"}`, i)
 		p.Enqueue(payload) // Should all be dropped since channel is unbuffered
 	}
 

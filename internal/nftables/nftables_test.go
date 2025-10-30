@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -575,7 +576,7 @@ func TestBuildLogFields(t *testing.T) {
 	}
 }
 
-func validateBasicFields(t *testing.T, fields []interface{}) {
+func validateBasicFields(t *testing.T, fields []any) {
 	t.Helper()
 
 	// Check that we got a slice of fields
@@ -589,10 +590,10 @@ func validateBasicFields(t *testing.T, fields []interface{}) {
 	}
 }
 
-func convertFieldsToMap(t *testing.T, fields []interface{}) map[string]interface{} {
+func convertFieldsToMap(t *testing.T, fields []any) map[string]any {
 	t.Helper()
 
-	fieldMap := make(map[string]interface{})
+	fieldMap := make(map[string]any)
 
 	for i := 0; i < len(fields); i += 2 {
 		key, ok := fields[i].(string)
@@ -609,7 +610,7 @@ func convertFieldsToMap(t *testing.T, fields []interface{}) map[string]interface
 	return fieldMap
 }
 
-func validateRequiredFields(t *testing.T, fieldMap map[string]interface{}) {
+func validateRequiredFields(t *testing.T, fieldMap map[string]any) {
 	t.Helper()
 
 	requiredFields := []string{"time", "protocol", "payload_len"}
@@ -620,7 +621,7 @@ func validateRequiredFields(t *testing.T, fieldMap map[string]interface{}) {
 	}
 }
 
-func validateConditionalFields(t *testing.T, fieldMap map[string]interface{}, src string) {
+func validateConditionalFields(t *testing.T, fieldMap map[string]any, src string) {
 	t.Helper()
 
 	// Check conditional fields
@@ -1060,10 +1061,8 @@ func (m *MockNFTConnection) CreateTable(table string) error {
 	}
 
 	// Check if table already exists (idempotent)
-	for _, existing := range m.tables {
-		if existing == table {
-			return nil
-		}
+	if slices.Contains(m.tables, table) {
+		return nil
 	}
 
 	m.tables = append(m.tables, table)
@@ -1095,15 +1094,7 @@ func (m *MockNFTConnection) CreateChain(table, chain, _ /* family */, _ /* hook 
 	}
 
 	// Check if table exists
-	tableExists := false
-
-	for _, existing := range m.tables {
-		if existing == table {
-			tableExists = true
-
-			break
-		}
-	}
+	tableExists := slices.Contains(m.tables, table)
 
 	if !tableExists {
 		return newTableNotFoundError(table)
@@ -1121,15 +1112,7 @@ func (m *MockNFTConnection) SetChainPolicy(_ /* table */, _ /* chain */, policy 
 
 	// Validate policy
 	validPolicies := []string{"accept", "drop", "queue", "continue", "return"}
-	validPolicy := false
-
-	for _, valid := range validPolicies {
-		if policy == valid {
-			validPolicy = true
-
-			break
-		}
-	}
+	validPolicy := slices.Contains(validPolicies, policy)
 
 	if !validPolicy {
 		return newInvalidPolicyError(policy)
@@ -1152,15 +1135,7 @@ func validateRule(rule NFTRule) error {
 	}
 
 	validActions := []string{"accept", "drop", "queue", "continue", "return", "reject"}
-	validAction := false
-
-	for _, valid := range validActions {
-		if rule.Action == valid {
-			validAction = true
-
-			break
-		}
-	}
+	validAction := slices.Contains(validActions, rule.Action)
 
 	if !validAction {
 		return newInvalidActionError(rule.Action)

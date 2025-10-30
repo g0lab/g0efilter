@@ -80,8 +80,8 @@ func validateDomain(domain string) error {
 	orig := domain
 
 	// Wildcard handling
-	if strings.HasPrefix(domain, "*.") {
-		domain = strings.TrimPrefix(domain, "*.")
+	if after, ok := strings.CutPrefix(domain, "*."); ok {
+		domain = after
 		if domain == "" {
 			return fmt.Errorf("%w: %s", errInvalidDomain, orig)
 		}
