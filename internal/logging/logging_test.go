@@ -1142,9 +1142,8 @@ func TestPosterQueueOverflow(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	// Use ConsoleWriter for more readable output in tests
-	zl := zerolog.New(zerolog.ConsoleWriter{Out: &buf, NoColor: true, TimeFormat: time.RFC3339}).
-		With().Timestamp().Logger().Level(zerolog.DebugLevel)
+	// Use direct writer (not ConsoleWriter) to avoid buffering issues
+	zl := zerolog.New(&buf).With().Timestamp().Logger().Level(zerolog.DebugLevel)
 
 	p := &poster{
 		url:          "http://localhost:1", // Invalid URL to force queue buildup
@@ -1163,12 +1162,13 @@ func TestPosterQueueOverflow(t *testing.T) {
 	}
 
 	// Give enough time for log writes to complete (race detector slows things down)
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Check that we got queue full/dropping debug messages
 	logOutput := buf.String()
 	if !strings.Contains(logOutput, "queue full") && !strings.Contains(logOutput, "dropping message") {
-		t.Errorf("Expected queue full or dropping message in logs, got: %q", logOutput)
+		t.Logf("Log output: %q", logOutput)
+		t.Errorf("Expected queue full or dropping message in logs")
 	}
 
 	// Most importantly: verify no "retry attempts exhausted" or similar exit messages

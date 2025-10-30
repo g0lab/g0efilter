@@ -41,6 +41,9 @@ const (
 	// LevelTrace is below slog.LevelDebug.
 	LevelTrace slog.Level = -8
 
+	// ActionAllowed is the action string for allowed connections.
+	ActionAllowed = "ALLOWED"
+
 	defaultQueueSize         = 1024
 	defaultWorkers           = 3               // number of concurrent workers
 	defaultRetryTimeout      = 5 * time.Second // max time to retry a single POST
@@ -556,9 +559,15 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 		return true
 	})
 
+	// Adjust log level for IP-based ALLOWED events (allowlisted IPs)
+	logLevel := record.Level
+	if isAllowlistedIP(attrs) {
+		logLevel = slog.LevelDebug
+	}
+
 	// Terminal output: only if record level >= configured threshold
-	if record.Level >= z.termLevel {
-		logToTerminal(z.zl, record.Level, record.Message, attrs)
+	if logLevel >= z.termLevel {
+		logToTerminal(z.zl, logLevel, record.Message, attrs)
 	}
 
 	// Ship action events to the dashboard if configured
@@ -607,13 +616,13 @@ func shouldShipToDashboard(attrs map[string]any) bool {
 	act := extractAction(attrs)
 
 	// Only ship BLOCKED, REDIRECTED, and ALLOWED actions
-	if act != "BLOCKED" && act != filter.ActionRedirected && act != "ALLOWED" {
+	if act != "BLOCKED" && act != filter.ActionRedirected && act != ActionAllowed {
 		return false
 	}
 
 	// Skip ALLOWED actions from nftables (allowlisted IPs)
 	// Keep ALLOWED from SNI/HTTP/DNS filters (domain matches with wildcards)
-	if act == "ALLOWED" {
+	if act == ActionAllowed {
 		component := ""
 		if v, ok := attrs["component"]; ok {
 			component = strings.ToLower(fmt.Sprint(v))
@@ -634,6 +643,24 @@ func extractAction(attrs map[string]any) string {
 	}
 
 	return ""
+}
+
+// isAllowlistedIP checks if an event is an ALLOWED action for an allowlisted IP (from nftables).
+func isAllowlistedIP(attrs map[string]any) bool {
+	act := extractAction(attrs)
+
+	if act != ActionAllowed {
+		return false
+	}
+
+	// Check if this is an IP-based allow (no component field)
+	component := ""
+	if v, ok := attrs["component"]; ok {
+		component = strings.ToLower(fmt.Sprint(v))
+	}
+
+	// If no component or component is not sni/http/dns, this is an IP-based allow from nftables
+	return component != "sni" && component != "http" && component != "dns"
 }
 
 func shipToDashboard(
