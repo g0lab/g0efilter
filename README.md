@@ -3,7 +3,6 @@
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter.svg?type=shield&issueType=security)](https://app.fossa.com/projects/git%2Bgithub.com%2Fg0lab%2Fg0efilter?ref=badge_shield&issueType=security)
 [![Go Report Card](https://goreportcard.com/badge/g0lab/g0efilter)](https://goreportcard.com/report/g0lab/g0efilter)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/6221eed68e504016acd2ec9d951bc031)](https://app.codacy.com/gh/g0lab/g0efilter/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![License](https://img.shields.io/github/license/g0lab/g0efilter.svg)](https://github.com/g0lab/g0efilter/blob/main/LICENSE)
 
 > [!WARNING]
@@ -99,11 +98,9 @@ allowlist:
 | `RATE_RPS`     | Maximum average requests per second (rate-limit)                                                                  | `50`    |
 | `RATE_BURST`   | Maximum burst size for rate-limiting (in requests)                                                                | `100`   |
 
-## Security Best Practices
+## Dashboard Reverse Proxy Suggestion
 
-### Dashboard Reverse Proxy Configuration
-
-For production deployments, it's recommended to place the **g0efilter-dashboard** behind a reverse proxy (such as nginx, Traefik, or Caddy) with the following access controls:
+I would recommended to place the **g0efilter-dashboard** behind a reverse proxy such as Traefik with the following controls:
 
 **Public Endpoints (no authentication required):**
 - `GET /health` - Health check endpoint for monitoring/load balancers
@@ -123,17 +120,17 @@ For production deployments, it's recommended to place the **g0efilter-dashboard*
 Configure your reverse proxy to:
 1. Allow `/health` publicly for health checks
 2. Bypass SSO/OIDC middleware for `POST /api/v1/logs` (allows g0efilter containers to authenticate with API key instead)
-3. Require SSO/OIDC authentication for all other routes (UI and read operations)
+3. Require SSO/OIDC middleware for all other routes (UI and read operations)
 
 This ensures:
-- g0efilter containers can ship logs using the API key (since they cannot perform SSO authentication)
-- Dashboard UI access is protected by your organization's authentication (SSO/OIDC)
+- g0efilter containers can ship logs using the API key
+- Dashboard UI access is protected by some sort of auth middleware (eg PocketID, Authelia, Authentik etc).
 - Monitoring systems can check health without authentication
 - Unauthorized users cannot view sensitive traffic logs
 
 ### Example Traefik Configuration
 
-If using Traefik as a reverse proxy, here's an example of a working file-based configuration using two routers to handle different authentication requirements:
+If using Traefik as a reverse proxy, here's an example of a working yaml based configuration using two routers to handle different authentication requirements:
 
 ```yaml
 http:
@@ -161,7 +158,7 @@ http:
       middlewares:
         - security-headers
         - ratelimit
-        - auth-oidc  # Your SSO/OIDC middleware
+        - auth-oidc  # Your auth middleware
       tls:
         certResolver: letsencrypt
         domains:
