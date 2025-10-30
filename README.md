@@ -78,6 +78,7 @@ allowlist:
 | `DNS_UPSTREAMS`     | Upstream DNS servers (comma-separated)             | `127.0.0.11:53`     |
 | `DASHBOARD_HOST`    | Dashboard URL for log shipping                     | unset               |
 | `DASHBOARD_API_KEY` | API key for dashboard authentication               | unset               |
+| `DASHBOARD_QUEUE_SIZE` | Queue size for buffering logs before sending to dashboard. Logs are dropped if queue is full | `1024` |
 | `LOG_FILE`          | Optional path for persistent log file              | unset               |
 | `NFLOG_BUFSIZE`     | Netfilter log buffer size                          | `96`                |
 | `NFLOG_QTHRESH`     | Netfilter log queue threshold                      | `50`                |
@@ -97,6 +98,89 @@ allowlist:
 | `SSE_RETRY_MS` | Server-Sent Events (SSE) client retry interval in milliseconds                                                    | `2000`  |
 | `RATE_RPS`     | Maximum average requests per second (rate-limit)                                                                  | `50`    |
 | `RATE_BURST`   | Maximum burst size for rate-limiting (in requests)                                                                | `100`   |
+
+## Security Best Practices
+
+### Dashboard Reverse Proxy Configuration
+
+For production deployments, it's recommended to place the **g0efilter-dashboard** behind a reverse proxy (such as nginx, Traefik, or Caddy) with the following access controls:
+
+**Public Endpoints (no authentication required):**
+- `GET /health` - Health check endpoint for monitoring/load balancers
+
+**API Key Protected Endpoints:**
+- `POST /api/v1/logs` - Log ingestion from g0efilter containers (protected by `API_KEY` environment variable)
+
+**SSO/Authentication Protected Endpoints:**
+- `GET /` - Dashboard web UI
+- `GET /api/v1/logs` - Read logs
+- `GET /api/v1/events` - Server-Sent Events stream
+- `DELETE /api/v1/logs` - Clear logs
+- All other dashboard routes
+
+**Example Configuration Pattern:**
+
+Configure your reverse proxy to:
+1. Allow `/health` publicly for health checks
+2. Bypass SSO/OIDC middleware for `POST /api/v1/logs` (allows g0efilter containers to authenticate with API key instead)
+3. Require SSO/OIDC authentication for all other routes (UI and read operations)
+
+This ensures:
+- g0efilter containers can ship logs using the API key (since they cannot perform SSO authentication)
+- Dashboard UI access is protected by your organization's authentication (SSO/OIDC)
+- Monitoring systems can check health without authentication
+- Unauthorized users cannot view sensitive traffic logs
+
+### Example Traefik Configuration
+
+If using Traefik as a reverse proxy, here's an example of a working file-based configuration using two routers to handle different authentication requirements:
+
+```yaml
+http:
+  routers:
+    g0efilter-ingest-router:
+      entryPoints:
+        - websecure
+      rule: "Host(`g0efilter.example.com`) && ((PathPrefix(`/api/v1/logs`) && Method(`POST`)) || PathPrefix(`/health`))"
+      service: g0efilter-dash-service
+      middlewares:
+        - security-headers
+        - ratelimit
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "example.com"
+            sans:
+              - "*.example.com"
+
+    g0efilter-dash-router:
+      entryPoints:
+        - websecure
+      rule: "Host(`g0efilter.example.com`)"
+      service: g0efilter-dash-service
+      middlewares:
+        - security-headers
+        - ratelimit
+        - auth-oidc  # Your SSO/OIDC middleware
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "example.com"
+            sans:
+              - "*.example.com"
+
+  services:
+    g0efilter-dash-service:
+      loadBalancer:
+        servers:
+          - url: "http://g0efilter-dashboard:8081"
+```
+
+**How it works:**
+- `g0efilter-ingest-router`: Matches `POST /api/v1/logs` and `/health` - no SSO required
+- `g0efilter-dash-router`: Matches all other requests to the dashboard - requires SSO/OIDC authentication
+- The more specific ingest router rule takes precedence for API calls and health checks
+- All other traffic (UI, reads, etc.) goes through the dashboard router with SSO protection
 
 
 ### Example docker-compose.yaml

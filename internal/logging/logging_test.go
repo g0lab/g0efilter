@@ -1125,12 +1125,16 @@ func TestPosterRetry(t *testing.T) {
 		q:            make(chan []byte, 1),
 		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
 		zl:           zl,
+		workers:      1,
+		retryTimeout: 30 * time.Second,
 		retryWaitMin: 10 * time.Millisecond,
 		retryWaitMax: 50 * time.Millisecond,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+
+	p.wg.Add(1)
 
 	go p.worker(ctx)
 
@@ -1217,12 +1221,16 @@ func TestPosterResilience(t *testing.T) {
 		q:            make(chan []byte, 1),
 		httpC:        &http.Client{Timeout: 100 * time.Millisecond},
 		zl:           zl,
+		workers:      1,
+		retryTimeout: 30 * time.Second,
 		retryWaitMin: 10 * time.Millisecond,
 		retryWaitMax: 50 * time.Millisecond,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+
+	p.wg.Add(1)
 
 	go p.worker(ctx)
 

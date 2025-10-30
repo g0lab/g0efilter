@@ -42,6 +42,8 @@ const (
 	LevelTrace slog.Level = -8
 
 	defaultQueueSize         = 1024
+	defaultWorkers           = 3               // number of concurrent workers
+	defaultRetryTimeout      = 5 * time.Second // max time to retry a single POST
 	defaultIdleConnTimeout   = 90 * time.Second
 	defaultHTTPClientTimeout = 15 * time.Second
 	defaultRetryWait         = 500 * time.Millisecond
@@ -78,17 +80,21 @@ func parseLevel(s string) slog.Leveler {
 // ---------- poster ----------
 
 type poster struct {
-	url        string
-	apiKey     string
-	q          chan []byte
-	httpC      *http.Client
-	stop       chan struct{}
-	done       chan struct{}
-	zl         zerolog.Logger
-	debug      bool
-	trace      bool
-	ready      chan struct{}
-	startDelay time.Duration
+	url          string
+	apiKey       string
+	q            chan []byte
+	queueSize    int
+	workers      int
+	retryTimeout time.Duration
+	httpC        *http.Client
+	stop         chan struct{}
+	done         chan struct{}
+	wg           sync.WaitGroup
+	zl           zerolog.Logger
+	debug        bool
+	trace        bool
+	ready        chan struct{}
+	startDelay   time.Duration
 	// retry configuration
 	retryMax     int
 	retryWaitMin time.Duration
@@ -122,20 +128,27 @@ func shouldRetry(resp *http.Response, err error) bool {
 //
 //nolint:unparam
 func newPoster(url, apiKey string, zl zerolog.Logger, debug bool) *poster {
-	return newPosterWithCtx(context.Background(), url, apiKey, zl, debug)
+	return newPosterWithCtx(context.Background(), url, apiKey, zl, debug, defaultQueueSize)
 }
 
 // newPosterWithCtx creates a new HTTP poster for sending log events to a dashboard endpoint.
-func newPosterWithCtx(ctx context.Context, url, apiKey string, zl zerolog.Logger, debug bool) *poster {
+func newPosterWithCtx(ctx context.Context, url, apiKey string, zl zerolog.Logger, debug bool, queueSize int) *poster {
+	if queueSize <= 0 {
+		queueSize = defaultQueueSize
+	}
+
 	poster := &poster{
-		url:    url,
-		apiKey: apiKey,
-		q:      make(chan []byte, defaultQueueSize),
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
-		zl:     zl,
-		debug:  debug,
-		ready:  make(chan struct{}),
+		url:          url,
+		apiKey:       apiKey,
+		q:            make(chan []byte, queueSize),
+		queueSize:    queueSize,
+		workers:      defaultWorkers,
+		retryTimeout: defaultRetryTimeout,
+		stop:         make(chan struct{}),
+		done:         make(chan struct{}),
+		zl:           zl,
+		debug:        debug,
+		ready:        make(chan struct{}),
 	}
 
 	tr := &http.Transport{
@@ -270,24 +283,6 @@ func (p *poster) Probe(ctx context.Context) error {
 	return nil
 }
 
-func (p *poster) startWorker(ctx context.Context) {
-	if p.startDelay > 0 {
-		t := time.NewTimer(p.startDelay)
-		defer t.Stop()
-
-		select {
-		case <-t.C:
-		case <-p.stop:
-			close(p.done)
-
-			return
-		}
-	}
-
-	close(p.ready) // signal that shipping is beginning
-	p.worker(ctx)  // closes p.done when it exits
-}
-
 // setAPIAuthHeaders sets both API key headers.
 func setAPIAuthHeaders(headers http.Header, apiKey string) {
 	if apiKey == "" {
@@ -308,13 +303,20 @@ func (p *poster) handlePostPayload(ctx context.Context, payload []byte) {
 		logTraceBody(p.zl, p.url, payload)
 	}
 
-	// Retry loop with exponential backoff, no maximum retry limit
+	// Create context with timeout for retry loop
+	retryCtx, cancel := context.WithTimeout(ctx, p.retryTimeout)
+	defer cancel()
+
+	// Retry loop with exponential backoff
 	backoffDuration := p.retryWaitMin
 
 	for {
 		select {
-		case <-ctx.Done():
-			return // Exit if context is cancelled
+		case <-retryCtx.Done():
+			// Timeout or cancellation - give up
+			p.zl.Warn().Str("url", p.url).Msg("dashboard: giving up after timeout")
+
+			return
 		default:
 			success := p.attemptPost(ctx, payload)
 			if success {
@@ -322,8 +324,9 @@ func (p *poster) handlePostPayload(ctx context.Context, payload []byte) {
 			}
 
 			// Log that we're going to retry
-			p.zl.Info().Str("url", p.url).
-				Msg("dashboard: posting failed, will retry")
+			if p.debug {
+				p.zl.Debug().Str("url", p.url).Msg("dashboard: posting failed, will retry")
+			}
 
 			// Wait with exponential backoff
 			time.Sleep(addJitter(backoffDuration))
@@ -456,24 +459,44 @@ func logPosterResponse(zl zerolog.Logger, resp *http.Response, trace bool) {
 }
 
 func (p *poster) worker(ctx context.Context) {
-	defer close(p.done)
+	defer p.wg.Done()
 
 	for {
 		select {
 		case payload := <-p.q:
 			p.handlePostPayload(ctx, payload)
 		case <-p.stop:
-			// drain remaining items quickly
-			for {
-				select {
-				case <-p.q:
-					// dropped during shutdown
-				default:
-					return
-				}
-			}
+			return
 		}
 	}
+}
+
+func (p *poster) startWorker(ctx context.Context) {
+	if p.startDelay > 0 {
+		t := time.NewTimer(p.startDelay)
+		defer t.Stop()
+
+		select {
+		case <-t.C:
+		case <-p.stop:
+			close(p.done)
+
+			return
+		}
+	}
+
+	close(p.ready) // signal that shipping is beginning
+
+	// Start worker pool
+	p.wg.Add(p.workers)
+
+	for range p.workers {
+		go p.worker(ctx)
+	}
+
+	// Wait for all workers to finish
+	p.wg.Wait()
+	close(p.done)
 }
 
 // ---------- zerolog bridge as a slog.Handler ----------
@@ -818,6 +841,61 @@ func (z *zerologHandler) WithGroup(name string) slog.Handler {
 
 // ---------- constructors ----------
 
+// initializeDashboardPoster sets up the dashboard HTTP poster with configuration from environment.
+func initializeDashboardPoster(ctx context.Context, dhost string, zl zerolog.Logger, lvl slog.Level) *poster {
+	// Add http:// prefix if needed
+	if !strings.HasPrefix(dhost, "http://") && !strings.HasPrefix(dhost, "https://") {
+		dhost = "http://" + dhost
+	}
+
+	durl := strings.TrimRight(dhost, "/") + "/api/v1/logs"
+	dapi := strings.TrimSpace(os.Getenv("DASHBOARD_API_KEY"))
+	debugEnabled := lvl <= slog.LevelDebug
+	traceEnabled := lvl <= LevelTrace
+
+	// Parse queue size from environment
+	queueSize := parseQueueSize(zl)
+
+	poster := newPosterWithCtx(ctx, durl, dapi, zl, debugEnabled, queueSize)
+	poster.trace = traceEnabled
+
+	// Fire a probe once initialized
+	go func() {
+		<-poster.ready
+
+		err := poster.Probe(ctx)
+		if err != nil {
+			zl.Warn().Err(err).Str("url", durl).Msg("dashboard: probe error")
+		} else {
+			zl.Info().Str("url", durl).Msg("dashboard: probe ok")
+		}
+	}()
+
+	return poster
+}
+
+// parseQueueSize reads and validates DASHBOARD_QUEUE_SIZE from environment.
+func parseQueueSize(zl zerolog.Logger) int {
+	queueSize := defaultQueueSize
+	qsizeStr := strings.TrimSpace(os.Getenv("DASHBOARD_QUEUE_SIZE"))
+
+	if qsizeStr == "" {
+		return queueSize
+	}
+
+	var parsed int
+
+	n, err := fmt.Sscanf(qsizeStr, "%d", &parsed)
+
+	if err != nil || n != 1 || parsed <= 0 {
+		zl.Warn().Str("value", qsizeStr).Msg("invalid DASHBOARD_QUEUE_SIZE, using default")
+
+		return defaultQueueSize
+	}
+
+	return parsed
+}
+
 // NewWithContext builds a slog.Logger backed by zerolog.
 // Format and addSource are kept for API compatibility.
 //
@@ -885,30 +963,9 @@ func NewWithContext(
 
 	var poster *poster
 
-	if dhost := strings.TrimSpace(os.Getenv("DASHBOARD_HOST")); dhost != "" {
-		if !strings.HasPrefix(dhost, "http://") && !strings.HasPrefix(dhost, "https://") {
-			dhost = "http://" + dhost
-		}
-
-		durl := strings.TrimRight(dhost, "/") + "/api/v1/logs"
-		dapi := strings.TrimSpace(os.Getenv("DASHBOARD_API_KEY"))
-		debugEnabled := lvl <= slog.LevelDebug
-		traceEnabled := lvl <= LevelTrace
-
-		poster = newPosterWithCtx(ctx, durl, dapi, zl, debugEnabled)
-		poster.trace = traceEnabled
-
-		// Fire a probe once initialised
-		go func() {
-			<-poster.ready
-
-			err := poster.Probe(ctx)
-			if err != nil {
-				zl.Warn().Err(err).Str("url", durl).Msg("dashboard: probe error")
-			} else {
-				zl.Info().Str("url", durl).Msg("dashboard: probe ok")
-			}
-		}()
+	dhost := strings.TrimSpace(os.Getenv("DASHBOARD_HOST"))
+	if dhost != "" {
+		poster = initializeDashboardPoster(ctx, dhost, zl, lvl)
 	}
 
 	// Initialize alerting feature (optional)
