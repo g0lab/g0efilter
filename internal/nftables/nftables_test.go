@@ -40,6 +40,29 @@ func newInvalidActionError(action string) error {
 	return fmt.Errorf("%w: %s", errInvalidAction, action)
 }
 
+func TestVersion(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	version, err := Version(ctx)
+	if err != nil {
+		t.Skipf("nft not available: %v", err)
+	}
+
+	if version == "" {
+		t.Error("expected non-empty version string")
+	}
+
+	// Version should contain a version number
+	if !strings.Contains(version, "v") && !strings.Contains(version, ".") {
+		t.Errorf("version string doesn't look like a version: %q", version)
+	}
+
+	t.Logf("nftables version: %s", version)
+}
+
 func TestApplyNftRulesAuto(t *testing.T) {
 	// Note: Cannot use t.Parallel() with t.Setenv() due to Go testing framework limitations
 	tests := getApplyNftRulesAutoTests()

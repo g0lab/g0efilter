@@ -171,6 +171,17 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 
 	lg.Info("startup.info", kv...)
 
+	// Log nftables version
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	nftVersion, err := nftables.Version(ctx)
+	if err != nil {
+		lg.Warn("startup.nftables_version", "error", err.Error())
+	} else {
+		lg.Info("startup.nftables_version", "version", nftVersion)
+	}
+
 	if cfg.mode == filter.ModeSNI {
 		lg.Info("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
 	}

@@ -982,6 +982,21 @@ func TestShipToDashboard_ActionFilter_AllowedWithHttp(t *testing.T) {
 	}
 }
 
+func TestShipToDashboard_ActionFilter_AllowedWithNflog(t *testing.T) {
+	t.Parallel()
+
+	p, ch := mkTestPoster()
+	attrs := map[string]any{"action": "ALLOWED", "component": "nflog"}
+	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
+
+	select {
+	case <-ch:
+		t.Fatal("did not expect enqueue for ALLOWED with nflog (IP-based)")
+	case <-time.After(50 * time.Millisecond):
+		// ok: nothing enqueued
+	}
+}
+
 func TestShipToDashboard_ActionFilter_AllowedWithoutComponent(t *testing.T) {
 	t.Parallel()
 
@@ -991,9 +1006,9 @@ func TestShipToDashboard_ActionFilter_AllowedWithoutComponent(t *testing.T) {
 
 	select {
 	case <-ch:
-		t.Fatal("did not expect enqueue for ALLOWED without component (IP-based)")
-	case <-time.After(50 * time.Millisecond):
-		// ok: nothing enqueued
+		// ok: ships because no component (could be from other sources)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected enqueue for ALLOWED without component")
 	}
 }
 

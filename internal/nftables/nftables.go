@@ -25,6 +25,28 @@ const (
 
 var errPortOutOfRange = errors.New("port out of range")
 
+// Version returns the nftables version string.
+func Version(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "nft", "--version")
+
+	var out bytes.Buffer
+
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to get nft version: %w", err)
+	}
+
+	// Output is typically "nftables v1.0.9 (Spark In The Dark)"
+	// We want to clean it up to just the version
+	version := strings.TrimSpace(out.String())
+	version = strings.TrimPrefix(version, "nftables ")
+
+	return version, nil
+}
+
 // parsePort validates and converts a port string to an integer between 1 and 65535.
 func parsePort(s, name string) (int, error) {
 	port, err := strconv.Atoi(strings.TrimSpace(s))
@@ -497,8 +519,8 @@ func processActionEvent(
 	fields := buildLogFields(src, dst, proto, sourceIP, destinationIP, flowID, sourcePort, destinationPort, payloadLen)
 	fields = append(fields, "action", action)
 
-	// Level policy: REDIRECTED at DEBUG, ALLOWED/BLOCKED at INFO
-	if action == filter.ActionRedirected {
+	// Level policy: REDIRECTED and ALLOWED at DEBUG, BLOCKED at INFO
+	if action == filter.ActionRedirected || action == "ALLOWED" {
 		lg.Debug("nflog.event", fields...)
 	} else {
 		lg.Info("nflog.event", fields...)

@@ -620,16 +620,16 @@ func shouldShipToDashboard(attrs map[string]any) bool {
 		return false
 	}
 
-	// Skip ALLOWED actions from nftables (allowlisted IPs)
+	// Skip ALLOWED actions from nftables (allowlisted IPs with component=nflog)
 	// Keep ALLOWED from SNI/HTTP/DNS filters (domain matches with wildcards)
 	if act == ActionAllowed {
 		component := ""
 		if v, ok := attrs["component"]; ok {
 			component = strings.ToLower(fmt.Sprint(v))
 		}
-		// If no component or component is not sni/http/dns, this is an IP-based allow from nftables
-		if component != "sni" && component != "http" && component != "dns" {
-			return false // Skip nftables IP-based allows
+		// Skip nflog (nftables IP-based allows)
+		if component == "nflog" {
+			return false
 		}
 	}
 
@@ -653,14 +653,14 @@ func isAllowlistedIP(attrs map[string]any) bool {
 		return false
 	}
 
-	// Check if this is an IP-based allow (no component field)
+	// Check if this is an IP-based allow (component=nflog from nftables)
 	component := ""
 	if v, ok := attrs["component"]; ok {
 		component = strings.ToLower(fmt.Sprint(v))
 	}
 
-	// If no component or component is not sni/http/dns, this is an IP-based allow from nftables
-	return component != "sni" && component != "http" && component != "dns"
+	// nflog component indicates IP-based allow from nftables
+	return component == "nflog"
 }
 
 func shipToDashboard(
