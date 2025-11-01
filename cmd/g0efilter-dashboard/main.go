@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -50,6 +51,15 @@ func init() {
 	if commit == "" {
 		commit = "none"
 	}
+}
+
+// getGoVersion returns the Go version used to build the binary.
+func getGoVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.GoVersion
+	}
+
+	return "unknown"
 }
 
 // printVersion prints version information to stderr.
@@ -146,7 +156,17 @@ func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
 		return nil, exitCodeError(1)
 	}
 
+	// Shorten commit hash for cleaner output
+	shortCommit := commit
+	if len(shortCommit) > 7 {
+		shortCommit = commit[:7]
+	}
+
 	lg.Info("dashboard.starting",
+		"version", version,
+		"commit", shortCommit,
+		"go_version", getGoVersion(),
+		"build_date", date,
 		"addr", cfg.Addr,
 		"buffer_size", cfg.BufferSize,
 		"read_limit", cfg.ReadLimit,
@@ -154,9 +174,6 @@ func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
 		"rate_rps", cfg.RateRPS,
 		"rate_burst", cfg.RateBurst,
 		"write_timeout", cfg.WriteTimeout,
-		"version", version,
-		"commit", commit,
-		"date", date,
 	)
 
 	return lg, nil

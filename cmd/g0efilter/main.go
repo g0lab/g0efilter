@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,15 @@ func init() {
 	if commit == "" {
 		commit = "none"
 	}
+}
+
+// getGoVersion returns the Go version used to build the binary.
+func getGoVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.GoVersion
+	}
+
+	return "unknown"
 }
 
 // printVersion prints version information to stderr.
@@ -109,6 +119,9 @@ func main() {
 	startServices(ctx, config, domains, lg)
 	startNflogStream(ctx, lg)
 
+	// Log startup complete
+	lg.Info("startup.ready", "mode", config.mode, "filter_count", len(domains))
+
 	// Wait for shutdown signal
 	sig := <-sigCh
 	lg.Info("shutdown.signal", "signal", sig.String())
@@ -165,35 +178,43 @@ func loadConfig() config {
 
 // logStartupInfo logs application startup information and configuration.
 func logStartupInfo(lg *slog.Logger, cfg config) {
-	kv := []any{
-		"name", name,
-		"policy_path", cfg.policyPath,
-		"mode", cfg.mode,
-		"log_level", cfg.logLevel,
-		"version", version,
-		"commit", commit,
+	// Shorten commit hash for cleaner output
+	shortCommit := commit
+	if len(shortCommit) > 7 {
+		shortCommit = commit[:7]
 	}
 
-	if cfg.logFile != "" {
-		kv = append(kv, "log_file", cfg.logFile)
+	// Get nftables version
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	nftVersion, err := nftables.Version(ctx)
+	if err != nil {
+		nftVersion = "unavailable"
+		lg.Debug("startup.nftables_version_error", "error", err.Error())
+	}
+
+	kv := []any{
+		"name", name,
+		"version", version,
+		"commit", shortCommit,
+		"go_version", getGoVersion(),
+		"nft_version", nftVersion,
+		"build_date", date,
+		"mode", cfg.mode,
+		"policy_path", cfg.policyPath,
+		"log_level", cfg.logLevel,
 	}
 
 	if cfg.hostname != "" {
 		kv = append(kv, "hostname", cfg.hostname)
 	}
 
-	lg.Info("startup.info", kv...)
-
-	// Log nftables version
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	nftVersion, err := nftables.Version(ctx)
-	if err != nil {
-		lg.Warn("startup.nftables_version", "error", err.Error())
-	} else {
-		lg.Info("startup.nftables_version", "version", nftVersion)
+	if cfg.logFile != "" {
+		kv = append(kv, "log_file", cfg.logFile)
 	}
+
+	lg.Info("startup.info", kv...)
 
 	if cfg.mode == filter.ModeHTTPS {
 		lg.Info("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
@@ -202,13 +223,6 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 	if cfg.mode == filter.ModeDNS {
 		lg.Info("startup.ports", "dns_port", cfg.dnsPort)
 	}
-
-	lg.Debug("startup.config",
-		"http_port", cfg.httpPort,
-		"https_port", cfg.httpsPort,
-		"dns_port", cfg.dnsPort,
-		"date", date,
-	)
 }
 
 // logDashboardInfo logs dashboard shipping configuration status.
@@ -296,7 +310,7 @@ func loadAndApplyPolicy(cfg config, lg *slog.Logger) ([]string, []string, error)
 		return nil, nil, fmt.Errorf("failed to read policy: %w", err)
 	}
 
-	lg.Info("policy.loaded", "domains_count", len(domains), "ips_count", len(ips))
+	lg.Info("policy.loaded", "domain_count", len(domains), "ip_count", len(ips))
 	lg.Debug("policy.loaded.details", "domains", domains, "ips", ips)
 
 	err = nftables.ApplyNftRules(ips, cfg.httpsPort, cfg.httpPort, cfg.dnsPort)
