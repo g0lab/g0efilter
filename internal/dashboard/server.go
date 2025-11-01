@@ -13,16 +13,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/logging"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-)
-
-var (
-	errAPIKeyRequired = errors.New("API_KEY is required")
 )
 
 // Config holds the dashboard server configuration.
@@ -83,19 +78,9 @@ type LogEntry struct {
 }
 
 // Run starts the dashboard HTTP server with the provided configuration.
-// It validates the API key and starts the HTTP listener.
 //
 //nolint:funlen // Function is clear and well-structured despite length
 func Run(ctx context.Context, cfg Config) error {
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		// Log to stderr before logger is initialized
-		fmt.Fprintln(os.Stderr, "ERROR: API_KEY environment variable is required but not set")
-		fmt.Fprintln(os.Stderr, "The dashboard requires an API key for secure log ingestion")
-		fmt.Fprintln(os.Stderr, "Please set API_KEY to a secure random string")
-
-		return errAPIKeyRequired
-	}
-
 	// Logger
 	lg := logging.NewWithContext(ctx, cfg.LogLevel, os.Stdout, cfg.Version)
 	slog.SetDefault(lg)

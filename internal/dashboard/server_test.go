@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -929,37 +928,6 @@ func TestRoutes(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestRunValidation tests the Run function's validation.
-func TestRunValidation(t *testing.T) {
-	t.Parallel()
-
-	t.Run("missing API key", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := Config{
-			APIKey: "",
-		}
-
-		err := Run(context.Background(), cfg)
-		if !errors.Is(err, errAPIKeyRequired) {
-			t.Errorf("Expected errAPIKeyRequired, got %v", err)
-		}
-	})
-
-	t.Run("whitespace-only API key", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := Config{
-			APIKey: "   ",
-		}
-
-		err := Run(context.Background(), cfg)
-		if !errors.Is(err, errAPIKeyRequired) {
-			t.Errorf("Expected errAPIKeyRequired for whitespace key, got %v", err)
-		}
-	})
 }
 
 // BenchmarkProcessPayload benchmarks the payload processing.

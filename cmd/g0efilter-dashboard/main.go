@@ -151,6 +151,11 @@ func setupLogging(cfg dashboard.Config) (*slog.Logger, error) {
 	slog.SetDefault(lg)
 
 	if cfg.APIKey == "" {
+		// Log helpful error message to stderr before logger
+		fmt.Fprintln(os.Stderr, "ERROR: API_KEY environment variable is required but not set")
+		fmt.Fprintln(os.Stderr, "The dashboard requires an API key for secure log ingestion")
+		fmt.Fprintln(os.Stderr, "Please set API_KEY to a secure random string")
+
 		lg.Error("config.missing_api_key", "msg", "API_KEY is required")
 
 		return nil, exitCodeError(1)
