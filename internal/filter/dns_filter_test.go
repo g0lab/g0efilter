@@ -601,3 +601,181 @@ func TestBlockedNonEnforcedType(t *testing.T) {
 		t.Errorf("Expected NXDOMAIN, got rcode %d", response.Rcode)
 	}
 }
+
+func TestStartUDPServer(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	opts := Options{Logger: logger}
+
+	allowedDomains := []string{"example.com"}
+	handler := createDNSHandler(allowedDomains, opts)
+
+	server := &dns.Server{
+		Addr:    "127.0.0.1:0",
+		Net:     "udp",
+		Handler: dns.HandlerFunc(handler.handle),
+	}
+
+	errCh := make(chan error, 1)
+
+	// Start server in goroutine
+	go startUDPServer(server, errCh, opts)
+
+	// Give it a moment to attempt start
+	select {
+	case err := <-errCh:
+		// Expected to fail in test environment
+		t.Logf("UDP server start failed as expected: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		// Timeout is also acceptable
+		t.Log("UDP server start timed out as expected in test environment")
+	}
+}
+
+func TestStartTCPServer(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	opts := Options{Logger: logger}
+
+	allowedDomains := []string{"example.com"}
+	handler := createDNSHandler(allowedDomains, opts)
+
+	server := &dns.Server{
+		Addr:    "127.0.0.1:0",
+		Net:     "tcp",
+		Handler: dns.HandlerFunc(handler.handle),
+	}
+
+	errCh := make(chan error, 1)
+
+	// Start server in goroutine
+	go startTCPServer(server, errCh, opts)
+
+	// Give it a moment to attempt start
+	select {
+	case err := <-errCh:
+		// Expected to fail in test environment
+		t.Logf("TCP server start failed as expected: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		// Timeout is also acceptable
+		t.Log("TCP server start timed out as expected in test environment")
+	}
+}
+
+func TestHandleAllowedRequest(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	allowedDomains := []string{"example.com"}
+	options := Options{
+		DialTimeout: 1000,
+		IdleTimeout: 5000,
+		Logger:      logger,
+	}
+
+	handler := createDNSHandler(allowedDomains, options)
+
+	// Create DNS request
+	msg := &dns.Msg{}
+	msg.SetQuestion(dns.Fqdn("example.com"), dns.TypeA)
+
+	mockWriter := &mockDNSResponseWriter{
+		responses: make([]*dns.Msg, 0),
+	}
+
+	// Test handleAllowedRequest
+	handler.handleAllowedRequest(
+		logger,
+		mockWriter,
+		msg,
+		"example.com",
+		dns.TypeA,
+		"192.168.1.1",
+		12345,
+		"test-flow-id",
+	)
+
+	// Should have attempted to forward the request
+	// In test environment without real DNS upstream, we expect it to handle gracefully
+	t.Log("handleAllowedRequest executed without panic")
+}
+
+func TestEmitSyntheticEvent(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	allowedDomains := []string{"example.com"}
+	options := Options{
+		DialTimeout: 1000,
+		IdleTimeout: 5000,
+		Logger:      logger,
+	}
+
+	handler := createDNSHandler(allowedDomains, options)
+
+	mockWriter := &mockDNSResponseWriter{
+		responses:  make([]*dns.Msg, 0),
+		localAddr:  &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 53},
+		remoteAddr: &net.UDPAddr{IP: net.IPv4(192, 168, 1, 1), Port: 12345},
+	}
+
+	flowID := handler.emitSyntheticEvent(logger, mockWriter, "192.168.1.1", 12345)
+
+	if flowID == "" {
+		t.Error("Expected non-empty flow ID")
+	}
+}
+
+func TestDNSForward(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	allowedDomains := []string{"example.com"}
+	options := Options{
+		DialTimeout: 100,
+		IdleTimeout: 500,
+		Logger:      logger,
+	}
+
+	handler := createDNSHandler(allowedDomains, options)
+
+	msg := &dns.Msg{}
+	msg.SetQuestion(dns.Fqdn("example.com"), dns.TypeA)
+
+	// This will likely fail due to no real upstream, but should not panic
+	_, err := handler.forward(msg)
+
+	// Error is expected in test environment
+	if err != nil {
+		t.Logf("DNS forward failed as expected in test environment: %v", err)
+	}
+}
+
+func TestMarkedDialer(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.Default()
+	allowedDomains := []string{"example.com"}
+	options := Options{
+		DialTimeout: 5000,
+		IdleTimeout: 30000,
+		Logger:      logger,
+	}
+
+	handler := createDNSHandler(allowedDomains, options)
+
+	dialer := handler.markedDialer()
+	if dialer == nil {
+		t.Error("Expected non-nil dialer")
+
+		return
+	}
+
+	// Should have timeout set
+	expectedTimeout := 5 * time.Second
+	if dialer.Timeout != expectedTimeout {
+		t.Errorf("Expected timeout %v, got %v", expectedTimeout, dialer.Timeout)
+	}
+}

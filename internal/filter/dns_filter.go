@@ -307,7 +307,7 @@ func (handler *dnsHandler) handleAllowedRequest(
 	remotePort int,
 	flowID string,
 ) {
-	resp, _, err := handler.forward(request)
+	resp, err := handler.forward(request)
 	if err != nil {
 		if lg != nil {
 			lg.Warn("dns.upstream_error",
@@ -344,7 +344,7 @@ func (handler *dnsHandler) handleAllowedRequest(
 }
 
 // forward sends a DNS request to upstream servers, trying UDP first then TCP if truncated.
-func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
+func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
 	// UDP first, then TCP on truncation/need
 	udpClient := &dns.Client{
 		Net:     "udp",
@@ -368,7 +368,7 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 		}
 
 		if !in.Truncated {
-			return in, up, nil
+			return in, nil
 		}
 
 		// Response truncated, retry via TCP
@@ -378,12 +378,12 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 
 		inTCP, _, err2 := tcpClient.ExchangeContext(ctx, request, up)
 		if err2 == nil && inTCP != nil {
-			return inTCP, up, nil
+			return inTCP, nil
 		}
 		// try next upstream on TCP fail
 	}
 
-	return nil, "", os.ErrDeadlineExceeded
+	return nil, os.ErrDeadlineExceeded
 }
 
 // markedDialer creates a network dialer with SO_MARK set to bypass iptables rules.

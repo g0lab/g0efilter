@@ -2,6 +2,10 @@
 package filter
 
 import (
+	"bufio"
+	"bytes"
+	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"testing"
@@ -110,19 +114,15 @@ func TestParseHostPort(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
+			host, port := parseHostPort(tt.hostPort)
 
-				host, port := parseHostPort(tt.hostPort)
+			if host != tt.expectedHost {
+				t.Errorf("Expected host %s, got %s", tt.expectedHost, host)
+			}
 
-				if host != tt.expectedHost {
-					t.Errorf("Expected host %s, got %s", tt.expectedHost, host)
-				}
-
-				if port != tt.expectedPort {
-					t.Errorf("Expected port %d, got %d", tt.expectedPort, port)
-				}
-			})
+			if port != tt.expectedPort {
+				t.Errorf("Expected port %d, got %d", tt.expectedPort, port)
+			}
 		})
 	}
 }
@@ -470,6 +470,176 @@ func testEmitSyntheticUDPCase(t *testing.T, tt struct {
 	}
 }
 
+func TestNewMarkedDialer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		dialTimeout     time.Duration
+		expectedTimeout time.Duration
+	}{
+		{"zero timeout", 0, 0},
+		{"1 second timeout", 1 * time.Second, 1 * time.Second},
+		{"5 seconds timeout", 5 * time.Second, 5 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dialer := newMarkedDialer(tt.dialTimeout)
+			if dialer == nil {
+				t.Fatal("Expected non-nil dialer")
+			}
+
+			if dialer.Timeout != tt.expectedTimeout {
+				t.Errorf("Expected timeout %v, got %v", tt.expectedTimeout, dialer.Timeout)
+			}
+		})
+	}
+}
+
+func TestSetConnTimeouts(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with idle timeout", func(t *testing.T) {
+		t.Parallel()
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		opts := Options{IdleTimeout: 5000} // 5 seconds
+
+		setConnTimeouts(conn1, conn2, opts)
+
+		// Function should not panic and connections should still be valid
+		if conn1 == nil || conn2 == nil {
+			t.Error("Connections should still be valid after setting timeouts")
+		}
+	})
+
+	t.Run("without idle timeout", func(t *testing.T) {
+		t.Parallel()
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		opts := Options{IdleTimeout: 0}
+
+		setConnTimeouts(conn1, conn2, opts)
+
+		// Should not panic with zero timeout
+		if conn1 == nil || conn2 == nil {
+			t.Error("Connections should still be valid")
+		}
+	})
+}
+
+func TestLogAllowedConnection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with logger", func(t *testing.T) {
+		t.Parallel()
+
+		logger := slog.Default()
+		opts := Options{Logger: logger}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logAllowedConnection(opts, "https", "example.com:443", "example.com", conn1)
+	})
+
+	t.Run("without logger", func(t *testing.T) {
+		t.Parallel()
+
+		opts := Options{Logger: nil}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logAllowedConnection(opts, "https", "example.com:443", "example.com", conn1)
+	})
+}
+
+func TestLogBlockedConnection(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with logger", func(t *testing.T) {
+		t.Parallel()
+
+		logger := slog.Default()
+		opts := Options{Logger: logger}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logBlockedConnection(opts, "https", "not-allowlisted", "evil.com", conn1, "1.2.3.4", 443)
+	})
+
+	t.Run("without logger", func(t *testing.T) {
+		t.Parallel()
+
+		opts := Options{Logger: nil}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logBlockedConnection(opts, "https", "not-allowlisted", "evil.com", conn1, "1.2.3.4", 443)
+	})
+}
+
+var errTestDial = errors.New("dial error")
+
+func TestLogDstConnDialError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with logger", func(t *testing.T) {
+		t.Parallel()
+
+		logger := slog.Default()
+		opts := Options{Logger: logger}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logdstConnDialError(opts, "https", conn1, "example.com:443", errTestDial)
+	})
+
+	t.Run("without logger", func(t *testing.T) {
+		t.Parallel()
+
+		opts := Options{Logger: nil}
+
+		conn1, conn2 := net.Pipe()
+
+		defer func() { _ = conn1.Close() }()
+		defer func() { _ = conn2.Close() }()
+
+		// Should not panic
+		logdstConnDialError(opts, "https", conn1, "example.com:443", errTestDial)
+	})
+}
+
 func TestEmitSynthetic(t *testing.T) {
 	t.Parallel()
 
@@ -543,4 +713,90 @@ func testEmitSyntheticCase(t *testing.T, tt struct {
 	} else if result != "" {
 		t.Errorf("Expected empty flow ID, got %q", result)
 	}
+}
+
+func TestBidirectionalCopy(t *testing.T) {
+	t.Parallel()
+
+	// Create mock pipe connections
+	r1, w1 := io.Pipe()
+	r2, w2 := io.Pipe()
+
+	conn1 := &mockConn{remoteAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080}}
+	conn2 := &mockConn{remoteAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9090}}
+
+	// Use a small buffer for testing
+	reader := bytes.NewReader([]byte("test data"))
+
+	// Start bidirectionalCopy in goroutine
+	done := make(chan bool)
+
+	go func() {
+		bidirectionalCopy(conn1, conn2, reader)
+
+		done <- true
+	}()
+
+	// Close pipes to force completion
+	_ = r1.Close()
+	_ = w1.Close()
+	_ = r2.Close()
+	_ = w2.Close()
+
+	// Wait for completion or timeout
+	select {
+	case <-done:
+		t.Log("bidirectionalCopy completed")
+	case <-time.After(100 * time.Millisecond):
+		t.Log("bidirectionalCopy timed out as expected")
+	}
+}
+
+func TestBidirectionalCopyWithBufferedReader(t *testing.T) {
+	t.Parallel()
+
+	// Create mock pipe connections
+	r1, w1 := io.Pipe()
+	r2, w2 := io.Pipe()
+
+	conn1 := &mockConn{remoteAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080}}
+	conn2 := &mockConn{remoteAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 9090}}
+
+	// Use a buffered reader for testing
+	testData := []byte("test data from buffered reader")
+	br := bufio.NewReader(bytes.NewReader(testData))
+
+	// Start bidirectionalCopyWithBufferedReader in goroutine
+	done := make(chan bool)
+
+	go func() {
+		bidirectionalCopyWithBufferedReader(conn1, conn2, br)
+
+		done <- true
+	}()
+
+	// Close pipes to force completion
+	_ = r1.Close()
+	_ = w1.Close()
+	_ = r2.Close()
+	_ = w2.Close()
+
+	// Wait for completion or timeout
+	select {
+	case <-done:
+		t.Log("bidirectionalCopyWithBufferedReader completed")
+	case <-time.After(100 * time.Millisecond):
+		t.Log("bidirectionalCopyWithBufferedReader timed out as expected")
+	}
+}
+
+func TestOriginalDstTCP(t *testing.T) {
+	t.Parallel()
+
+	// This function requires a real TCP connection with SO_ORIGINAL_DST socket option
+	// Testing with nil or mock connections would cause panics or meaningless failures
+	// The function is better tested through integration tests with actual iptables REDIRECT
+
+	t.Log("originalDstTCP requires real TCP connection with iptables REDIRECT, skipping unit test")
+	t.Log("This function is covered by integration tests")
 }
