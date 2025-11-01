@@ -198,6 +198,7 @@ services:
     ports:
       - 8081:8081 # Dashboard port
     read_only: true
+    restart: always
     env_file:
       - .env
 
@@ -214,6 +215,8 @@ services:
     env_file:
       - .env.dashboard
     network_mode: "service:g0efilter"
+    restart: always
+    depends_on: [g0efilter]
 
   example-container:
     image: alpine:latest
@@ -221,6 +224,7 @@ services:
     command: >
       sh -c "apk add --no-cache curl && tail -f /dev/null"
     network_mode: "service:g0efilter"
+    depends_on: [g0efilter]
 ```
 
 ## License
