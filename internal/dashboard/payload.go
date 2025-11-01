@@ -11,6 +11,8 @@ import (
 )
 
 // processPayloads converts raw payloads to LogEntry structs, inserts them, and broadcasts to SSE clients.
+//
+//nolint:cyclop // Complexity from probe detection, filtering, insertion, and broadcast logic
 func (s *Server) processPayloads(ctx context.Context, payloads []map[string]any, remoteIP string) []map[string]any {
 	results := make([]map[string]any, 0, len(payloads))
 	filtered := 0
@@ -71,7 +73,7 @@ func (s *Server) processPayloads(ctx context.Context, payloads []map[string]any,
 
 // processPayload converts a raw log payload map into a LogEntry struct with enriched fields.
 //
-//nolint:funlen // Payload processing requires extensive field extraction
+//nolint:funlen,cyclop // Payload processing requires extensive field extraction and validation
 func (s *Server) processPayload(ctx context.Context, in map[string]any, remoteIP string) *LogEntry {
 	msg, _ := in["msg"].(string)
 
