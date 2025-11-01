@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/filter"
@@ -91,12 +93,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// Setup context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling for external shutdown (SIGTERM, SIGINT)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	startServices(ctx, config, domains, lg)
 	startNflogStream(ctx, lg)
 
-	select {}
+	// Wait for shutdown signal
+	sig := <-sigCh
+	lg.Info("shutdown.signal", "signal", sig.String())
+	cancel() // Cancel context to gracefully stop all services
+
+	// Give services time to cleanup
+	const shutdownGracePeriod = 3 * time.Second
+	lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod)
+	time.Sleep(shutdownGracePeriod)
+
+	// Shutdown logger to flush buffers
+	logging.Shutdown(1 * time.Second)
+	lg.Info("shutdown.complete")
 }
 
 func handleVersionFlag() bool {
@@ -261,13 +281,29 @@ func loadAndApplyPolicy(cfg config, lg *slog.Logger) ([]string, []string, error)
 }
 
 // runServiceWithRetry runs a service in a goroutine and restarts it on failure.
-func runServiceWithRetry(serviceName string, lg *slog.Logger, serviceFunc func() error) {
+// Stops retrying when context is cancelled (e.g., on shutdown signal).
+func runServiceWithRetry(ctx context.Context, serviceName string, lg *slog.Logger, serviceFunc func() error) {
 	go func() {
 		for {
-			err := serviceFunc()
-			if err != nil {
-				lg.Error(serviceName+".stopped", "err", err, "action", "retrying")
-				time.Sleep(retryDelay)
+			select {
+			case <-ctx.Done():
+				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
+
+				return
+			default:
+				err := serviceFunc()
+				if err != nil {
+					// Check if we're shutting down
+					select {
+					case <-ctx.Done():
+						lg.Info(serviceName+".shutdown", "reason", "context cancelled")
+
+						return
+					default:
+						lg.Error(serviceName+".stopped", "err", err, "action", "retrying")
+						time.Sleep(retryDelay)
+					}
+				}
 			}
 		}
 	}()
@@ -308,7 +344,7 @@ func startDNSService(
 	dnsOpts := opts
 	dnsOpts.ListenAddr = ":" + dnsPort
 
-	runServiceWithRetry("dns", lg, func() error {
+	runServiceWithRetry(ctx, "dns", lg, func() error {
 		return filter.Serve53(ctx, domains, dnsOpts)
 	})
 }
@@ -326,7 +362,7 @@ func startSNIServices(
 	sniOpts := opts
 	sniOpts.ListenAddr = ":" + cfg.httpsPort
 
-	runServiceWithRetry("sni", lg, func() error {
+	runServiceWithRetry(ctx, "sni", lg, func() error {
 		return filter.Serve443(ctx, domains, sniOpts)
 	})
 
@@ -335,7 +371,7 @@ func startSNIServices(
 	hostOpts := opts
 	hostOpts.ListenAddr = ":" + cfg.httpPort
 
-	runServiceWithRetry("http", lg, func() error {
+	runServiceWithRetry(ctx, "http", lg, func() error {
 		return filter.Serve80(ctx, domains, hostOpts)
 	})
 }

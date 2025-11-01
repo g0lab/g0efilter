@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/g0lab/g0efilter/internal/dashboard"
 	"github.com/g0lab/g0efilter/internal/logging"
@@ -183,11 +186,46 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// Setup context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
 
-	err = dashboard.Run(ctx, cfg)
-	if err != nil {
-		lg.Error("dashboard.failed", "err", err)
-		os.Exit(1)
+	// Setup signal handling for external shutdown (SIGTERM, SIGINT)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	// Run dashboard in goroutine
+	errCh := make(chan error, 1)
+
+	go func() {
+		errCh <- dashboard.Run(ctx, cfg)
+	}()
+
+	// Wait for either error or shutdown signal
+	select {
+	case err = <-errCh:
+		cancel() // Ensure context is cancelled before exit
+
+		if err != nil {
+			lg.Error("dashboard.failed", "err", err)
+			os.Exit(1)
+		}
+	case sig := <-sigCh:
+		lg.Info("shutdown.signal", "signal", sig.String())
+		cancel() // Cancel context to stop dashboard
+
+		// Give dashboard time to cleanup
+		const shutdownGracePeriod = 3 * time.Second
+		lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod)
+
+		select {
+		case <-errCh:
+			// Dashboard stopped
+		case <-time.After(shutdownGracePeriod):
+			lg.Warn("shutdown.timeout", "timeout", shutdownGracePeriod)
+		}
+
+		// Shutdown logger to flush buffers
+		logging.Shutdown(1 * time.Second)
+		lg.Info("shutdown.complete")
 	}
 }
