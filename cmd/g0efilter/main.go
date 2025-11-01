@@ -191,6 +191,7 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 	nftVersion, err := nftables.Version(ctx)
 	if err != nil {
 		nftVersion = "unavailable"
+
 		lg.Debug("startup.nftables_version_error", "error", err.Error())
 	}
 
