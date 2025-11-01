@@ -16,7 +16,7 @@ import (
 
 var errFailedCapture = errors.New("failed to capture client hello")
 
-// Serve443 starts the TLS SNI filter.
+// Serve443 starts the TLS HTTPS filter.
 func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
 		opts.ListenAddr = ":8443"
@@ -25,7 +25,7 @@ func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, allowlist, opts)
 }
 
-// handle processes an individual TLS connection for SNI filtering.
+// handle processes an individual TLS connection for HTTPS filtering.
 func handle(conn net.Conn, allowlist []string, opts Options) error {
 	defer safeio.CloseWithErr(nil, conn)
 
@@ -42,13 +42,13 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 
 	// 2) Check if SNI is blocked
 	if sni == "" || !allowedHost(sni, allowlist) {
-		handleBlockedSNI(conn, tc, sni, opts)
+		handleBlockedHTTPS(conn, tc, sni, opts)
 
 		return nil
 	}
 
-	// 3) Handle allowed SNI connection
-	return handleAllowedSNI(conn, tc, buf, sni, opts)
+	// 3) Handle allowed HTTPS connection
+	return handleAllowedHTTPS(conn, tc, buf, sni, opts)
 }
 
 // extractSNIFromConnection extracts SNI from TLS ClientHello.
@@ -58,8 +58,8 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffe
 	ch, buf, err := peekClientHello(conn)
 	if err != nil {
 		if opts.Logger != nil {
-			opts.Logger.Info("sni.blocked",
-				"component", "sni",
+			opts.Logger.Info("https.blocked",
+				"component", "https",
 				"action", "BLOCKED",
 				"reason", "peek-failed",
 				"err", err.Error(),
@@ -77,10 +77,10 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffe
 	return sni, buf, nil
 }
 
-// handleBlockedSNI handles blocked SNI connections.
-func handleBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
+// handleBlockedHTTPS handles blocked HTTPS connections.
+func handleBlockedHTTPS(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 	if opts.Logger != nil {
-		logBlockedSNI(conn, tc, sni, opts)
+		logBlockedHTTPS(conn, tc, sni, opts)
 	}
 
 	if opts.DropWithRST {
@@ -88,8 +88,8 @@ func handleBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) 
 	}
 }
 
-// logBlockedSNI logs blocked SNI attempts.
-func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
+// logBlockedHTTPS logs blocked HTTPS attempts.
+func logBlockedHTTPS(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 	reason := "not-allowlisted"
 	if sni == "" {
 		reason = "no-sni"
@@ -103,26 +103,26 @@ func logBlockedSNI(conn net.Conn, tc *net.TCPConn, sni string, opts Options) {
 
 	tgt, derr := originalDstTCP(tc)
 	if derr == nil {
-		_ = EmitSynthetic(opts.Logger, "sni", conn, tgt)
+		_ = EmitSynthetic(opts.Logger, "https", conn, tgt)
 		destIP, destPort = parseHostPort(tgt)
 	} else {
-		opts.Logger.Debug("sni.orig_dst_unavailable_for_blocked",
+		opts.Logger.Debug("https.orig_dst_unavailable_for_blocked",
 			"err", derr.Error(),
 			"source_ip", sourceIP,
 			"source_port", sourcePort,
 		)
 	}
 
-	logBlockedConnection(opts, componentSNI, reason, sni, conn, destIP, destPort)
+	logBlockedConnection(opts, componentHTTPS, reason, sni, conn, destIP, destPort)
 }
 
-// handleAllowedSNI handles allowed SNI connections.
-func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni string, opts Options) error {
+// handleAllowedHTTPS handles allowed HTTPS connections.
+func handleAllowedHTTPS(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni string, opts Options) error {
 	// Recover original destination
 	target, err := originalDstTCP(tc)
 	if err != nil {
 		if opts.Logger != nil {
-			opts.Logger.Warn("sni.orig_dst_error", "err", err.Error())
+			opts.Logger.Warn("https.orig_dst_error", "err", err.Error())
 		}
 
 		return err
@@ -130,19 +130,19 @@ func handleAllowedSNI(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni str
 
 	// Emit synthetic event and log
 	if opts.Logger != nil {
-		_ = EmitSynthetic(opts.Logger, "sni", conn, target)
-		logAllowedConnection(opts, componentSNI, target, sni, conn)
+		_ = EmitSynthetic(opts.Logger, "https", conn, target)
+		logAllowedConnection(opts, componentHTTPS, target, sni, conn)
 	}
 
 	// Connect and splice
-	return connectAndSpliceSNI(conn, buf, target, opts)
+	return connectAndSpliceHTTPS(conn, buf, target, opts)
 }
 
-// connectAndSpliceSNI connects to destination server and splices data.
-func connectAndSpliceSNI(conn net.Conn, buf *bytes.Buffer, target string, opts Options) error {
+// connectAndSpliceHTTPS connects to destination server and splices data.
+func connectAndSpliceHTTPS(conn net.Conn, buf *bytes.Buffer, target string, opts Options) error {
 	dstConn, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
-		logdstConnDialError(opts, componentSNI, conn, target, err)
+		logdstConnDialError(opts, componentHTTPS, conn, target, err)
 
 		return fmt.Errorf("dial dstConn %s: %w", target, err)
 	}

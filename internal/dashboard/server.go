@@ -165,7 +165,7 @@ type LogEntry struct {
 	Protocol        string `json:"protocol,omitempty"`
 	PolicyHit       string `json:"policy_hit,omitempty"`
 	PayloadLen      int    `json:"payload_len,omitempty"`
-	SNI             string `json:"sni,omitempty"`
+	HTTPS           string `json:"https,omitempty"`
 	HTTPHost        string `json:"http_host,omitempty"`
 	TenantID        string `json:"tenant_id,omitempty"`
 	FlowID          string `json:"flow_id,omitempty"`
@@ -522,7 +522,7 @@ func extractFieldsMap(in map[string]any) map[string]any {
 	// Merge top-level fields
 	for _, k := range []string{"action", "component", "protocol", "policy_hit", "payload_len",
 		"reason", "tenant_id", "flow_id", "hostname", "source_ip", "source_port",
-		"destination_ip", "destination_port", "src", "dst", "http_host", "host", "sni", "qname", "qtype", "version"} {
+		"destination_ip", "destination_port", "src", "dst", "http_host", "host", "https", "qname", "qtype", "version"} {
 		if v, ok := in[k]; ok && v != nil {
 			fieldsMap[k] = v
 		}
@@ -540,7 +540,7 @@ func deriveProtocol(in map[string]any) string {
 
 	if comp, ok := in["component"].(string); ok {
 		switch strings.ToLower(comp) {
-		case "http", "sni":
+		case "http", "https":
 			return "TCP"
 		case "dns":
 			return "UDP"
@@ -621,7 +621,7 @@ func (s *Server) processPayload(in map[string]any, remoteIP string) *LogEntry {
 		TenantID:        getStringFromPayload(in, "tenant_id"),
 		SourceIP:        getStringFromPayload(in, "source_ip"),
 		DestinationIP:   getStringFromPayload(in, "destination_ip"),
-		SNI:             getStringFromPayload(in, "http_host", "host", "sni", "qname"),
+		HTTPS:           getStringFromPayload(in, "http_host", "host", "https", "qname"),
 		HTTPHost:        getStringFromPayload(in, "http_host", "host"),
 		PayloadLen:      getIntFromPayload(in, "payload_len"),
 		SourcePort:      getIntFromPayload(in, "source_port"),

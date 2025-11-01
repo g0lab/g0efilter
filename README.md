@@ -14,9 +14,9 @@ g0efilter is a lightweight container designed to filter outbound (egress) traffi
 
 * Attach containers to g0efilter using `network_mode: "service:g0efilter"` in Docker Compose.
 * A policy file defines the allowed IPs/CIDRs and domains.
-* Using nftables, g0efilter (when in SNI filter mode) allows traffic to specified IPs/CIDRs or redirects outbound HTTP (port 80) and HTTPS (port 443) to local services.
+* Using nftables, g0efilter (when in HTTPS filter mode) allows traffic to specified IPs/CIDRs or redirects outbound HTTP (port 80) and HTTPS (port 443) to local services.
 * These local services check the HTTP Host header or TLS SNI extension in the ClientHello and allow or block connections according to the policy.  
-* Filtering behaviour depends on the selected mode: sni (default) or dns.  
+* Filtering behaviour depends on the selected mode: https (default) or dns.  
 * The optional g0efilter-dashboard displays real-time traffic and enforcement actions.
 
 > [!NOTE]
@@ -24,10 +24,10 @@ g0efilter is a lightweight container designed to filter outbound (egress) traffi
 > g0efilter listens on `HTTP_PORT` (default `8080`) and `HTTPS_PORT` (default `8443`) for inspection.  
 > Avoid binding these ports in attached containers or change them via environment variables.
 
-### SNI/Host Header filtering behaviour (default)
+### HTTPS/Host Header filtering behaviour (default)
 
 * All IPs listed in the policy file bypass any redirection.
-* In SNI mode (default), traffic to ports 80 and 443 is redirected to local services that check the HTTP Host header or TLS SNI against the policy file, anything not matching is blocked by nftables.
+* In HTTPS mode (default), traffic to ports 80 and 443 is redirected to local services that check the HTTP Host header or TLS SNI against the policy file, anything not matching is blocked by nftables.
 
 ### DNS filtering behaviour
 
@@ -71,7 +71,7 @@ allowlist:
 | `HTTP_PORT`         | Local HTTP port                                    | `8080`              |
 | `HTTPS_PORT`        | Local HTTPS port                                   | `8443`              |
 | `POLICY_PATH`       | Path to policy file inside container               | `/app/policy.yaml`  |
-| `FILTER_MODE`       | `sni` (TLS SNI) or `dns` (DNS name filtering)      | `sni`               |
+| `FILTER_MODE`       | `https` (TLS SNI/HTTP Host) or `dns` (DNS name filtering)      | `https`             |
 | `DNS_PORT`          | DNS listen port                                    | `53`                |
 | `DNS_UPSTREAMS`     | Upstream DNS servers (comma-separated)             | `127.0.0.11:53`     |
 | `DASHBOARD_HOST`    | Dashboard URL for log shipping                     | unset               |

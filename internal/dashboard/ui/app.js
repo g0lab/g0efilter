@@ -78,7 +78,7 @@ function sanitizeRemoteData(s){
 function norm(it){try{ if(it && typeof it.fields==='string' && it.fields && it.fields!=='null'){ it.fields=JSON.parse(it.fields);} }catch{ /* ignore parse errors */ } return it;}
 function getAction(it){return sanitizeRemoteData(it && (it.action || (it.fields&&it.fields.action) || '')).toUpperCase();}
 function getComp(it){return sanitizeRemoteData(it && (it.component || (it.fields&&it.fields.component) || '')).toLowerCase();}
-function hostOf(it){var f=(it&&it.fields)||{};return sanitizeRemoteData(it.http_host||it.host||it.sni||it.qname||f.http_host||f.host||f.sni||f.qname||'');}
+function hostOf(it){var f=(it&&it.fields)||{};return sanitizeRemoteData(it.http_host||it.host||it.https||it.qname||f.http_host||f.host||f.https||f.qname||'');}
 function dstOf(it){if(it&&it.dst)return sanitizeRemoteData(it.dst); if(it&&it.destination_ip&&it.destination_port)return sanitizeRemoteData(it.destination_ip+':'+it.destination_port); return it&&it.destination_ip?sanitizeRemoteData(it.destination_ip):'';}
 function srcOf(it){if(it&&it.src)return sanitizeRemoteData(it.src); if(it&&it.source_ip&&it.source_port)return sanitizeRemoteData(it.source_ip+':'+it.source_port); return it&&it.source_ip?sanitizeRemoteData(it.source_ip):'';}
 function hostnameOf(it){return sanitizeRemoteData(it.hostname || ((it.fields&&it.fields.hostname)||''));}
@@ -145,7 +145,7 @@ function renderAgg(){
   var map=new Map();
 
   function keyFor(it){
-    // Prefer SNI/Host, then DNS name, else destination(IP:port) or IP
+    // Prefer HTTPS/Host, then DNS name, else destination(IP:port) or IP
     var key = hostOf(it);
     if(!key) key = dstOf(it);
     return key || '';

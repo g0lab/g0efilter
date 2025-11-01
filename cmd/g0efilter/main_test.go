@@ -382,7 +382,7 @@ func TestLoadConfig(t *testing.T) {
 				logLevel:   "INFO",
 				logFile:    "",
 				hostname:   "",
-				mode:       "sni",
+				mode:       "https",
 			},
 		},
 		{
@@ -507,7 +507,7 @@ func TestEnvironmentDefaults(t *testing.T) {
 	httpsPort := getenvDefault("HTTPS_PORT_TEST", "8443")
 	dnsPort := getenvDefault("DNS_PORT_TEST", "53")
 	logLevel := getenvDefault("LOG_LEVEL_TEST", "INFO")
-	mode := strings.ToLower(getenvDefault("FILTER_MODE_TEST", "sni"))
+	mode := strings.ToLower(getenvDefault("FILTER_MODE_TEST", "https"))
 
 	if httpPort != "8080" {
 		t.Errorf("Expected default HTTP port 8080, got %s", httpPort)
@@ -525,8 +525,8 @@ func TestEnvironmentDefaults(t *testing.T) {
 		t.Errorf("Expected default log level INFO, got %s", logLevel)
 	}
 
-	if mode != "sni" {
-		t.Errorf("Expected default filter mode sni, got %s", mode)
+	if mode != "https" {
+		t.Errorf("Expected default filter mode https, got %s", mode)
 	}
 
 	if policyPath != "/app/policy.yaml" {

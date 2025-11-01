@@ -20,11 +20,11 @@ func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 		opts.ListenAddr = ":8080" // typical HTTP redirect port
 	}
 
-	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHost, allowlist, opts)
+	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHTTP, allowlist, opts)
 }
 
-// handleHost processes an individual HTTP connection for Host header filtering.
-func handleHost(conn net.Conn, allowlist []string, opts Options) error {
+// handleHTTP processes an individual HTTP connection for Host header filtering.
+func handleHTTP(conn net.Conn, allowlist []string, opts Options) error {
 	var err error
 	defer safeio.CloseWithErr(&err, conn)
 
@@ -43,17 +43,17 @@ func handleHost(conn net.Conn, allowlist []string, opts Options) error {
 	sourceIP, sourcePort := sourceAddr(conn)
 
 	if err != nil || host == "" || !allowedHost(host, allowlist) {
-		handleBlockedHost(conn, tc, host, err, sourceIP, sourcePort, opts)
+		handleBlockedHTTP(conn, tc, host, err, sourceIP, sourcePort, opts)
 
 		return nil
 	}
 
 	// Handle allowed host
-	return handleAllowedHost(conn, tc, host, headBytes, br, opts)
+	return handleAllowedHTTP(conn, tc, host, headBytes, br, opts)
 }
 
-// handleBlockedHost handles HTTP requests that are blocked.
-func handleBlockedHost(
+// handleBlockedHTTP handles HTTP requests that are blocked.
+func handleBlockedHTTP(
 	conn net.Conn,
 	tc *net.TCPConn,
 	host string,
@@ -66,15 +66,15 @@ func handleBlockedHost(
 		return
 	}
 
-	logBlockedHost(conn, tc, host, parseErr, sourceIP, sourcePort, opts)
+	logBlockedHTTP(conn, tc, host, parseErr, sourceIP, sourcePort, opts)
 
 	if opts.DropWithRST {
 		_ = tc.SetLinger(0)
 	}
 }
 
-// logBlockedHost logs blocked host information.
-func logBlockedHost(
+// logBlockedHTTP logs blocked host information.
+func logBlockedHTTP(
 	conn net.Conn,
 	tc *net.TCPConn,
 	host string,
@@ -125,8 +125,8 @@ func getDestinationInfo(
 	return "", "", 0
 }
 
-// handleAllowedHost handles allowed HTTP requests.
-func handleAllowedHost(
+// handleAllowedHTTP handles allowed HTTP requests.
+func handleAllowedHTTP(
 	conn net.Conn,
 	tc *net.TCPConn,
 	host string,

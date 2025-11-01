@@ -201,7 +201,7 @@ func TestTLSConnWrapper(t *testing.T) {
 func TestSNIExtraction(t *testing.T) {
 	t.Parallel()
 
-	t.Run("SNI extraction functions exist", func(t *testing.T) {
+	t.Run("HTTPS extraction functions exist", func(t *testing.T) {
 		t.Parallel()
 
 		// These functions handle TLS handshake parsing which is complex to unit test
@@ -212,22 +212,19 @@ func TestSNIExtraction(t *testing.T) {
 	})
 }
 
-// Test SNI filter utility functions.
+// Test HTTPS filter utility functions.
 func TestSNIFilterUtilities(t *testing.T) {
 	t.Parallel()
 
-	t.Run("SNI filter functions exist", func(t *testing.T) {
+	t.Run("HTTPS filter functions exist", func(t *testing.T) {
 		t.Parallel()
 
 		// These functions are complex to test in isolation
 		// but we can verify they exist and would be covered by integration tests
 		t.Log("handle function exists")
-		t.Log("handleBlockedSNI function exists")
-		t.Log("handleAllowedSNI function exists")
-		t.Log("logBlockedSNI function exists")
-		t.Log("logAllowedSNI function exists")
-		t.Log("connectAndSpliceSNI function exists")
-		t.Log("logBackendDialError function exists")
-		t.Log("spliceConnections function exists")
+		t.Log("handleBlockedHTTPS function exists")
+		t.Log("handleAllowedHTTPS function exists")
+		t.Log("logBlockedHTTPS function exists")
+		t.Log("connectAndSpliceHTTPS function exists")
 	})
 }

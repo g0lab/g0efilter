@@ -33,14 +33,14 @@ const (
 	// ActionRedirected is logged when traffic is redirected.
 	ActionRedirected = "REDIRECTED"
 
-	// ModeSNI is the SNI-based filtering mode.
-	ModeSNI = "sni"
+	// ModeHTTPS is the HTTPS-based filtering mode.
+	ModeHTTPS = "https"
 	// ModeDNS is the DNS-based filtering mode.
 	ModeDNS = "dns"
 
 	// Component names for logging.
-	componentSNI  = "sni"
-	componentHTTP = "http"
+	componentHTTPS = "https"
+	componentHTTP  = "http"
 )
 
 var errListenAddrEmpty = errors.New("listenAddr cannot be empty")
@@ -490,8 +490,8 @@ func logAllowedConnection(opts Options, component, target, identifier string, co
 	var identifierKey string
 
 	switch component {
-	case componentSNI:
-		identifierKey = componentSNI
+	case componentHTTPS:
+		identifierKey = componentHTTPS
 	case componentHTTP:
 		identifierKey = "host"
 	default:
@@ -525,8 +525,8 @@ func logBlockedConnection(
 	var identifierKey string
 
 	switch component {
-	case componentSNI:
-		identifierKey = componentSNI
+	case componentHTTPS:
+		identifierKey = componentHTTPS
 	case componentHTTP:
 		identifierKey = "host"
 	default:

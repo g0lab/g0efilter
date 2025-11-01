@@ -233,10 +233,10 @@ func TestHostFilterUtilities(t *testing.T) {
 
 		// These functions are complex to test in isolation
 		// but we can verify they exist and would be covered by integration tests
-		t.Log("handleBlockedHost function exists")
-		t.Log("handleAllowedHost function exists")
+		t.Log("handleBlockedHTTP function exists")
+		t.Log("handleAllowedHTTP function exists")
 		t.Log("getDestinationInfo function exists")
-		t.Log("logBlockedHost function exists")
+		t.Log("logBlockedHTTP function exists")
 		t.Log("logAllowedHost function exists")
 		t.Log("logHTTPBackendError function exists")
 		t.Log("setHTTPTimeouts function exists")
@@ -266,18 +266,18 @@ func testHandleHostInvalidConnection(t *testing.T) {
 		Logger:      logger,
 	}
 
-	t.Run("handleHost with invalid connection", func(t *testing.T) {
+	t.Run("handleHTTP with invalid connection", func(t *testing.T) {
 		t.Parallel()
 
 		// Create a pipe that we can close to simulate error conditions
 		r, w := net.Pipe()
 		_ = w.Close() // Close immediately to cause read error
 
-		err := handleHost(r, allowlist, options)
+		err := handleHTTP(r, allowlist, options)
 
 		// Should handle the error gracefully
 		if err != nil {
-			t.Logf("handleHost() returned error: %v", err)
+			t.Logf("handleHTTP() returned error: %v", err)
 		}
 
 		_ = r.Close()

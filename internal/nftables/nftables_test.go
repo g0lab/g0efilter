@@ -169,12 +169,12 @@ func getApplyNftRulesTests() []struct {
 		expectError bool
 	}{
 		{
-			name:        "sni mode",
+			name:        "https mode",
 			allowlist:   []string{"1.1.1.1"},
 			httpsPort:   "8443",
 			httpPort:    "8080",
 			dnsPort:     "53",
-			filterMode:  "sni",
+			filterMode:  "https",
 			expectError: true,
 		},
 		{
@@ -192,7 +192,7 @@ func getApplyNftRulesTests() []struct {
 			httpsPort:   "invalid",
 			httpPort:    "8080",
 			dnsPort:     "53",
-			filterMode:  "sni",
+			filterMode:  "https",
 			expectError: true,
 		},
 		{
@@ -201,7 +201,7 @@ func getApplyNftRulesTests() []struct {
 			httpsPort:   "99999",
 			httpPort:    "8080",
 			dnsPort:     "53",
-			filterMode:  "sni",
+			filterMode:  "https",
 			expectError: true,
 		},
 	}
@@ -260,14 +260,14 @@ func getGenerateNftRulesetTests() []struct {
 		expectedContains []string
 	}{}
 
-	tests = append(tests, getSNIModeTests()...)
+	tests = append(tests, getHTTPSModeTests()...)
 	tests = append(tests, getDNSModeTests()...)
 	tests = append(tests, getDefaultModeTests()...)
 
 	return tests
 }
 
-func getSNIModeTests() []struct {
+func getHTTPSModeTests() []struct {
 	name             string
 	allowlist        []string
 	httpsPort        int
@@ -286,12 +286,12 @@ func getSNIModeTests() []struct {
 		expectedContains []string
 	}{
 		{
-			name:      "sni mode with allowlist",
+			name:      "https mode with allowlist",
 			allowlist: []string{"1.1.1.1", "8.8.8.8"},
 			httpsPort: 8443,
 			httpPort:  8080,
 			dnsPort:   53,
-			mode:      "sni",
+			mode:      "https",
 			expectedContains: []string{
 				"table ip filter_v4",
 				"table ip nat_v4",
@@ -361,7 +361,7 @@ func getDefaultModeTests() []struct {
 		expectedContains []string
 	}{
 		{
-			name:      "empty allowlist defaults to sni",
+			name:      "empty allowlist defaults to https",
 			allowlist: []string{},
 			httpsPort: 8443,
 			httpPort:  8080,
@@ -779,8 +779,8 @@ func TestConstants(t *testing.T) {
 		t.Errorf("Expected ActionRedirected to be 'REDIRECTED', got %s", filter.ActionRedirected)
 	}
 
-	if filter.ModeSNI != "sni" {
-		t.Errorf("Expected ModeSNI to be 'sni', got %s", filter.ModeSNI)
+	if filter.ModeHTTPS != "https" {
+		t.Errorf("Expected ModeHTTPS to be 'https', got %s", filter.ModeHTTPS)
 	}
 
 	if filter.ModeDNS != "dns" {

@@ -89,7 +89,7 @@ func testNotifyBlockNilNotifier(t *testing.T) {
 		DestinationPort: "443",
 		Destination:     "example.com",
 		Reason:          "test",
-		Component:       "sni",
+		Component:       "https",
 	}
 	nilNotifier.NotifyBlock(context.Background(), info)
 	// Should not panic
@@ -362,7 +362,7 @@ func getNoDestinationNameTestCase() formattingTestCase {
 			DestinationPort: "443",
 			Destination:     "",
 			Reason:          "blocked by policy",
-			Component:       "sni",
+			Component:       "https",
 		},
 		wantSrc:  "192.168.1.100:12345",
 		wantDest: "1.1.1.1:443",
@@ -467,7 +467,7 @@ func TestComponentMapping(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create notifier and send notification with SNI component
+	// Create notifier and send notification with HTTPS component
 	notifier := setupTestNotifier(t, server.URL)
 
 	info := alerting.BlockedConnectionInfo{
@@ -477,7 +477,7 @@ func TestComponentMapping(t *testing.T) {
 		DestinationPort: "443",
 		Destination:     "example.com",
 		Reason:          "blocked by policy",
-		Component:       "sni", // This should be mapped to "https"
+		Component:       "https", // This should be mapped to "https"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -489,7 +489,7 @@ func TestComponentMapping(t *testing.T) {
 	select {
 	case title := <-titleChan:
 		if !strings.Contains(strings.ToUpper(title), "HTTPS") {
-			t.Errorf("Expected title to contain 'HTTPS' (mapped from 'sni'), got: %s", title)
+			t.Errorf("Expected title to contain 'HTTPS' (mapped from 'https'), got: %s", title)
 		}
 	case <-time.After(time.Second):
 		t.Error("No title received within timeout")
@@ -498,7 +498,7 @@ func TestComponentMapping(t *testing.T) {
 	select {
 	case message := <-messageChan:
 		if !strings.Contains(message, "Blocked https connection") {
-			t.Errorf("Expected message to contain 'Blocked https connection' (mapped from 'sni'), got: %s", message)
+			t.Errorf("Expected message to contain 'Blocked https connection' (mapped from 'https'), got: %s", message)
 		}
 	case <-time.After(time.Second):
 		t.Error("No message received within timeout")

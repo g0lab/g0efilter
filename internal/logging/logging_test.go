@@ -952,18 +952,18 @@ func TestShipToDashboard_ActionFilter_Redirected(t *testing.T) {
 	}
 }
 
-func TestShipToDashboard_ActionFilter_AllowedWithSni(t *testing.T) {
+func TestShipToDashboard_ActionFilter_AllowedWithHTTPS(t *testing.T) {
 	t.Parallel()
 
 	p, ch := mkTestPoster()
-	attrs := map[string]any{"action": "ALLOWED", "component": "sni"}
+	attrs := map[string]any{"action": "ALLOWED", "component": "https"}
 	shipToDashboard(p, "host", "test-version", time.Now(), "msg", attrs)
 
 	select {
 	case <-ch:
 		// ok
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected enqueue for ALLOWED with sni")
+		t.Fatal("expected enqueue for ALLOWED with https")
 	}
 }
 

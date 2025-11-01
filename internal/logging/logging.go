@@ -542,7 +542,7 @@ var dashboardKeys = []string{ //nolint:gochecknoglobals
 	"component", "source_ip", "source_port",
 	"destination_ip", "destination_port",
 	"protocol", "policy_hit", "payload_len",
-	"sni", "http_host", "host", // HTTP
+	"https", "http_host", "host", // HTTP
 	"qname", "qtype", "rcode", // DNS
 	"reason", "note", // context
 	"src", "dst", // 5-tuple strings
@@ -621,7 +621,7 @@ func shouldShipToDashboard(attrs map[string]any) bool {
 	}
 
 	// Skip ALLOWED actions from nftables (allowlisted IPs with component=nflog)
-	// Keep ALLOWED from SNI/HTTP/DNS filters (domain matches with wildcards)
+	// Keep ALLOWED from HTTPS/HTTP/DNS filters (domain matches with wildcards)
 	if act == ActionAllowed {
 		component := ""
 		if v, ok := attrs["component"]; ok {
@@ -745,9 +745,9 @@ func extractStringAttr(attrs map[string]any, key string) string {
 
 // buildDestinationString creates a human-readable destination string.
 func buildDestinationString(attrs map[string]any) string {
-	// Try domain names first (SNI, hostname, DNS query name)
-	if sni := extractStringAttr(attrs, "sni"); sni != "" {
-		return sni
+	// Try domain names first (HTTPS, hostname, DNS query name)
+	if https := extractStringAttr(attrs, "https"); https != "" {
+		return https
 	}
 
 	if host := extractStringAttr(attrs, "http_host"); host != "" {

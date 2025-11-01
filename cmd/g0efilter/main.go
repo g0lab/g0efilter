@@ -154,7 +154,7 @@ func loadConfig() config {
 		logLevel:   getenvDefault("LOG_LEVEL", "INFO"),
 		logFile:    getenvDefault("LOG_FILE", ""),
 		hostname:   getenvDefault("HOSTNAME", ""),
-		mode:       strings.ToLower(getenvDefault("FILTER_MODE", "sni")),
+		mode:       strings.ToLower(getenvDefault("FILTER_MODE", "https")),
 	}
 }
 
@@ -202,7 +202,7 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 		lg.Info("startup.nftables_version", "version", nftVersion)
 	}
 
-	if cfg.mode == filter.ModeSNI {
+	if cfg.mode == filter.ModeHTTPS {
 		lg.Info("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
 	}
 
@@ -247,7 +247,7 @@ func logNotificationInfo(lg *slog.Logger) {
 
 // validateMode validates the filter mode configuration.
 func validateMode(cfg config, lg *slog.Logger) error {
-	if cfg.mode != filter.ModeSNI && cfg.mode != filter.ModeDNS {
+	if cfg.mode != filter.ModeHTTPS && cfg.mode != filter.ModeDNS {
 		lg.Error("config.invalid_mode", "filter_mode", cfg.mode)
 
 		return exitCodeError(2)
@@ -326,8 +326,11 @@ func startServices(
 	switch cfg.mode {
 	case "dns":
 		startDNSService(ctx, cfg.dnsPort, domains, opts, lg)
-	case "sni":
-		startSNIServices(ctx, cfg, domains, opts, lg)
+	case "https":
+		startHTTPSServices(ctx, cfg, domains, opts, lg)
+	default:
+		lg.Warn("filter_mode.invalid", "mode", cfg.mode, "defaulting_to", "https")
+		startHTTPSServices(ctx, cfg, domains, opts, lg)
 	}
 }
 
@@ -349,30 +352,30 @@ func startDNSService(
 	})
 }
 
-// startSNIServices starts SNI and HTTP filtering services.
-func startSNIServices(
+// startHTTPSServices starts HTTPS and HTTP filtering services.
+func startHTTPSServices(
 	ctx context.Context,
 	cfg config,
 	domains []string,
 	opts filter.Options,
 	lg *slog.Logger,
 ) {
-	lg.Info("sni.starting", "addr", ":"+cfg.httpsPort)
+	lg.Info("https.starting", "addr", ":"+cfg.httpsPort)
 
-	sniOpts := opts
-	sniOpts.ListenAddr = ":" + cfg.httpsPort
+	httpsOpts := opts
+	httpsOpts.ListenAddr = ":" + cfg.httpsPort
 
-	runServiceWithRetry(ctx, "sni", lg, func() error {
-		return filter.Serve443(ctx, domains, sniOpts)
+	runServiceWithRetry(ctx, "https", lg, func() error {
+		return filter.Serve443(ctx, domains, httpsOpts)
 	})
 
 	lg.Info("http.starting", "addr", ":"+cfg.httpPort)
 
-	hostOpts := opts
-	hostOpts.ListenAddr = ":" + cfg.httpPort
+	httpOpts := opts
+	httpOpts.ListenAddr = ":" + cfg.httpPort
 
 	runServiceWithRetry(ctx, "http", lg, func() error {
-		return filter.Serve80(ctx, domains, hostOpts)
+		return filter.Serve80(ctx, domains, httpOpts)
 	})
 }
 

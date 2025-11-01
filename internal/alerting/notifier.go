@@ -83,9 +83,9 @@ type BlockedConnectionInfo struct {
 	SourcePort      string
 	DestinationIP   string
 	DestinationPort string
-	Destination     string // Human-readable destination (hostname, SNI, etc.)
+	Destination     string // Human-readable destination (hostname, HTTPS, etc.)
 	Reason          string
-	Component       string // dns, http, sni, etc.
+	Component       string // dns, http, https, etc.
 }
 
 // NotifyBlock sends an alert notification for a blocked connection, with rate limiting to prevent spam.
@@ -94,7 +94,7 @@ func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) 
 		return
 	}
 
-	if info.Component == "sni" {
+	if info.Component == "https" {
 		info.Component = "https"
 	}
 

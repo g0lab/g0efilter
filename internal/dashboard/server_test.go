@@ -344,8 +344,8 @@ func TestDeriveProtocol(t *testing.T) {
 			expected: "TCP",
 		},
 		{
-			name:     "derived from sni component",
-			input:    map[string]any{"component": "sni"},
+			name:     "derived from https component",
+			input:    map[string]any{"component": "https"},
 			expected: "TCP",
 		},
 		{
@@ -563,7 +563,7 @@ func TestProcessPayload(t *testing.T) {
 		}
 	})
 
-	t.Run("SNI extraction priority", func(t *testing.T) {
+	t.Run("HTTPS extraction priority", func(t *testing.T) {
 		t.Parallel()
 
 		payload := map[string]any{
@@ -571,7 +571,7 @@ func TestProcessPayload(t *testing.T) {
 			"action":    "BLOCKED",
 			"http_host": "example.com",
 			"host":      "fallback.com",
-			"sni":       "last.com",
+			"https":     "last.com",
 			"qname":     "dns.com",
 		}
 
@@ -581,8 +581,8 @@ func TestProcessPayload(t *testing.T) {
 		}
 
 		// http_host should be first priority
-		if entry.SNI != "example.com" {
-			t.Errorf("SNI = %s, want example.com (http_host priority)", entry.SNI)
+		if entry.HTTPS != "example.com" {
+			t.Errorf("HTTPS = %s, want example.com (http_host priority)", entry.HTTPS)
 		}
 
 		if entry.HTTPHost != "example.com" {

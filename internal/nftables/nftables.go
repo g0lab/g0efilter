@@ -119,7 +119,7 @@ func applyRuleset(ruleset string) error {
 func ApplyNftRules(allowlist []string, httpsPortStr, httpPortStr, dnsPortStr string) error {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("FILTER_MODE")))
 	if mode == "" {
-		mode = filter.ModeSNI
+		mode = filter.ModeHTTPS
 	}
 
 	httpsPort, err := parsePort(httpsPortStr, "HTTPS")
@@ -191,8 +191,8 @@ table ip filter_v4 {
 `, allowSet, dnsPort, dnsPort)
 }
 
-// generateSNIFilterRules creates nftables filter rules for SNI mode with logging and allowlist enforcement.
-func generateSNIFilterRules(allowSet string, httpPort, httpsPort int) string {
+// generateHTTPSFilterRules creates nftables filter rules for HTTPS mode with logging and allowlist enforcement.
+func generateHTTPSFilterRules(allowSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip filter_v4 {
     set allow_daddr_v4 {
@@ -264,8 +264,8 @@ table ip nat_v4 {
 `, allowSet, dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
-// generateSNINATRules creates nftables NAT rules that redirect HTTP/HTTPS to local proxies for non-allowlisted IPs.
-func generateSNINATRules(allowSet string, httpPort, httpsPort int) string {
+// generateHTTPSNATRules creates nftables NAT rules that redirect HTTP/HTTPS to local proxies for non-allowlisted IPs.
+func generateHTTPSNATRules(allowSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip nat_v4 {
     set allow_daddr_v4 {
@@ -287,7 +287,7 @@ table ip nat_v4 {
         tcp dport 80  log prefix "redirected" group 0
         tcp dport 80  ip daddr != @allow_daddr_v4 redirect to :%d
 
-        # Redirect HTTPS (443) to local SNI proxy unless allow-listed IP
+        # Redirect HTTPS (443) to local HTTPS proxy unless allow-listed IP
         tcp dport 443 log prefix "redirected" group 0
         tcp dport 443 ip daddr != @allow_daddr_v4 redirect to :%d
     }
@@ -299,7 +299,7 @@ table ip nat_v4 {
 func GenerateNftRuleset(allowlist []string, httpsPort, httpPort, dnsPort int, mode string) string {
 	mode = strings.ToLower(mode)
 	if mode != filter.ModeDNS {
-		mode = filter.ModeSNI
+		mode = filter.ModeHTTPS
 	}
 
 	allowSet := strings.Join(allowlist, ", ")
@@ -311,14 +311,14 @@ func GenerateNftRuleset(allowlist []string, httpsPort, httpPort, dnsPort int, mo
 	if mode == filter.ModeDNS {
 		filterRules = generateDNSFilterRules(allowSet, dnsPort)
 	} else {
-		filterRules = generateSNIFilterRules(allowSet, httpPort, httpsPort)
+		filterRules = generateHTTPSFilterRules(allowSet, httpPort, httpsPort)
 	}
 
 	var natRules string
 	if mode == filter.ModeDNS {
 		natRules = generateDNSNATRules(allowSet, dnsPort)
 	} else {
-		natRules = generateSNINATRules(allowSet, httpPort, httpsPort)
+		natRules = generateHTTPSNATRules(allowSet, httpPort, httpsPort)
 	}
 
 	return filterRules + "\n" + natRules
