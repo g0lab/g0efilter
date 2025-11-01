@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math/big"
 	"net"
 	"net/http"
@@ -511,6 +512,7 @@ type zerologHandler struct {
 	hostname  string
 	version   string
 	notifier  *alerting.Notifier
+	baseAttrs map[string]any // attributes from With() calls
 }
 
 func (z *zerologHandler) Enabled(_ context.Context, l slog.Level) bool {
@@ -550,8 +552,13 @@ var dashboardKeys = []string{ //nolint:gochecknoglobals
 }
 
 func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
-	// Collect attrs into a flat map
-	attrs := make(map[string]any, record.NumAttrs())
+	// Collect attrs into a flat map, starting with base attrs from With() calls
+	attrs := make(map[string]any, len(z.baseAttrs)+record.NumAttrs())
+
+	// First, copy base attributes from With() calls
+	maps.Copy(attrs, z.baseAttrs)
+
+	// Then, add record-specific attributes (these override base attrs if same key)
 	record.Attrs(func(a slog.Attr) bool {
 		attrs[a.Key] = a.Value.Any()
 
@@ -666,8 +673,34 @@ func isAllowlistedIP(attrs map[string]any) bool {
 func shipToDashboard(
 	poster *poster, hostname string, version string, rTime time.Time, rMsg string, attrs map[string]any,
 ) {
+	// Extract action and component for debugging
+	act := extractAction(attrs)
+
+	comp := ""
+	if v, ok := attrs["component"]; ok {
+		comp = fmt.Sprint(v)
+	}
+
 	if !shouldShipToDashboard(attrs) {
+		// Debug: log when we skip shipping
+		if poster.debug {
+			poster.zl.Debug().
+				Str("action", act).
+				Str("component", comp).
+				Str("msg", rMsg).
+				Msg("dashboard.skip_shipping")
+		}
+
 		return
+	}
+
+	// Debug: log what we're shipping
+	if poster.debug {
+		poster.zl.Debug().
+			Str("action", act).
+			Str("component", comp).
+			Str("msg", rMsg).
+			Msg("dashboard.will_ship")
 	}
 
 	payload := buildDashboardPayload(hostname, version, rTime, rMsg, extractAction(attrs), attrs)
@@ -863,18 +896,28 @@ func (z *zerologHandler) WithAttrs(a []slog.Attr) slog.Handler {
 	// Extend logger context with attrs
 	logger := z.zl
 
+	// Create new base attrs map including existing and new attrs
+	newBaseAttrs := make(map[string]any, len(z.baseAttrs)+len(a))
+	maps.Copy(newBaseAttrs, z.baseAttrs)
+
 	for _, attr := range a {
-		switch val := attr.Value.Any().(type) {
+		val := attr.Value.Any()
+
+		// Store in baseAttrs for later use
+		newBaseAttrs[attr.Key] = val
+
+		// Also add to zerolog context for terminal output
+		switch v := val.(type) {
 		case string:
-			logger = logger.With().Str(attr.Key, val).Logger()
+			logger = logger.With().Str(attr.Key, v).Logger()
 		case int:
-			logger = logger.With().Int(attr.Key, val).Logger()
+			logger = logger.With().Int(attr.Key, v).Logger()
 		case time.Time:
-			logger = logger.With().Time(attr.Key, val).Logger()
+			logger = logger.With().Time(attr.Key, v).Logger()
 		case error:
-			logger = logger.With().Err(val).Logger()
+			logger = logger.With().Err(v).Logger()
 		default:
-			logger = logger.With().Interface(attr.Key, val).Logger()
+			logger = logger.With().Interface(attr.Key, v).Logger()
 		}
 	}
 
@@ -885,6 +928,7 @@ func (z *zerologHandler) WithAttrs(a []slog.Attr) slog.Handler {
 		hostname:  z.hostname,
 		version:   z.version,
 		notifier:  z.notifier,
+		baseAttrs: newBaseAttrs,
 	}
 }
 
@@ -1022,7 +1066,15 @@ func NewWithContext(ctx context.Context, level string, out io.Writer, version st
 	notifier := alerting.NewNotifier()
 
 	// Bridge into slog
-	h := &zerologHandler{zl: zl, termLevel: lvl, poster: poster, hostname: hostname, version: version, notifier: notifier}
+	h := &zerologHandler{
+		zl:        zl,
+		termLevel: lvl,
+		poster:    poster,
+		hostname:  hostname,
+		version:   version,
+		notifier:  notifier,
+		baseAttrs: make(map[string]any),
+	}
 
 	return slog.New(h)
 }
