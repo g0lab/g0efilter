@@ -131,8 +131,22 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	qname := strings.TrimSuffix(question.Name, ".")
 	qtype := question.Qtype
 
+	// Debug: Log DNS query details
+	if lg != nil {
+		lg.Debug("dns.query",
+			"qname", qname,
+			"qtype", typeString(qtype),
+			"source_ip", remoteAddr,
+			"source_port", remotePort,
+		)
+	}
+
 	enforce := (qtype == dns.TypeA || qtype == dns.TypeAAAA)
 	allowed := allowedHost(qname, handler.allowlist)
+
+	if lg != nil {
+		lg.Debug("dns.allowlist_check", "qname", qname, "qtype", typeString(qtype), "allowed", allowed, "enforce", enforce)
+	}
 
 	if enforce && !allowed {
 		handler.handleBlockedEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
@@ -349,19 +363,24 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, string, error) {
 	for _, up := range handler.upstreams {
 		// UDP attempt
 		in, _, err := udpClient.ExchangeContext(ctx, request, up)
-		if err == nil && in != nil {
-			if in.Truncated {
-				// Retry via TCP
-				inTCP, _, err2 := tcpClient.ExchangeContext(ctx, request, up)
-				if err2 == nil && inTCP != nil {
-					return inTCP, up, nil
-				}
-				// try next upstream on TCP fail
-			} else {
-				return in, up, nil
-			}
+		if err != nil || in == nil {
+			continue // try next upstream
 		}
-		// try next upstream
+
+		if !in.Truncated {
+			return in, up, nil
+		}
+
+		// Response truncated, retry via TCP
+		if handler.opts.Logger != nil {
+			handler.opts.Logger.Debug("dns.upstream_truncated", "upstream", up, "retrying_tcp", true)
+		}
+
+		inTCP, _, err2 := tcpClient.ExchangeContext(ctx, request, up)
+		if err2 == nil && inTCP != nil {
+			return inTCP, up, nil
+		}
+		// try next upstream on TCP fail
 	}
 
 	return nil, "", os.ErrDeadlineExceeded

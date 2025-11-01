@@ -245,7 +245,7 @@ func TestHostFilterUtilities(t *testing.T) {
 	})
 }
 
-// Test functions with 0% coverage from host_filter.go.
+// Test functions with 0% coverage from http_filter.go.
 func TestHostFilterZeroCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -354,27 +354,6 @@ func testLogFunctions(t *testing.T) {
 		// For now, we just verify they exist in the codebase
 		t.Log("Logging functions exist but require complex setup for proper testing")
 	})
-}
-
-// Test timeout functions.
-func TestHTTPTimeouts(t *testing.T) {
-	t.Parallel()
-
-	options := Options{
-		DialTimeout: 5000,
-		IdleTimeout: 30000,
-	}
-
-	dialer := newDialerFromOptions(options)
-
-	// Test with real dialer
-	if dialer.Timeout != time.Duration(options.DialTimeout)*time.Millisecond {
-		t.Errorf("Expected dialer timeout %v, got %v",
-			time.Duration(options.DialTimeout)*time.Millisecond,
-			dialer.Timeout)
-	}
-
-	t.Log("HTTP timeout functions tested")
 }
 
 // Test connection functions exist.

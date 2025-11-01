@@ -41,7 +41,12 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 	}
 
 	// 2) Check if SNI is blocked
-	if sni == "" || !allowedHost(sni, allowlist) {
+	allowed := allowedHost(sni, allowlist)
+	if opts.Logger != nil {
+		opts.Logger.Debug("https.allowlist_check", "sni", sni, "allowed", allowed)
+	}
+
+	if sni == "" || !allowed {
 		handleBlockedHTTPS(conn, tc, sni, opts)
 
 		return nil
@@ -73,6 +78,23 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffe
 	_ = conn.SetReadDeadline(time.Time{})
 
 	sni := strings.TrimSuffix(strings.ToLower(ch.ServerName), ".")
+
+	// Emit synthetic event early if we have a valid SNI
+	if opts.Logger != nil && sni != "" {
+		// Get original destination for synthetic event
+		if tc, ok := conn.(*net.TCPConn); ok {
+			target, targetErr := originalDstTCP(tc)
+			if targetErr == nil {
+				_ = EmitSynthetic(opts.Logger, "https", conn, target)
+			}
+		}
+
+		// Debug: Log SNI extraction
+		opts.Logger.Debug("https.sni_extracted",
+			"sni", sni,
+			"src", conn.RemoteAddr().String(),
+		)
+	}
 
 	return sni, buf, nil
 }
@@ -128,9 +150,8 @@ func handleAllowedHTTPS(conn net.Conn, tc *net.TCPConn, buf *bytes.Buffer, sni s
 		return err
 	}
 
-	// Emit synthetic event and log
+	// Log allowed connection
 	if opts.Logger != nil {
-		_ = EmitSynthetic(opts.Logger, "https", conn, target)
 		logAllowedConnection(opts, componentHTTPS, target, sni, conn)
 	}
 
@@ -148,6 +169,14 @@ func connectAndSpliceHTTPS(conn net.Conn, buf *bytes.Buffer, target string, opts
 	}
 
 	defer func() { _ = dstConn.Close() }()
+
+	if opts.Logger != nil {
+		opts.Logger.Debug("https.splice_start",
+			"target", target,
+			"buffered_bytes", buf.Len(),
+			"src", conn.RemoteAddr().String(),
+		)
+	}
 
 	setConnTimeouts(conn, dstConn, opts)
 	bidirectionalCopy(conn, dstConn, buf)

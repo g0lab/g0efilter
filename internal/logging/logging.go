@@ -577,8 +577,11 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 	}
 
 	// Ship action events to the dashboard if configured
+	// Only process logs that have an action attribute (BLOCKED/ALLOWED/REDIRECTED)
 	if z.poster != nil {
-		shipToDashboard(z.poster, z.hostname, z.version, record.Time, record.Message, attrs)
+		if _, hasAction := attrs["action"]; hasAction {
+			shipToDashboard(z.poster, z.hostname, z.version, record.Time, record.Message, attrs)
+		}
 	}
 
 	// Alerting feature - send notifications for BLOCKED events

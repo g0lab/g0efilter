@@ -310,6 +310,10 @@ func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
 			return nil, fmt.Errorf("IP validation failed: %w", err)
 		}
 
+		if lg != nil {
+			lg.Debug("policy.ip_validated", "ip", ip)
+		}
+
 		cleanIPs = append(cleanIPs, ip)
 	}
 
@@ -340,6 +344,10 @@ func validateDomains(lg *slog.Logger, file string, domains []string) ([]string, 
 			}
 
 			return nil, fmt.Errorf("domain validation failed: %w", err)
+		}
+
+		if lg != nil {
+			lg.Debug("policy.domain_validated", "domain", dom)
 		}
 
 		cleanDomains = append(cleanDomains, dom)

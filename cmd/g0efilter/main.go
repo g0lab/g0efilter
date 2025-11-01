@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -27,6 +28,8 @@ const (
 	defaultIdleTimeout = 600000
 	retryDelay         = 5 * time.Second
 )
+
+var errPortConflict = errors.New("port conflict detected")
 
 // Set by GoReleaser via ldflags.
 var (
@@ -80,6 +83,14 @@ func main() {
 	logStartupInfo(lg, config)
 	logDashboardInfo(lg)
 	logNotificationInfo(lg)
+
+	// Validate port configuration before proceeding
+	err := validatePorts(config, lg)
+	if err != nil {
+		lg.Error("config.port_validation_failed", "err", err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	domains, _, err := loadAndApplyPolicy(config, lg)
 	if err != nil {
@@ -230,12 +241,50 @@ func logNotificationInfo(lg *slog.Logger) {
 // normalizeMode validates and normalizes the filter mode configuration.
 // If an invalid mode is provided, it logs a warning and defaults to HTTPS mode.
 func normalizeMode(cfg config, lg *slog.Logger) config {
-	if cfg.mode != filter.ModeHTTPS && cfg.mode != filter.ModeDNS {
-		lg.Warn("config.invalid_mode_defaulting_to_https", "filter_mode", cfg.mode, "default", filter.ModeHTTPS)
+	mode := strings.ToLower(strings.TrimSpace(cfg.mode))
+	validModes := map[string]bool{
+		filter.ModeHTTPS: true,
+		filter.ModeDNS:   true,
+	}
+
+	if !validModes[mode] && mode != "" {
+		lg.Warn("filter_mode.invalid", "mode", cfg.mode, "defaulting_to", filter.ModeHTTPS)
+		cfg.mode = filter.ModeHTTPS
+	} else if mode == "" {
 		cfg.mode = filter.ModeHTTPS
 	}
 
 	return cfg
+}
+
+// validatePorts checks for port conflicts in the configuration.
+func validatePorts(cfg config, lg *slog.Logger) error {
+	// In HTTPS mode, check HTTP vs HTTPS port conflict
+	if cfg.mode == filter.ModeHTTPS {
+		if cfg.httpPort == cfg.httpsPort {
+			return fmt.Errorf("%w: HTTP_PORT and HTTPS_PORT cannot be the same (%s)",
+				errPortConflict, cfg.httpPort)
+		}
+	}
+
+	// In DNS mode, check DNS port against HTTP/HTTPS ports (though they won't run together)
+	if cfg.mode == filter.ModeDNS {
+		if cfg.dnsPort == cfg.httpPort {
+			lg.Warn("config.port_overlap",
+				"DNS_PORT", cfg.dnsPort,
+				"HTTP_PORT", cfg.httpPort,
+				"note", "DNS mode active, HTTP port not used")
+		}
+
+		if cfg.dnsPort == cfg.httpsPort {
+			lg.Warn("config.port_overlap",
+				"DNS_PORT", cfg.dnsPort,
+				"HTTPS_PORT", cfg.httpsPort,
+				"note", "DNS mode active, HTTPS port not used")
+		}
+	}
+
+	return nil
 }
 
 // loadAndApplyPolicy loads the policy file and applies nftables rules.

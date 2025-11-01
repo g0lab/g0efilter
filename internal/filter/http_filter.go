@@ -42,7 +42,28 @@ func handleHTTP(conn net.Conn, allowlist []string, opts Options) error {
 	// Normalise remote client address
 	sourceIP, sourcePort := sourceAddr(conn)
 
-	if err != nil || host == "" || !allowedHost(host, allowlist) {
+	// Emit synthetic event early if we have a valid host
+	if opts.Logger != nil && host != "" && err == nil {
+		// Recover original destination for synthetic event
+		target, targetErr := originalDstTCP(tc)
+		if targetErr == nil {
+			_ = EmitSynthetic(opts.Logger, "http", conn, target)
+		}
+
+		// Debug: Log host extraction
+		opts.Logger.Debug("http.host_extracted",
+			"host", host,
+			"source_ip", sourceIP,
+			"source_port", sourcePort,
+		)
+	}
+
+	allowed := allowedHost(host, allowlist)
+	if opts.Logger != nil {
+		opts.Logger.Debug("http.allowlist_check", "host", host, "allowed", allowed)
+	}
+
+	if err != nil || host == "" || !allowed {
 		handleBlockedHTTP(conn, tc, host, err, sourceIP, sourcePort, opts)
 
 		return nil
@@ -144,9 +165,8 @@ func handleAllowedHTTP(
 		return err
 	}
 
-	// Emit a synthetic REDIRECTED event so we have an early producer timestamp
+	// Log allowed connection
 	if opts.Logger != nil {
-		_ = EmitSynthetic(opts.Logger, "http", conn, target)
 		logAllowedConnection(opts, componentHTTP, target, host, conn)
 	}
 
@@ -159,6 +179,14 @@ func handleAllowedHTTP(
 	}
 
 	defer func() { _ = backend.Close() }()
+
+	if opts.Logger != nil {
+		opts.Logger.Debug("http.splice_start",
+			"target", target,
+			"host", host,
+			"buffered_bytes", len(headBytes),
+		)
+	}
 
 	setConnTimeouts(conn, backend, opts)
 
