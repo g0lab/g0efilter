@@ -234,9 +234,9 @@ func logDashboardInfo(lg *slog.Logger) {
 			disp = "http://" + disp
 		}
 
-		lg.Info("shipping.enabled", "host", disp)
+		lg.Info("dashboard.logging_enabled", "host", disp)
 	} else {
-		lg.Info("shipping.disabled")
+		lg.Info("dashboard.logging_disabled")
 	}
 }
 

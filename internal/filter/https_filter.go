@@ -22,7 +22,7 @@ func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 		opts.ListenAddr = ":8443"
 	}
 
-	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, allowlist, opts)
+	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, allowlist, opts, "https")
 }
 
 // handle processes an individual TLS connection for HTTPS filtering.

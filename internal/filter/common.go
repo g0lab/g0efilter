@@ -432,6 +432,7 @@ func serveTCP(
 	handler func(net.Conn, []string, Options) error,
 	allowlist []string,
 	opts Options,
+	protocol string,
 ) error {
 	if listenAddr == "" {
 		return errListenAddrEmpty
@@ -449,7 +450,7 @@ func serveTCP(
 	}
 
 	if logger != nil {
-		logger.Info("tcp.listen", "addr", listenAddr)
+		logger.Info(protocol+".filter_listen", "addr", listenAddr)
 	}
 
 	go func() {

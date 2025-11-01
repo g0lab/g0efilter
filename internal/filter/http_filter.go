@@ -20,7 +20,7 @@ func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 		opts.ListenAddr = ":8080" // typical HTTP redirect port
 	}
 
-	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHTTP, allowlist, opts)
+	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHTTP, allowlist, opts, "http")
 }
 
 // handleHTTP processes an individual HTTP connection for Host header filtering.
