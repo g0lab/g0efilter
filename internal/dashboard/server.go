@@ -579,11 +579,11 @@ func (s *Server) processPayload(in map[string]any, remoteIP string) *LogEntry {
 		return nil
 	}
 
-	// Action filter: only keep ALLOWED/BLOCKED/REDIRECTED
+	// Action filter: only keep ALLOWED/BLOCKED
 	action, _ := in["action"].(string)
 
 	act := strings.ToUpper(strings.TrimSpace(action))
-	if act != "ALLOWED" && act != "BLOCKED" && act != "REDIRECTED" {
+	if act != "ALLOWED" && act != "BLOCKED" {
 		return nil
 	}
 

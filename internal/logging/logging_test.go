@@ -946,9 +946,9 @@ func TestShipToDashboard_ActionFilter_Redirected(t *testing.T) {
 
 	select {
 	case <-ch:
-		// ok
+		t.Fatal("REDIRECTED should not be shipped to dashboard")
 	case <-time.After(100 * time.Millisecond):
-		t.Fatal("expected enqueue for REDIRECTED")
+		// ok - REDIRECTED stays in console logs only
 	}
 }
 

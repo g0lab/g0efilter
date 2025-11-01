@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/internal/alerting"
-	"github.com/g0lab/g0efilter/internal/filter"
 	"github.com/g0lab/g0efilter/internal/safeio"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -615,8 +614,9 @@ func logToTerminal(zl zerolog.Logger, level slog.Level, msg string, attrs map[st
 func shouldShipToDashboard(attrs map[string]any) bool {
 	act := extractAction(attrs)
 
-	// Only ship BLOCKED, REDIRECTED, and ALLOWED actions
-	if act != "BLOCKED" && act != filter.ActionRedirected && act != ActionAllowed {
+	// Only ship BLOCKED and ALLOWED actions
+	// REDIRECTED stays in console logs only (debug level)
+	if act != "BLOCKED" && act != ActionAllowed {
 		return false
 	}
 

@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	testActionBlocked    = "BLOCKED"
-	testActionAllowed    = "ALLOWED"
-	testActionRedirected = "REDIRECTED"
+	testActionBlocked = "BLOCKED"
+	testActionAllowed = "ALLOWED"
 )
 
 // TestNormalizeConfig tests the configuration normalization function.
@@ -550,7 +549,7 @@ func TestProcessPayload(t *testing.T) {
 		}
 	})
 
-	t.Run("redirected action", func(t *testing.T) {
+	t.Run("redirected action filtered out", func(t *testing.T) {
 		t.Parallel()
 
 		payload := map[string]any{
@@ -559,12 +558,8 @@ func TestProcessPayload(t *testing.T) {
 		}
 
 		entry := srv.processPayload(payload, "10.0.0.1")
-		if entry == nil {
-			t.Fatal("processPayload returned nil for REDIRECTED action")
-		}
-
-		if entry.Action != testActionRedirected {
-			t.Errorf("Action = %s, want %s", entry.Action, testActionRedirected)
+		if entry != nil {
+			t.Fatal("processPayload should return nil for REDIRECTED action (not shipped to dashboard)")
 		}
 	})
 

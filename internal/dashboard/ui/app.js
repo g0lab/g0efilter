@@ -172,7 +172,7 @@ function renderAgg(){
     var a=rows[r];
     // pick the "dominant" action for this key: whichever had most hits
     var act = '';
-    var actCounts = {ALLOWED:0, BLOCKED:0, REDIRECTED:0};
+    var actCounts = {ALLOWED:0, BLOCKED:0};
     for(var j=0;j<allItems.length;j++){
       var item=allItems[j];
       if(!matches(item)) continue;
