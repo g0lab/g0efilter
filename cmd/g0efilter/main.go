@@ -68,14 +68,14 @@ func main() {
 	}
 
 	config := loadConfig()
-	
+
 	// Create logger without logging startup info yet
 	lg := logging.NewWithContext(context.Background(), config.logLevel, os.Stdout, version)
 	slog.SetDefault(lg)
-	
+
 	// Normalize mode before logging
 	config = normalizeMode(config, lg)
-	
+
 	// Now log startup info with corrected mode
 	logStartupInfo(lg, config)
 	logDashboardInfo(lg)
@@ -150,18 +150,6 @@ func loadConfig() config {
 		hostname:   getenvDefault("HOSTNAME", ""),
 		mode:       strings.ToLower(getenvDefault("FILTER_MODE", "https")),
 	}
-}
-
-// setupLogger creates and configures the application logger.
-func setupLogger(cfg config) *slog.Logger {
-	lg := logging.NewWithContext(context.Background(), cfg.logLevel, os.Stdout, version)
-	slog.SetDefault(lg)
-
-	logStartupInfo(lg, cfg)
-	logDashboardInfo(lg)
-	logNotificationInfo(lg)
-
-	return lg
 }
 
 // logStartupInfo logs application startup information and configuration.
