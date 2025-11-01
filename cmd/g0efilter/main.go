@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -63,29 +62,24 @@ func printVersion() {
 	fmt.Fprintf(os.Stderr, "Licensed under the %s license\n", licenseType)
 }
 
-// exitCodeError carries a process exit code.
-type exitCodeError int
-
-func (e exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(e)) }
-
 func main() {
 	if handleVersionFlag() {
 		return
 	}
 
 	config := loadConfig()
-	lg := setupLogger(config)
-
-	err := validateMode(config, lg)
-	if err != nil {
-		var ec exitCodeError
-		if errors.As(err, &ec) {
-			os.Exit(int(ec))
-		}
-
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	
+	// Create logger without logging startup info yet
+	lg := logging.NewWithContext(context.Background(), config.logLevel, os.Stdout, version)
+	slog.SetDefault(lg)
+	
+	// Normalize mode before logging
+	config = normalizeMode(config, lg)
+	
+	// Now log startup info with corrected mode
+	logStartupInfo(lg, config)
+	logDashboardInfo(lg)
+	logNotificationInfo(lg)
 
 	domains, _, err := loadAndApplyPolicy(config, lg)
 	if err != nil {
@@ -245,15 +239,15 @@ func logNotificationInfo(lg *slog.Logger) {
 	}
 }
 
-// validateMode validates the filter mode configuration.
-func validateMode(cfg config, lg *slog.Logger) error {
+// normalizeMode validates and normalizes the filter mode configuration.
+// If an invalid mode is provided, it logs a warning and defaults to HTTPS mode.
+func normalizeMode(cfg config, lg *slog.Logger) config {
 	if cfg.mode != filter.ModeHTTPS && cfg.mode != filter.ModeDNS {
-		lg.Error("config.invalid_mode", "filter_mode", cfg.mode)
-
-		return exitCodeError(2)
+		lg.Warn("config.invalid_mode_defaulting_to_https", "filter_mode", cfg.mode, "default", filter.ModeHTTPS)
+		cfg.mode = filter.ModeHTTPS
 	}
 
-	return nil
+	return cfg
 }
 
 // loadAndApplyPolicy loads the policy file and applies nftables rules.

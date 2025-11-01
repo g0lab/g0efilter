@@ -13,42 +13,6 @@ const (
 	testCommit  = "none"
 )
 
-func TestExitCodeError(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		code     exitCodeError
-		expected string
-	}{
-		{
-			name:     "exit code 0",
-			code:     exitCodeError(0),
-			expected: "exit code 0",
-		},
-		{
-			name:     "exit code 1",
-			code:     exitCodeError(1),
-			expected: "exit code 1",
-		},
-		{
-			name:     "exit code 255",
-			code:     exitCodeError(255),
-			expected: "exit code 255",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			if got := tt.code.Error(); got != tt.expected {
-				t.Errorf("exitCodeError.Error() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestGetenvDefault(t *testing.T) {
 	// Cannot use t.Parallel() with subtests that use t.Setenv()
 	tests := []struct {
