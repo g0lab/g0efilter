@@ -20,98 +20,6 @@ const (
 	testActionAllowed = "ALLOWED"
 )
 
-// TestNormalizeConfig tests the configuration normalization function.
-//
-//nolint:funlen
-func TestNormalizeConfig(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		input    Config
-		expected Config
-	}{
-		{
-			name:  "all defaults",
-			input: Config{},
-			expected: Config{
-				BufferSize:   10000,
-				ReadLimit:    500,
-				SERetryMs:    2000,
-				RateRPS:      50,
-				RateBurst:    100,
-				WriteTimeout: 0,
-			},
-		},
-		{
-			name: "custom values preserved",
-			input: Config{
-				BufferSize:   1000,
-				ReadLimit:    100,
-				SERetryMs:    1000,
-				RateRPS:      25,
-				RateBurst:    50,
-				WriteTimeout: 30,
-			},
-			expected: Config{
-				BufferSize:   1000,
-				ReadLimit:    100,
-				SERetryMs:    1000,
-				RateRPS:      25,
-				RateBurst:    50,
-				WriteTimeout: 30,
-			},
-		},
-		{
-			name: "negative WriteTimeout normalized to 0",
-			input: Config{
-				WriteTimeout: -5,
-			},
-			expected: Config{
-				BufferSize:   10000,
-				ReadLimit:    500,
-				SERetryMs:    2000,
-				RateRPS:      50,
-				RateBurst:    100,
-				WriteTimeout: 0,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			cfg := tt.input
-			normalizeConfig(&cfg)
-
-			if cfg.BufferSize != tt.expected.BufferSize {
-				t.Errorf("BufferSize = %d, want %d", cfg.BufferSize, tt.expected.BufferSize)
-			}
-
-			if cfg.ReadLimit != tt.expected.ReadLimit {
-				t.Errorf("ReadLimit = %d, want %d", cfg.ReadLimit, tt.expected.ReadLimit)
-			}
-
-			if cfg.SERetryMs != tt.expected.SERetryMs {
-				t.Errorf("SERetryMs = %d, want %d", cfg.SERetryMs, tt.expected.SERetryMs)
-			}
-
-			if cfg.RateRPS != tt.expected.RateRPS {
-				t.Errorf("RateRPS = %f, want %f", cfg.RateRPS, tt.expected.RateRPS)
-			}
-
-			if cfg.RateBurst != tt.expected.RateBurst {
-				t.Errorf("RateBurst = %f, want %f", cfg.RateBurst, tt.expected.RateBurst)
-			}
-
-			if cfg.WriteTimeout != tt.expected.WriteTimeout {
-				t.Errorf("WriteTimeout = %d, want %d", cfg.WriteTimeout, tt.expected.WriteTimeout)
-			}
-		})
-	}
-}
-
 // TestMemStore tests the in-memory store operations.
 //
 //nolint:cyclop,funlen
@@ -469,7 +377,7 @@ func TestProcessPayload(t *testing.T) {
 			"version":     "1.0.0",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry == nil {
 			t.Fatal("processPayload returned nil for valid payload")
 		}
@@ -511,7 +419,7 @@ func TestProcessPayload(t *testing.T) {
 			"action": "BLOCKED",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry != nil {
 			t.Error("processPayload should return nil for empty message")
 		}
@@ -525,7 +433,7 @@ func TestProcessPayload(t *testing.T) {
 			"action": "INVALID",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry != nil {
 			t.Error("processPayload should return nil for invalid action")
 		}
@@ -539,7 +447,7 @@ func TestProcessPayload(t *testing.T) {
 			"action": "allowed",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry == nil {
 			t.Fatal("processPayload returned nil for ALLOWED action")
 		}
@@ -557,7 +465,7 @@ func TestProcessPayload(t *testing.T) {
 			"action": "REDIRECTED",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry != nil {
 			t.Fatal("processPayload should return nil for REDIRECTED action (not shipped to dashboard)")
 		}
@@ -575,7 +483,7 @@ func TestProcessPayload(t *testing.T) {
 			"qname":     "dns.com",
 		}
 
-		entry := srv.processPayload(payload, "10.0.0.1")
+		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry == nil {
 			t.Fatal("processPayload returned nil")
 		}
@@ -601,7 +509,6 @@ func newTestServer() *Server {
 		RateRPS:    100,
 		RateBurst:  200,
 	}
-	normalizeConfig(&cfg)
 
 	return newServer(logger, cfg)
 }
@@ -1072,7 +979,7 @@ func BenchmarkProcessPayload(b *testing.B) {
 	}
 
 	for b.Loop() {
-		_ = srv.processPayload(payload, "10.0.0.1")
+		_ = srv.processPayload(context.Background(), payload, "10.0.0.1")
 	}
 }
 
