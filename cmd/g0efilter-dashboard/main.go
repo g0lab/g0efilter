@@ -215,13 +215,13 @@ func main() {
 
 		// Give dashboard time to cleanup
 		const shutdownGracePeriod = 3 * time.Second
-		lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod)
+		lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod.String())
 
 		select {
 		case <-errCh:
 			// Dashboard stopped
 		case <-time.After(shutdownGracePeriod):
-			lg.Warn("shutdown.timeout", "timeout", shutdownGracePeriod)
+			lg.Warn("shutdown.timeout", "timeout", shutdownGracePeriod.String())
 		}
 
 		// Shutdown logger to flush buffers

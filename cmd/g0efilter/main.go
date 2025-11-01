@@ -111,7 +111,7 @@ func main() {
 
 	// Give services time to cleanup
 	const shutdownGracePeriod = 3 * time.Second
-	lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod)
+	lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod.String())
 	time.Sleep(shutdownGracePeriod)
 
 	// Shutdown logger to flush buffers
