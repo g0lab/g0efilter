@@ -217,16 +217,15 @@ func logStartupInfo(lg *slog.Logger, cfg config) {
 
 	lg.Info("startup.info", kv...)
 
+	// Debug-level port info (detailed bind info logged later at INFO level)
 	if cfg.mode == filter.ModeHTTPS {
-		lg.Info("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
+		lg.Debug("startup.ports", "http_port", cfg.httpPort, "https_port", cfg.httpsPort)
 	}
 
 	if cfg.mode == filter.ModeDNS {
-		lg.Info("startup.ports", "dns_port", cfg.dnsPort)
+		lg.Debug("startup.ports", "dns_port", cfg.dnsPort)
 	}
 }
-
-// logDashboardInfo logs dashboard shipping configuration status.
 func logDashboardInfo(lg *slog.Logger) {
 	dhost := strings.TrimSpace(getenvDefault("DASHBOARD_HOST", ""))
 	if dhost != "" {
@@ -388,7 +387,7 @@ func startDNSService(
 	opts filter.Options,
 	lg *slog.Logger,
 ) {
-	lg.Info("dns.starting", "addr", ":"+dnsPort)
+	lg.Debug("dns.starting", "addr", ":"+dnsPort)
 
 	dnsOpts := opts
 	dnsOpts.ListenAddr = ":" + dnsPort
@@ -406,7 +405,7 @@ func startHTTPSServices(
 	opts filter.Options,
 	lg *slog.Logger,
 ) {
-	lg.Info("https.starting", "addr", ":"+cfg.httpsPort)
+	lg.Debug("https.starting", "addr", ":"+cfg.httpsPort)
 
 	httpsOpts := opts
 	httpsOpts.ListenAddr = ":" + cfg.httpsPort
@@ -415,7 +414,7 @@ func startHTTPSServices(
 		return filter.Serve443(ctx, domains, httpsOpts)
 	})
 
-	lg.Info("http.starting", "addr", ":"+cfg.httpPort)
+	lg.Debug("http.starting", "addr", ":"+cfg.httpPort)
 
 	httpOpts := opts
 	httpOpts.ListenAddr = ":" + cfg.httpPort

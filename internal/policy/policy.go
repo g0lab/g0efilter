@@ -249,7 +249,7 @@ func loadConfig(file string) (Config, error) {
 func ReadPolicy(file string) ([]string, []string, error) {
 	lg := slog.Default()
 	if lg != nil {
-		lg.Info("policy.read_start", "component", "policy", "file", strings.TrimSpace(file))
+		lg.Debug("policy.read_start", "component", "policy", "file", strings.TrimSpace(file))
 	}
 
 	cfg, err := loadConfig(file)
@@ -273,7 +273,7 @@ func ReadPolicy(file string) ([]string, []string, error) {
 	}
 
 	if lg != nil {
-		lg.Info("policy.read_ok",
+		lg.Debug("policy.read_ok",
 			"component", "policy",
 			"file", file,
 			"ip_count", len(cleanIPs),
