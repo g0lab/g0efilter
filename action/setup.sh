@@ -110,7 +110,8 @@ DOCKER_ARGS=(
 # 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with
 # every :53 redirected takes out the whole runner's DNS.
 if [ "$MODE" = "dns" ]; then
-  UPSTREAMS=$(awk '/^nameserver [0-9.]+([ \t]*)$/ {printf "%s%s:53", sep, $2; sep=","}' "$RESOLV_SRC" 2>/dev/null)
+  # Match v4 and v6 resolvers; bracket v6 for host:port form.
+  UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
   DOCKER_ARGS+=(-e DNS_PORT=5353)
 fi

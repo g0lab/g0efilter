@@ -5,7 +5,7 @@
 //   2026-07-05T00:25:09Z WRN https.blocked action=BLOCKED component=https https=example.com dst=1.2.3.4:443 ...
 "use strict";
 
-const { execSync } = require("node:child_process");
+const { execSync, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const ANSI = /\x1b\[[0-9;]*m/g;
@@ -104,17 +104,17 @@ function buildSummary(raw) {
 // runner's DNS/egress after the job. Best-effort - never fail the post step.
 function teardown() {
   try {
-    execSync("docker rm -f g0efilter", { stdio: "ignore" });
+    execFileSync("docker", ["rm", "-f", "g0efilter"], { stdio: "ignore" });
   } catch {}
 
   for (const table of [
-    "ip g0efilter_v4",
-    "ip g0efilter_nat_v4",
-    "ip6 g0efilter_v6",
-    "ip6 g0efilter_nat_v6",
+    ["ip", "g0efilter_v4"],
+    ["ip", "g0efilter_nat_v4"],
+    ["ip6", "g0efilter_v6"],
+    ["ip6", "g0efilter_nat_v6"],
   ]) {
     try {
-      execSync(`sudo nft delete table ${table}`, { stdio: "ignore" });
+      execFileSync("sudo", ["nft", "delete", "table", ...table], { stdio: "ignore" });
     } catch {} // table absent, or no sudo on self-hosted runners
   }
 }
