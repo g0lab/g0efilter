@@ -252,7 +252,7 @@ func testHandleHostInvalidConnection(t *testing.T) {
 		r, w := net.Pipe()
 		_ = w.Close() // Close immediately to cause read error
 
-		err := handleHTTP(r, allowlist, options)
+		err := handleHTTP(r, newMatcher(allowlist), options)
 
 		// Should handle the error gracefully
 		if err != nil {

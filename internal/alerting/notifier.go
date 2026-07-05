@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -141,12 +142,30 @@ func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) 
 	}
 
 	if n.isIgnored(info.Destination) {
+		slog.Debug("notification.ignored",
+			"component", info.Component,
+			"destination", info.Destination,
+			"reason", "matched ignore list",
+		)
+
 		return
 	}
 
 	if !n.shouldSendAlert(info) {
+		slog.Debug("notification.rate_limited",
+			"component", info.Component,
+			"destination", info.Destination,
+			"source_ip", info.SourceIP,
+		)
+
 		return
 	}
+
+	slog.Debug("notification.queued",
+		"component", info.Component,
+		"destination", info.Destination,
+		"source_ip", info.SourceIP,
+	)
 
 	go n.sendNotification(ctx, info)
 }
@@ -312,13 +331,18 @@ func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionI
 
 	req, err := n.createNotificationRequest(ctx, title, message)
 	if err != nil {
-		return // Silently fail - alerting shouldn't break main functionality
+		slog.Warn("notification.request_failed", "host", n.host, "err", err)
+
+		return
 	}
 
-	// Send notification
+	slog.Debug("notification.posting", "host", n.host, "destination", info.Destination, "component", info.Component)
+
 	resp, err := n.client.Do(req)
 	if err != nil {
-		return // Silently fail
+		slog.Warn("notification.post_failed", "host", n.host, "err", err)
+
+		return
 	}
 
 	defer func() {
@@ -327,8 +351,11 @@ func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionI
 		_ = resp.Body.Close()
 	}()
 
-	// Ignore non-2xx responses silently (avoid log spam)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slog.Warn("notification.rejected", "host", n.host, "status", resp.StatusCode)
+
 		return
 	}
+
+	slog.Debug("notification.sent", "host", n.host, "status", resp.StatusCode)
 }

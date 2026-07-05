@@ -3,8 +3,6 @@ package filter
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,8 +12,6 @@ import (
 	"github.com/g0lab/g0efilter/internal/safeio"
 )
 
-var errFailedCapture = errors.New("failed to capture client hello")
-
 // Serve443 starts the TLS HTTPS filter.
 func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
@@ -23,12 +19,13 @@ func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	}
 
 	opts.Denylist = NormalizePatterns(opts.Denylist)
+	opts.denyMatcher = newMatcher(opts.Denylist)
 
-	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, NormalizePatterns(allowlist), opts, "https")
+	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handle, newMatcher(allowlist), opts, "https")
 }
 
 // handle processes an individual TLS connection for HTTPS filtering.
-func handle(conn net.Conn, allowlist []string, opts Options) error {
+func handle(conn net.Conn, allowlist *hostMatcher, opts Options) error {
 	defer safeio.CloseWithErr(nil, conn)
 
 	tc, ok := conn.(*net.TCPConn)
@@ -40,7 +37,7 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 	sni, buf := extractSNIFromConnection(conn, opts)
 
 	// 2) Apply policy
-	permitted := hostPermitted(sni, allowlist, opts)
+	permitted := hostPermittedBy(sni, allowlist, opts)
 	if opts.Logger != nil {
 		opts.Logger.Debug("https.allowlist_check", "sni", sni, "allowed", permitted)
 	}
@@ -55,7 +52,7 @@ func handle(conn net.Conn, allowlist []string, opts Options) error {
 		return nil
 	}
 
-	maybeLearnHost(sni, allowlist, opts)
+	maybeLearnHostBy(sni, allowlist, opts)
 
 	// 3) Handle allowed HTTPS connection (audited flows already logged their verdict)
 	return handleAllowedHTTPS(conn, tc, buf, sni, opts, !wasAudited)
@@ -66,7 +63,7 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffe
 	_ = conn.SetReadDeadline(time.Now().Add(connectionReadTimeout))
 	defer func() { _ = conn.SetReadDeadline(time.Time{}) }()
 
-	ch, buf, err := peekClientHello(conn)
+	rawSNI, buf, err := peekClientHello(conn)
 	if err != nil {
 		if opts.Logger != nil {
 			opts.Logger.Debug("https.peek_failed",
@@ -81,7 +78,7 @@ func extractSNIFromConnection(conn net.Conn, opts Options) (string, *bytes.Buffe
 		return "", buf
 	}
 
-	sni := strings.TrimSuffix(strings.ToLower(ch.ServerName), ".")
+	sni := strings.TrimSuffix(strings.ToLower(rawSNI), ".")
 
 	// Validate and sanitize SNI
 	sanitized, valid := sanitizeHostWithLogger(sni, opts.Logger, "https")
@@ -231,63 +228,16 @@ func connectAndSpliceHTTPS(conn net.Conn, buf *bytes.Buffer, target string, opts
 	return nil
 }
 
-// TLS ClientHello peek helpers
-
-// roConn wraps a reader to provide a read-only net.Conn for TLS handshake peeking.
-type roConn struct{ r io.Reader }
-
-func (c roConn) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return n, fmt.Errorf("read: %w", err)
-	}
-
-	return n, err //nolint:wrapcheck // io.EOF must pass through unwrapped for TLS handshake
-}
-
-func (c roConn) Write([]byte) (int, error)        { return 0, io.ErrClosedPipe }
-func (c roConn) Close() error                     { return nil }
-func (c roConn) LocalAddr() net.Addr              { return nil }
-func (c roConn) RemoteAddr() net.Addr             { return nil }
-func (c roConn) SetDeadline(time.Time) error      { return nil }
-func (c roConn) SetReadDeadline(time.Time) error  { return nil }
-func (c roConn) SetWriteDeadline(time.Time) error { return nil }
-
-// peekClientHello extracts TLS ClientHello info while preserving the data.
-// The buffer is returned even on error so consumed bytes can still be forwarded.
-func peekClientHello(reader io.Reader) (*tls.ClientHelloInfo, *bytes.Buffer, error) {
+// peekClientHello extracts the SNI from a TLS ClientHello while preserving the
+// data. The buffer is returned even on error so consumed bytes can still be
+// forwarded. Parsing lives in clienthello.go.
+func peekClientHello(reader io.Reader) (string, *bytes.Buffer, error) {
 	buf := new(bytes.Buffer)
 
-	hello, err := readClientHello(io.TeeReader(reader, buf))
+	sni, err := readClientHelloSNI(io.TeeReader(reader, buf))
 	if err != nil {
-		return nil, buf, err
+		return "", buf, err
 	}
 
-	return hello, buf, nil
+	return sni, buf, nil
 }
-
-// readClientHello captures TLS ClientHello info without completing the handshake.
-func readClientHello(r io.Reader) (*tls.ClientHelloInfo, error) {
-	var hello *tls.ClientHelloInfo
-
-	err := tls.Server(roConn{r}, &tls.Config{
-		GetConfigForClient: func(ch *tls.ClientHelloInfo) (*tls.Config, error) {
-			cp := *ch
-			hello = &cp
-			// SNI captured; nil signals "use outer config". Handshake fails on
-			// roConn.Write being a no-op, which is expected.
-			return nil, nil //nolint:nilnil
-		},
-	}).Handshake() //nolint:noctx
-	if hello == nil {
-		if err == nil {
-			err = errFailedCapture
-		}
-
-		return nil, err
-	}
-
-	return hello, nil
-}
-
-// Method taken from https://www.agwa.name/blog/post/writing_an_sni_proxy_in_go

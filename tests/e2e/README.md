@@ -29,6 +29,7 @@ container logs on failure, and tears down (restoring the baseline policy file).
 | `09_dns_strict.sh` | dns-strict: resolved IPs land in kernel timeout sets, never-resolved IPs dropped (dns lane only) |
 | `10_audit.sh` | audit (dry-run) enforcement: would-be-blocked traffic passes and reaches the dashboard as AUDIT (https lane only) |
 | `11_resources.sh` | coarse CPU and memory guardrails after modest allowed/blocked traffic |
+| `12_load.sh` | concurrent allowed/blocked traffic, leak checks, latency, and stability under load |
 
 Individual phase scripts assume the stack is already up, though mode-specific
 phases may recreate the g0efilter container with different environment flags.

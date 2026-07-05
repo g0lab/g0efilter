@@ -36,3 +36,42 @@ func TestMarkedDialerBestEffort(t *testing.T) {
 
 	_ = conn.Close()
 }
+
+func TestMarkedDNSDialerPortRange(t *testing.T) {
+	t.Parallel()
+
+	var lc net.ListenConfig
+
+	pc, err := lc.ListenPacket(context.Background(), "udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = pc.Close() }()
+
+	seen := make(map[int]struct{})
+
+	for range 3 {
+		conn, dErr := MarkedDNSDialer(2*time.Second).Dial("udp", pc.LocalAddr().String())
+		if dErr != nil {
+			t.Fatalf("dial failed: %v", dErr)
+		}
+
+		addr, ok := conn.LocalAddr().(*net.UDPAddr)
+		if !ok {
+			t.Fatalf("unexpected local addr type %T", conn.LocalAddr())
+		}
+
+		if addr.Port < dnsForwardPortLow || addr.Port > dnsForwardPortHigh {
+			t.Errorf("source port %d outside pinned range %d-%d", addr.Port, dnsForwardPortLow, dnsForwardPortHigh)
+		}
+
+		seen[addr.Port] = struct{}{}
+
+		_ = conn.Close()
+	}
+
+	if len(seen) != 3 {
+		t.Errorf("expected 3 distinct rotated ports, got %d", len(seen))
+	}
+}

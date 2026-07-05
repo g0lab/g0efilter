@@ -4,10 +4,6 @@ package filter
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"crypto/tls"
-	"fmt"
-	"io"
 	"strings"
 	"testing"
 )
@@ -104,9 +100,9 @@ func TestPeekClientHelloNonTLS(t *testing.T) {
 	// Plain HTTP bytes are not a ClientHello: error, but consumed bytes preserved
 	input := "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"
 
-	hello, buf, err := peekClientHello(strings.NewReader(input))
-	if err == nil || hello != nil {
-		t.Fatal("non-TLS data must not produce a ClientHello")
+	sni, buf, err := peekClientHello(strings.NewReader(input))
+	if err == nil || sni != "" {
+		t.Fatal("non-TLS data must not produce an SNI")
 	}
 
 	if buf == nil || buf.Len() == 0 {
@@ -118,10 +114,10 @@ func TestPeekClientHelloTruncated(t *testing.T) {
 	t.Parallel()
 
 	// A real ClientHello prefix, cut off mid-record
-	full := buildClientHello(t, "example.com")
+	full := clientHelloBytes(t, "example.com")
 
-	hello, buf, err := peekClientHello(bytes.NewReader(full[:20]))
-	if err == nil || hello != nil {
+	sni, buf, err := peekClientHello(bytes.NewReader(full[:20]))
+	if err == nil || sni != "" {
 		t.Fatal("truncated ClientHello must error")
 	}
 
@@ -133,15 +129,15 @@ func TestPeekClientHelloTruncated(t *testing.T) {
 func TestPeekClientHelloWithSNI(t *testing.T) {
 	t.Parallel()
 
-	raw := buildClientHello(t, "sni.example.com")
+	raw := clientHelloBytes(t, "sni.example.com")
 
-	hello, buf, err := peekClientHello(bytes.NewReader(raw))
+	sni, buf, err := peekClientHello(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("peekClientHello: %v", err)
 	}
 
-	if hello.ServerName != "sni.example.com" {
-		t.Errorf("ServerName = %q, want sni.example.com", hello.ServerName)
+	if sni != "sni.example.com" {
+		t.Errorf("sni = %q, want sni.example.com", sni)
 	}
 
 	if !bytes.Equal(buf.Bytes(), raw) {
@@ -152,51 +148,14 @@ func TestPeekClientHelloWithSNI(t *testing.T) {
 func TestPeekClientHelloWithoutSNI(t *testing.T) {
 	t.Parallel()
 
-	raw := buildClientHello(t, "")
+	raw := clientHelloBytes(t, "")
 
-	hello, _, err := peekClientHello(bytes.NewReader(raw))
+	sni, _, err := peekClientHello(bytes.NewReader(raw))
 	if err != nil {
 		t.Fatalf("peekClientHello: %v", err)
 	}
 
-	if hello.ServerName != "" {
-		t.Errorf("ServerName = %q, want empty for SNI-less hello", hello.ServerName)
+	if sni != "" {
+		t.Errorf("sni = %q, want empty for SNI-less hello", sni)
 	}
 }
-
-// buildClientHello captures the raw bytes a real TLS client sends first.
-func buildClientHello(t *testing.T, serverName string) []byte {
-	t.Helper()
-
-	var sink bytes.Buffer
-
-	conn := tls.Client(writeOnlyConn{w: &sink}, &tls.Config{
-		ServerName:         serverName,
-		InsecureSkipVerify: true, //nolint:gosec // capturing handshake bytes only, no real connection
-	})
-	_ = conn.HandshakeContext(context.Background()) // fails after writing the ClientHello, which is all we need
-
-	if sink.Len() == 0 {
-		t.Fatal("no ClientHello captured")
-	}
-
-	return sink.Bytes()
-}
-
-type writeOnlyConn struct {
-	roConn
-
-	w *bytes.Buffer
-}
-
-func (c writeOnlyConn) Write(p []byte) (int, error) {
-	n, err := c.w.Write(p)
-	if err != nil {
-		return n, fmt.Errorf("capture write: %w", err)
-	}
-
-	return n, nil
-}
-
-// Read fails immediately: the handshake ends right after the ClientHello is written.
-func (c writeOnlyConn) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }

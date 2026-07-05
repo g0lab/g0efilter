@@ -142,6 +142,17 @@ func applyRuleset(ctx context.Context, ruleset string) error {
 	return nil
 }
 
+// atomicReplacePreamble removes all managed tables inside the replacement transaction.
+const atomicReplacePreamble = `table ip g0efilter_v4
+delete table ip g0efilter_v4
+table ip g0efilter_nat_v4
+delete table ip g0efilter_nat_v4
+table ip6 g0efilter_v6
+delete table ip6 g0efilter_v6
+table ip6 g0efilter_nat_v6
+delete table ip6 g0efilter_nat_v6
+`
+
 // PolicyRules describes the inputs for ruleset generation and application.
 type PolicyRules struct {
 	AllowIPs     []string
@@ -211,10 +222,8 @@ func ApplyPolicyRulesWithContext(
 		ruleset += "\n"
 	}
 
-	_ = deleteTableIfExists(ctx, "ip", "g0efilter_v4")
-	_ = deleteTableIfExists(ctx, "ip", "g0efilter_nat_v4")
-	_ = deleteTableIfExists(ctx, "ip6", "g0efilter_v6")
-	_ = deleteTableIfExists(ctx, "ip6", "g0efilter_nat_v6")
+	// Avoid a default-open gap during live reload.
+	ruleset = atomicReplacePreamble + ruleset
 
 	err = validateAndParseRuleset(ctx, ruleset)
 	if err != nil {
@@ -904,32 +913,6 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 		"\n" + generateHTTPSNATRules(allowSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
 		"\n" + generateHTTPSFilterRulesV6(allowSetV6, cfg.HTTPPort, cfg.HTTPSPort) +
 		"\n" + generateHTTPSNATRulesV6(allowSetV6, cfg.HTTPPort, cfg.HTTPSPort)
-}
-
-func deleteTableIfExists(ctx context.Context, family, table string) error {
-	ctxProbe, cancelProbe := context.WithTimeout(ctx, 5*time.Second)
-	defer cancelProbe()
-
-	//nolint:gosec // args are hardcoded literals from callers
-	probe := exec.CommandContext(ctxProbe, "nft", "list", "table", family, table)
-
-	err := probe.Run()
-	if err != nil {
-		return nil
-	}
-
-	ctxDel, cancelDel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancelDel()
-
-	//nolint:gosec // args are hardcoded literals from callers
-	del := exec.CommandContext(ctxDel, "nft", "delete", "table", family, table)
-
-	err = del.Run()
-	if err != nil {
-		return fmt.Errorf("failed to delete table %s %s: %w", family, table, err)
-	}
-
-	return nil
 }
 
 // StreamNfLog starts streaming netfilter log events using the default logger.

@@ -835,15 +835,19 @@ table ip test_table {
 	}
 }
 
-func TestDeleteTableIfExists(t *testing.T) {
+func TestAtomicReplacePreamble(t *testing.T) {
 	t.Parallel()
 
-	// Test table deletion (will fail in test environment but shouldn't panic)
-	err := deleteTableIfExists(context.Background(), "ip", "nonexistent_table")
+	for _, table := range []string{
+		"ip g0efilter_v4", "ip g0efilter_nat_v4",
+		"ip6 g0efilter_v6", "ip6 g0efilter_nat_v6",
+	} {
+		declare := strings.Index(atomicReplacePreamble, "table "+table+"\n")
+		remove := strings.Index(atomicReplacePreamble, "delete table "+table+"\n")
 
-	// Should return nil if table doesn't exist (which is likely in test environment)
-	if err != nil {
-		t.Logf("deleteTableIfExists() returned error: %v", err)
+		if declare == -1 || remove == -1 || remove < declare {
+			t.Errorf("preamble must declare then delete table %s", table)
+		}
 	}
 }
 

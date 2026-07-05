@@ -1,0 +1,49 @@
+---
+name: load-test
+
+# Scaled-up custom stress run. Normal PR e2e already runs tests/e2e/12_load.sh.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "filter mode"
+        type: choice
+        options: [https, dns]
+        default: https
+      total:
+        description: "total blocked connections to fire"
+        default: "2000"
+      concurrency:
+        description: "concurrent connections per wave"
+        default: "100"
+
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  load:
+    name: load test (${{ github.event.inputs.mode || 'https' }})
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-load-test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v2
+
+      - name: Run load test
+        env:
+          FILTER_MODE: ${{ github.event.inputs.mode || 'https' }}
+          LOAD_TOTAL: ${{ github.event.inputs.total || '2000' }}
+          LOAD_CONCURRENCY: ${{ github.event.inputs.concurrency || '100' }}
+        run: scripts/load.sh

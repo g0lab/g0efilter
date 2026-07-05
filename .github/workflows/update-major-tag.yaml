@@ -1,0 +1,46 @@
+---
+name: update-major-tag
+run-name: Move ${{ github.event.inputs.major_version }} to ${{ github.event.inputs.target }}
+
+# Manual override or rollback for the rolling major tag.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "The release tag the major tag should point at (e.g. v0.6.0)"
+        required: true
+      major_version:
+        description: "The major tag to move (e.g. v0)"
+        required: true
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to force-push the rolling major tag
+      contents: write
+    env:
+      MAJOR_VERSION: ${{ github.event.inputs.major_version }}
+      TARGET: ${{ github.event.inputs.target }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Validate inputs
+        run: |
+          case "$MAJOR_VERSION" in
+            v[0-9]|v[0-9][0-9]) ;;
+            *) echo "::error::major_version must look like v0/v1"; exit 1 ;;
+          esac
+          git rev-parse "$TARGET^{commit}" >/dev/null \
+            || { echo "::error::target $TARGET does not exist"; exit 1; }
+
+      - name: Move major tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$MAJOR_VERSION" "$TARGET"
+          git push origin "$MAJOR_VERSION" --force

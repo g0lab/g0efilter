@@ -8,18 +8,9 @@ import (
 	"github.com/miekg/dns"
 )
 
-// Anti-exfiltration hardening for the DNS proxy. All DNS is already forced through
-// the proxy, so these checks close the remaining tunneling channels: bulky or
-// oddly-shaped outbound qnames, bulky TXT/NULL answers inbound, and bulk query
-// volume. Deliberately no entropy heuristics: CDN hashes and DKIM lookups make
-// them false-positive prone; the deterministic length/size caps below catch the
-// same tunnels without guessing.
+// DNS hardening blocks deterministic tunneling shapes without noisy entropy checks.
 const (
-	// exfilMaxQname is below the RFC's 253: legitimate names longer than this are
-	// vanishingly rare, while DNS tunnels need long names for bandwidth.
 	exfilMaxQname = 220
-	// exfilMaxLabel is below the RFC's 63: base32/64 exfil chunks typically fill
-	// the label; real hostnames rarely exceed this.
 	exfilMaxLabel = 56
 
 	maxTXTPayloadBytes = 1024
@@ -87,20 +78,34 @@ type tokenBucket struct {
 	last   time.Time
 }
 
-// dnsRateLimiter is a per-source token bucket to blunt bulk exfil and protect the
-// proxy itself. Enforced regardless of audit/learning mode.
+// dnsRateLimiter is enforced even in audit/learning mode to protect the proxy.
 type dnsRateLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*tokenBucket
 	now     func() time.Time
+	qps     float64
+	burst   float64
 }
 
-func newDNSRateLimiter() *dnsRateLimiter {
-	return &dnsRateLimiter{
+// newDNSRateLimiter falls back to defaults for qps/burst values <= 0.
+func newDNSRateLimiter(qps, burst int) *dnsRateLimiter {
+	l := &dnsRateLimiter{
 		mu:      sync.Mutex{},
 		buckets: make(map[string]*tokenBucket),
 		now:     time.Now,
+		qps:     dnsRateLimitQPS,
+		burst:   dnsRateLimitBurst,
 	}
+
+	if qps > 0 {
+		l.qps = float64(qps)
+	}
+
+	if burst > 0 {
+		l.burst = float64(burst)
+	}
+
+	return l
 }
 
 func (l *dnsRateLimiter) allow(source string) bool {
@@ -121,13 +126,13 @@ func (l *dnsRateLimiter) allow(source string) bool {
 			l.evictOldestLocked()
 		}
 
-		bucket = &tokenBucket{tokens: dnsRateLimitBurst, last: now}
+		bucket = &tokenBucket{tokens: l.burst, last: now}
 		l.buckets[source] = bucket
 	}
 
-	bucket.tokens += now.Sub(bucket.last).Seconds() * dnsRateLimitQPS
-	if bucket.tokens > dnsRateLimitBurst {
-		bucket.tokens = dnsRateLimitBurst
+	bucket.tokens += now.Sub(bucket.last).Seconds() * l.qps
+	if bucket.tokens > l.burst {
+		bucket.tokens = l.burst
 	}
 
 	bucket.last = now

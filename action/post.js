@@ -5,7 +5,7 @@
 //   2026-07-05T00:25:09Z WRN https.blocked action=BLOCKED component=https https=example.com dst=1.2.3.4:443 ...
 "use strict";
 
-const { execSync } = require("node:child_process");
+const { execSync, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 
 const ANSI = /\x1b\[[0-9;]*m/g;
@@ -100,9 +100,39 @@ function buildSummary(raw) {
   return md;
 }
 
-const summary = buildSummary(containerLogs());
-if (process.env.GITHUB_STEP_SUMMARY) {
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + "\n");
-} else {
-  console.log(summary);
+// Rules live in the host netns; a leftover container or ruleset would brick the
+// runner's DNS/egress after the job. Best-effort - never fail the post step.
+function teardown() {
+  try {
+    execFileSync("docker", ["rm", "-f", "g0efilter"], { stdio: "ignore" });
+  } catch {}
+
+  for (const table of [
+    ["ip", "g0efilter_v4"],
+    ["ip", "g0efilter_nat_v4"],
+    ["ip6", "g0efilter_v6"],
+    ["ip6", "g0efilter_nat_v6"],
+  ]) {
+    try {
+      execFileSync("sudo", ["nft", "delete", "table", ...table], { stdio: "ignore" });
+    } catch {} // table absent, or no sudo on self-hosted runners
+  }
 }
+
+function main() {
+  const summary = buildSummary(containerLogs());
+
+  teardown();
+
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + "\n");
+  } else {
+    console.log(summary);
+  }
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { parseLine, collectDecisions, escapeCell, buildSummary };

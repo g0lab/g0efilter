@@ -55,6 +55,7 @@ BASE_DOMAINS=(
   "objects-origin.githubusercontent.com"
   "github-releases.githubusercontent.com"
   "github-registry-files.githubusercontent.com"
+  "release-assets.githubusercontent.com"
 )
 
 # DNS must keep working under default-deny: allow the host's upstream resolvers
@@ -104,9 +105,16 @@ DOCKER_ARGS=(
   -e LOG_LEVEL="${LOG_LEVEL:-INFO}"
 )
 
-# Port 53 on the host is taken by systemd-resolved; the NAT redirect still
-# captures all DNS and sends it to the proxy's alternate port.
-[ "$MODE" = "dns" ] && DOCKER_ARGS+=(-e DNS_PORT=5353)
+# Host :53 is systemd-resolved; the NAT redirect still captures DNS to the
+# proxy's alt port. Forward to the host's real resolvers - the default
+# 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with
+# every :53 redirected takes out the whole runner's DNS.
+if [ "$MODE" = "dns" ]; then
+  # Match v4 and v6 resolvers; bracket v6 for host:port form.
+  UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
+  [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
+  DOCKER_ARGS+=(-e DNS_PORT=5353)
+fi
 
 docker run "${DOCKER_ARGS[@]}" "$IMAGE"
 

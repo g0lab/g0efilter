@@ -21,12 +21,13 @@ func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 	}
 
 	opts.Denylist = NormalizePatterns(opts.Denylist)
+	opts.denyMatcher = newMatcher(opts.Denylist)
 
-	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHTTP, NormalizePatterns(allowlist), opts, "http")
+	return serveTCP(ctx, opts.ListenAddr, opts.Logger, handleHTTP, newMatcher(allowlist), opts, "http")
 }
 
 // handleHTTP processes an individual HTTP connection for Host header filtering.
-func handleHTTP(conn net.Conn, allowlist []string, opts Options) error {
+func handleHTTP(conn net.Conn, allowlist *hostMatcher, opts Options) error {
 	var err error
 	defer safeio.CloseWithErr(&err, conn)
 
@@ -39,7 +40,7 @@ func handleHTTP(conn net.Conn, allowlist []string, opts Options) error {
 
 	// A parse failure always yields an empty host, so hostPermitted covers it:
 	// blocked under default-deny, forwarded under default-allow/learning.
-	permitted := hostPermitted(host, allowlist, opts)
+	permitted := hostPermittedBy(host, allowlist, opts)
 	if opts.Logger != nil {
 		opts.Logger.Debug("http.allowlist_check", "host", host, "allowed", permitted)
 	}
@@ -55,7 +56,7 @@ func handleHTTP(conn net.Conn, allowlist []string, opts Options) error {
 		return nil
 	}
 
-	maybeLearnHost(host, allowlist, opts)
+	maybeLearnHostBy(host, allowlist, opts)
 
 	return handleAllowedHTTP(conn, tc, host, headBytes, br, opts, !wasAudited)
 }

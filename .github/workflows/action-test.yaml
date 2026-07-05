@@ -20,29 +20,121 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  block:
-    name: egress-policy block
+  unit:
+    name: action script checks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+
+      - name: Syntax-check action scripts
+        run: |
+          for f in action/*.js; do node --check "$f"; done
+
+      - name: Run action unit tests
+        run: node --test 'action/*.test.js'
+
+  block:
+    name: egress-policy block
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start g0efilter (block)
         uses: ./
         with:
           allowed-domains: |
-            example.org
+            api.github.com
 
-      - name: Allowed domain works
-        run: curl -sSf --max-time 20 https://example.org -o /dev/null
+      - name: Allowed HTTPS domain works
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
 
-      - name: GitHub baseline works
-        run: curl -sSf --max-time 20 https://api.github.com -o /dev/null
-
-      - name: Non-allowlisted domain is blocked
+      - name: Non-allowlisted HTTPS domain is blocked
         run: |
-          if curl -sf --max-time 20 https://example.com -o /dev/null; then
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
             echo "example.com should have been blocked"
+            exit 1
+          fi
+          echo "OK: example.com blocked"
+
+      - name: Allowed HTTP host works
+        run: curl --silent --show-error --connect-timeout 10 --max-time 20 http://api.github.com -o /dev/null
+
+      - name: Non-allowlisted HTTP host is blocked
+        run: |
+          if curl --silent --show-error --connect-timeout 10 --max-time 20 http://example.com -o /dev/null; then
+            echo "http://example.com should have been blocked"
+            exit 1
+          fi
+          echo "OK: http://example.com blocked"
+
+  domain-patterns:
+    name: allowed-domains wildcard + regex
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            *.example.com
+            /^example\.org$/
+
+      - name: Wildcard matches a subdomain
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://www.example.com -o /dev/null
+
+      - name: Regex-allowed domain works
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.org -o /dev/null
+
+      - name: Wildcard does not match the apex
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "example.com apex should not match *.example.com"
+            exit 1
+          fi
+          echo "OK: apex blocked"
+
+  dns:
+    name: mode dns
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (dns)
+        uses: ./
+        with:
+          mode: dns
+          allowed-domains: |
+            api.github.com
+
+      - name: Allowed domain resolves and connects
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+
+      - name: Non-allowlisted domain is blocked by dns mode
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "example.com should have been blocked under dns mode"
             exit 1
           fi
           echo "OK: example.com blocked"
@@ -50,9 +142,12 @@ jobs:
   audit:
     name: egress-policy audit
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start g0efilter (audit)
         uses: ./
@@ -60,4 +155,42 @@ jobs:
           egress-policy: audit
 
       - name: Non-allowlisted domain passes in audit mode
-        run: curl -sSf --max-time 20 https://example.com -o /dev/null
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null
+
+  invalid-input:
+    name: input validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Invalid mode is rejected
+        id: bad-mode
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: bogus
+
+      - name: Invalid egress-policy is rejected
+        id: bad-policy
+        continue-on-error: true
+        uses: ./
+        with:
+          egress-policy: bogus
+
+      - name: Assert the action failed for both
+        run: |
+          if [ "${{ steps.bad-mode.outcome }}" != "failure" ]; then
+            echo "action should have failed for invalid mode"
+            exit 1
+          fi
+
+          if [ "${{ steps.bad-policy.outcome }}" != "failure" ]; then
+            echo "action should have failed for invalid egress-policy"
+            exit 1
+          fi
+
+          echo "OK: invalid mode and egress-policy both rejected"

@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -150,6 +151,8 @@ type config struct {
 	learner             *learner
 	auditMode           bool
 	dnsHardening        bool
+	dnsRateQPS          int
+	dnsRateBurst        int
 	procInfo            *procinfo.ProcProvider
 	enableRemoteUnblock bool
 	dashboardHost       string
@@ -174,6 +177,8 @@ func loadConfig() config {
 		learningMode:        strings.EqualFold(getenvDefault("LEARNING_MODE", "false"), "true"),
 		auditMode:           strings.EqualFold(getenvDefault("ENFORCE", "block"), "audit"),
 		dnsHardening:        strings.EqualFold(getenvDefault("DNS_HARDENING", "true"), "true"),
+		dnsRateQPS:          parseIntDefault(getenvDefault("DNS_RATE_QPS", ""), 0),
+		dnsRateBurst:        parseIntDefault(getenvDefault("DNS_RATE_BURST", ""), 0),
 		enableRemoteUnblock: strings.EqualFold(getenvDefault("ENABLE_REMOTE_UNBLOCK", "false"), "true"),
 		dashboardHost:       strings.TrimSpace(getenvDefault("DASHBOARD_HOST", "")),
 		dashboardAPIKey:     strings.TrimSpace(getenvDefault("DASHBOARD_API_KEY", "")),
@@ -185,7 +190,7 @@ func loadConfig() config {
 
 // resolvePolicyPath applies the policy-file location fallback: an explicit
 // POLICY_PATH always wins (even if missing), then the default location, then
-// fallbackPath. A missing file is never auto-created — startup stays fail-closed.
+// fallbackPath. A missing file is never auto-created - startup stays fail-closed.
 func resolvePolicyPath(cfg config, fallbackPath string, lg *slog.Logger) config {
 	if strings.TrimSpace(os.Getenv("POLICY_PATH")) != "" {
 		return cfg
@@ -617,6 +622,8 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 		OnLearn:      learnFunc(cfg.learner),
 		AuditMode:    cfg.auditMode,
 		DNSHardening: cfg.dnsHardening,
+		DNSRateQPS:   cfg.dnsRateQPS,
+		DNSRateBurst: cfg.dnsRateBurst,
 	}
 
 	// Assign conditionally: wrapping a nil pointer would make the interface non-nil
@@ -891,6 +898,15 @@ func getenvDefault(key, def string) string {
 	}
 
 	return v
+}
+
+func parseIntDefault(s string, def int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return def
+	}
+
+	return n
 }
 
 func parseDurationDefault(s string, def time.Duration) time.Duration {

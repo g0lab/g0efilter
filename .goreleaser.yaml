@@ -47,6 +47,8 @@ dockers_v2:
       - docker.io/g0lab/g0efilter
     tags:
       - "{{ .Tag }}"
+      # Keep action @vN aligned with non-prerelease image tags.
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
       - "{{ if not .Prerelease }}latest{{ end }}"
     platforms:
       - linux/amd64
@@ -69,6 +71,7 @@ dockers_v2:
       - docker.io/g0lab/g0efilter-dashboard
     tags:
       - "{{ .Tag }}"
+      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
       - "{{ if not .Prerelease }}latest{{ end }}"
     platforms:
       - linux/amd64

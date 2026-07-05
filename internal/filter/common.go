@@ -79,6 +79,13 @@ type Options struct {
 	// Under audit/learning mode violations are logged but not blocked (except the
 	// rate limit, which protects the proxy itself).
 	DNSHardening bool
+
+	// DNSRateQPS/DNSRateBurst override the per-source DNS hardening bucket.
+	DNSRateQPS   int
+	DNSRateBurst int
+
+	// denyMatcher avoids rebuilding Denylist matching state per connection.
+	denyMatcher *hostMatcher
 }
 
 // procFields returns process-attribution log fields for a flow, degrading to
@@ -158,17 +165,48 @@ func cachedCompile(pattern string, compile func(string) (*regexp.Regexp, error))
 	return re
 }
 
-// allowedHost checks if a host matches the pre-normalized allowlist patterns.
-func allowedHost(host string, allowlist []string) bool {
-	host = normalizeDomain(host)
+// hostMatcher keeps exact matches O(1) and scans wildcard/regex patterns.
+type hostMatcher struct {
+	exact    map[string]struct{}
+	patterns []string
+}
 
-	for _, pattern := range allowlist {
+// newMatcher normalizes patterns and splits exact entries from wildcard/regex ones.
+func newMatcher(patterns []string) *hostMatcher {
+	m := &hostMatcher{exact: make(map[string]struct{}, len(patterns)), patterns: nil}
+
+	for _, p := range patterns {
+		p = normalizeDomain(p)
+		if strings.Contains(p, "*") || policy.IsRegexPattern(p) {
+			m.patterns = append(m.patterns, p)
+		} else {
+			m.exact[p] = struct{}{}
+		}
+	}
+
+	return m
+}
+
+// allows checks if a host matches the allowlist.
+func (m *hostMatcher) allows(host string) bool {
+	host = normalizeDomain(host)
+	if _, ok := m.exact[host]; ok {
+		return true
+	}
+
+	for _, pattern := range m.patterns {
 		if matchPattern(host, pattern) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// allowedHost checks if a host matches allowlist patterns. Hot paths hold a
+// pre-built hostMatcher instead; this form exists for one-off checks and tests.
+func allowedHost(host string, allowlist []string) bool {
+	return newMatcher(allowlist).allows(host)
 }
 
 // matchPattern matches a normalized host against one exact, wildcard, or /regex/ pattern.
@@ -196,36 +234,47 @@ func matchPattern(host, pattern string) bool {
 	}
 }
 
-// hostPermitted applies the policy decision for a host observed by a filter.
-// Learning mode never blocks. With DefaultAllow, a host passes unless it matches
-// the denylist, and an allowlist match always overrides the denylist. An empty
-// host (no SNI/Host header) is blocked under default-deny but passes under
-// default-allow, since there is nothing to match against the denylist.
-func hostPermitted(host string, allowlist []string, opts Options) bool {
+// hostPermittedBy applies learning/default-allow/default-deny policy for a host.
+func hostPermittedBy(host string, allow *hostMatcher, opts Options) bool {
 	if opts.LearningMode {
 		return true
 	}
 
 	if !opts.DefaultAllow {
-		return host != "" && allowedHost(host, allowlist)
+		return host != "" && allow.allows(host)
 	}
 
-	if host == "" || allowedHost(host, allowlist) {
+	if host == "" || allow.allows(host) {
 		return true
 	}
 
-	return !allowedHost(host, opts.Denylist)
+	deny := opts.denyMatcher
+	if deny == nil {
+		deny = newMatcher(opts.Denylist)
+	}
+
+	return !deny.allows(host)
 }
 
-// maybeLearnHost reports a host to the learning callback when it is not already allowlisted.
-func maybeLearnHost(host string, allowlist []string, opts Options) {
+// hostPermitted is the []string form of hostPermittedBy, for one-off checks and tests.
+func hostPermitted(host string, allowlist []string, opts Options) bool {
+	return hostPermittedBy(host, newMatcher(allowlist), opts)
+}
+
+// maybeLearnHostBy reports a host to the learning callback when it is not already allowlisted.
+func maybeLearnHostBy(host string, allow *hostMatcher, opts Options) {
 	if !opts.LearningMode || opts.OnLearn == nil || host == "" {
 		return
 	}
 
-	if !allowedHost(host, allowlist) {
+	if !allow.allows(host) {
 		opts.OnLearn("domain", host)
 	}
+}
+
+// maybeLearnHost is the []string form of maybeLearnHostBy, for one-off checks and tests.
+func maybeLearnHost(host string, allowlist []string, opts Options) {
+	maybeLearnHostBy(host, newMatcher(allowlist), opts)
 }
 
 // maybeLearnIP reports a destination IP to the learning callback (used when no
@@ -531,8 +580,8 @@ func serveTCP(
 	ctx context.Context,
 	listenAddr string,
 	logger *slog.Logger,
-	handler func(net.Conn, []string, Options) error,
-	allowlist []string,
+	handler func(net.Conn, *hostMatcher, Options) error,
+	allowlist *hostMatcher,
 	opts Options,
 	protocol string,
 ) error {

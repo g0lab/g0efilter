@@ -100,7 +100,7 @@ func txtRecord(payload string) *dns.TXT {
 func TestDNSRateLimiter(t *testing.T) {
 	t.Parallel()
 
-	l := newDNSRateLimiter()
+	l := newDNSRateLimiter(0, 0)
 	now := time.Now()
 	l.now = func() time.Time { return now }
 
@@ -128,10 +128,43 @@ func TestDNSRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDNSRateLimiterCustomLimits(t *testing.T) {
+	t.Parallel()
+
+	l := newDNSRateLimiter(10, 5)
+	now := time.Now()
+	l.now = func() time.Time { return now }
+
+	for i := range 5 {
+		if !l.allow("10.0.0.1") {
+			t.Fatalf("query %d within custom burst must pass", i)
+		}
+	}
+
+	if l.allow("10.0.0.1") {
+		t.Error("query beyond custom burst must be limited")
+	}
+
+	now = now.Add(100 * time.Millisecond)
+
+	if !l.allow("10.0.0.1") {
+		t.Error("token must refill at the custom rate")
+	}
+
+	if l.allow("10.0.0.1") {
+		t.Error("only one token should have refilled")
+	}
+
+	d := newDNSRateLimiter(0, -1)
+	if d.qps != dnsRateLimitQPS || d.burst != dnsRateLimitBurst {
+		t.Errorf("defaults not applied: qps=%v burst=%v", d.qps, d.burst)
+	}
+}
+
 func TestDNSRateLimiterBoundedUnderSourceFlood(t *testing.T) {
 	t.Parallel()
 
-	l := newDNSRateLimiter()
+	l := newDNSRateLimiter(0, 0)
 	now := time.Now()
 	l.now = func() time.Time { return now }
 

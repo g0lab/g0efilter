@@ -62,6 +62,19 @@ Limits: domain filtering applies to ports 80/443 only; a client that sends no SN
 
 All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver; non-allowlisted A/AAAA queries are sinkholed to 0.0.0.0/:: and other blocked query types get NXDOMAIN.
 
+```text
+Start
+|
++- DNS query to port 53? -- No -> PASS (no domain check)
+|
++- Redirect to local DNS proxy
+|
++- Domain matches policy? -- Yes -> FORWARD to upstream resolver
+|                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|
++- LOG decision -> dashboard (if enabled)
+```
+
 Strengths: covers every protocol and port, cheapest data path (no proxying of the traffic itself).
 Limits: enforcement happens at resolution only. A process that connects to a hardcoded IP, uses DNS-over-HTTPS, or replays a cached answer bypasses filtering entirely. Use `dns-strict` to close that gap.
 
@@ -71,6 +84,23 @@ Limits: enforcement happens at resolution only. A process that connects to a har
 <summary><b>dns-strict mode: resolution filtering plus connection-time enforcement</b></summary>
 
 Everything dns mode does, plus: when an allowed domain resolves, the proxy pushes the answer's A/AAAA addresses into a kernel nftables set with a TTL-bounded timeout (60s floor, 24h cap), before the client sees the answer. The filter chain is default-drop, so connections to any IP that was never resolved through the proxy (hardcoded IPs, DoH, cached answers) are dropped.
+
+```text
+Start
+|
++- Destination IP in allowlist/resolved set? -- Yes -> ALLOW
+|
++- DNS query to port 53? -- Yes -> Redirect to DNS proxy
+|      |
+|      +- Domain matches policy? -- Yes -> Resolve, add answer IPs, return answer
+|      |                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|
++- Connection already established? -- Yes -> ALLOW
+|
++- BLOCK
+|
++- LOG decision -> dashboard (if enabled)
+```
 
 - Enforcement covers all ports and both IPv4/IPv6, entirely in the kernel
 - Entries expire with the DNS TTL; established connections survive expiry via conntrack
@@ -150,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@main
+        uses: g0lab/g0efilter@v0
         with:
           egress-policy: block   # or 'audit' to log without blocking
           allowed-domains: |
@@ -202,6 +232,8 @@ The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set
 | `DNS_PORT` | DNS listen port | `53` |
 | `DNS_UPSTREAMS` | Upstream DNS servers (comma-separated) | `127.0.0.11:53` |
 | `DNS_HARDENING` | Anti-exfil checks in the DNS proxy: qname/label length caps, NULL and bulky-TXT answer rejection, per-source rate limiting | `true` |
+| `DNS_RATE_QPS` | Hardening rate limiter: sustained queries/sec per source. All local traffic shares one source behind the NAT redirect, so this bounds the whole host | `50` |
+| `DNS_RATE_BURST` | Hardening rate limiter: burst allowance per source | `100` |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
 | `HOSTNAME` | Identifies this instance in shipped logs | unset |
@@ -217,6 +249,9 @@ The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set
 | `NOTIFICATION_IGNORE_DOMAINS` | Domains to skip for notifications (wildcards ok) | unset |
 | `NFLOG_BUFSIZE` | Netfilter log buffer size | `96` |
 | `NFLOG_QTHRESH` | Netfilter log queue threshold | `50` |
+
+> [!NOTE]
+> Most hosts need no DNS source-port tuning. In DNS modes, upstream UDP forwards bind to `61000-64999` to avoid conntrack collisions with redirected client queries. If you widen `net.ipv4.ip_local_port_range` past `60999`, reserve that window with `net.ipv4.ip_local_reserved_ports`.
 
 #### g0efilter-dashboard
 

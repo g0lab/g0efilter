@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -57,17 +56,16 @@ func TestCreateDNSHandler(t *testing.T) {
 	}
 
 	handler := createDNSHandler(allowedDomains, options)
-	if len(handler.allowlist) != len(allowedDomains) {
-		t.Errorf("Expected %d domains in allowlist, got %d", len(allowedDomains), len(handler.allowlist))
+
+	// Verify the matcher honours the expected domains
+	for _, host := range []string{"example.com", "mail.google.com"} {
+		if !handler.allowlist.allows(host) {
+			t.Errorf("Expected allowlist to match %q", host)
+		}
 	}
 
-	// Verify the allowlist contains the expected domains
-	for _, domain := range allowedDomains {
-		found := slices.Contains(handler.allowlist, domain)
-
-		if !found {
-			t.Errorf("Expected allowlist to contain %q", domain)
-		}
+	if handler.allowlist.allows("not-allowed.example.org") {
+		t.Error("allowlist matched a host it should not")
 	}
 
 	// Test handler processing

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/netutil"
 	"github.com/miekg/dns"
 )
 
@@ -27,14 +28,15 @@ func Serve53(ctx context.Context, allowlist []string, opts Options) error {
 func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 	upstreams := defaultUpstreamsFromEnv()
 	opts.Denylist = NormalizePatterns(opts.Denylist)
+	opts.denyMatcher = newMatcher(opts.Denylist)
 
 	var limiter *dnsRateLimiter
 	if opts.DNSHardening {
-		limiter = newDNSRateLimiter()
+		limiter = newDNSRateLimiter(opts.DNSRateQPS, opts.DNSRateBurst)
 	}
 
 	return &dnsHandler{
-		allowlist: allowlist,
+		allowlist: newMatcher(allowlist),
 		opts:      opts,
 		upstreams: upstreams,
 		timeout:   timeoutFromOptions(opts, 3*time.Second),
@@ -112,7 +114,7 @@ func startTCPServer(tcpSrv *dns.Server, errCh chan error, opts Options) {
 }
 
 type dnsHandler struct {
-	allowlist []string
+	allowlist *hostMatcher
 	opts      Options
 	upstreams []string
 	timeout   time.Duration
@@ -197,7 +199,7 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	}
 
 	enforce := (qtype == dns.TypeA || qtype == dns.TypeAAAA)
-	permitted := hostPermitted(qname, handler.allowlist, handler.opts)
+	permitted := hostPermittedBy(qname, handler.allowlist, handler.opts)
 
 	if lg != nil {
 		lg.Debug("dns.allowlist_check", "qname", qname, "qtype", typeString(qtype), "allowed", permitted, "enforce", enforce)
@@ -217,7 +219,7 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 		return
 	}
 
-	maybeLearnHost(qname, handler.allowlist, handler.opts)
+	maybeLearnHostBy(qname, handler.allowlist, handler.opts)
 
 	handler.handleAllowedRequest(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID, !wasAudited)
 }
@@ -601,11 +603,10 @@ func extractAnswerIPs(resp *dns.Msg) ([]string, uint32) {
 
 // forward sends a DNS request to upstream servers, trying UDP first then TCP if truncated.
 func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
-	// UDP first, then TCP on truncation/need
 	udpClient := &dns.Client{
 		Net:     "udp",
 		Timeout: handler.timeout,
-		Dialer:  handler.markedDialer(), // SO_MARK=0x1 to bypass nft REDIRECT
+		Dialer:  netutil.MarkedDNSDialer(handler.timeout), // SO_MARK=0x1 to bypass nft REDIRECT
 	}
 	tcpClient := &dns.Client{
 		Net:     "tcp",
@@ -620,7 +621,13 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
 		// UDP attempt
 		in, _, err := udpClient.ExchangeContext(ctx, request, up)
 		if err != nil || in == nil {
-			continue // try next upstream
+			// Retry once on a fresh source port: a concurrent forward may hold the rotated one.
+			udpClient.Dialer = netutil.MarkedDNSDialer(handler.timeout)
+
+			in, _, err = udpClient.ExchangeContext(ctx, request, up)
+			if err != nil || in == nil {
+				continue // try next upstream
+			}
 		}
 
 		if !in.Truncated {
@@ -642,14 +649,13 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
 	return nil, os.ErrDeadlineExceeded
 }
 
-// markedDialer creates a network dialer with SO_MARK set to bypass iptables rules.
+// markedDialer bypasses the local redirect rules for upstream DNS traffic.
 func (handler *dnsHandler) markedDialer() *net.Dialer {
 	return newMarkedDialer(handler.timeout)
 }
 
-// defaultUpstreamsFromEnv reads DNS upstream servers from DNS_UPSTREAMS environment variable or returns default.
+// defaultUpstreamsFromEnv reads DNS_UPSTREAMS or returns Docker's resolver.
 func defaultUpstreamsFromEnv() []string {
-	// If you want to override, set DNS_UPSTREAMS="8.8.8.8:53,1.1.1.1:53"
 	if v := strings.TrimSpace(os.Getenv("DNS_UPSTREAMS")); v != "" {
 		parts := strings.Split(v, ",")
 
@@ -666,7 +672,7 @@ func defaultUpstreamsFromEnv() []string {
 			return out
 		}
 	}
-	// Default to Docker's embedded resolver inside the container namespace
+
 	return []string{"127.0.0.11:53"}
 }
 
