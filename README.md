@@ -180,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@main
+        uses: g0lab/g0efilter@v0
         with:
           egress-policy: block   # or 'audit' to log without blocking
           allowed-domains: |
