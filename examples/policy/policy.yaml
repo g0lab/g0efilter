@@ -4,11 +4,11 @@
 # and README.md in this directory for all supported entry forms.
 allowlist:
   ips:
-    - "1.1.1.1"
-    - "192.168.0.0/16"
-    - "10.1.1.1"
+    - '1.1.1.1'
+    - '192.168.0.0/16'
+    - '10.1.1.1'
   domains:
-    - "github.com"                                   # exact match
-    - "*.alpinelinux.org"                            # wildcard: any subdomain level
-    - "bucket.*.r2.cloudflarestorage.com"            # wildcard works mid-name too
-    - '/^cache-[0-9]+\.example\.com$/'               # regex: single-quote so backslashes survive
+    - 'github.com'                                   # exact match
+    - '*.alpinelinux.org'                            # wildcard: any subdomain level
+    - 'bucket.*.r2.cloudflarestorage.com'            # wildcard works mid-name too
+    - '/cache-[0-9]+\.example\.com/'               # regex: single-quote so backslashes survive

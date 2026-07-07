@@ -14,7 +14,7 @@ g0efilter is a lightweight container that filters outbound (egress) traffic from
 ### Features
 
 - **Egress filtering** by IP/CIDR and domain, default-deny with an allowlist
-- **Flexible domain patterns**: exact names, wildcards anywhere (`*.example.com`, `bucket.*.r2.example.com`), and regex (`/^cache-[0-9]+\.example\.com$/`)
+- **Flexible domain patterns**: exact names, wildcards anywhere (`*.example.com`, `bucket.*.r2.example.com`), and regex (`/cache-[0-9]+\.example\.com/`)
 - **Three filter modes**: `https` (SNI/Host inspection), `dns` (resolution filtering), `dns-strict` (resolution filtering plus kernel connection-time enforcement)
 - **Default-allow (denylist) mode**: allow everything except listed domains/IPs
 - **Learning mode**: observe without blocking and auto-build the allowlist
@@ -35,10 +35,10 @@ Add `policy/policy.yaml`:
 ```yaml
 allowlist:
   ips:
-    - "1.1.1.1"
+    - '1.1.1.1'
   domains:
-    - "github.com"
-    - "*.alpinelinux.org"
+    - 'github.com'
+    - '*.alpinelinux.org'
 ```
 
 Run g0efilter and attach a workload to its network namespace:
@@ -84,13 +84,13 @@ See [docs/modes.md](docs/modes.md) for detailed flow diagrams and mode-specific 
 ```yaml
 allowlist:
   ips:
-    - "1.1.1.1"
-    - "192.168.0.0/16"
+    - '1.1.1.1'
+    - '192.168.0.0/16'
   domains:
-    - "github.com"                                 # exact
-    - "*.alpinelinux.org"                          # wildcard, any subdomain level
-    - "bucket.*.r2.cloudflarestorage.com"          # wildcard works mid-name too
-    - '/^cache-[0-9]+\.example\.com$/'             # regex (single-quote it in YAML)
+    - 'github.com'                                 # exact
+    - '*.alpinelinux.org'                          # wildcard, any subdomain level
+    - 'bucket.*.r2.cloudflarestorage.com'          # wildcard works mid-name too
+    - '/cache-[0-9]+\.example\.com/'              # regex (single-quote it in YAML)
 ```
 
 Each `*` matches one or more characters including dots. Regex entries are slash-delimited, matched case-insensitively against the whole hostname (anchoring is automatic), and compiled with Go's linear-time RE2 engine. Ready-made example policies live in [examples/policy/](https://github.com/g0lab/g0efilter/tree/main/examples/policy).

@@ -11,14 +11,14 @@ default_action: allow
 # holes in broad wildcard denies.
 allowlist:
   domains:
-    - "api.github.com"                       # explicitly allow this host even though *.github.com is denylisted
+    - 'api.github.com'                       # explicitly allow this host even though *.github.com is denylisted
 
 denylist:
   ips:
-    - "192.168.0.0/16"
+    - '192.168.0.0/16'
   domains:
-    - "*.github.com"                         # deny broad GitHub subdomains
-    - "*.doubleclick.net"                    # analytics
-    - "*.google-analytics.com"
-    - "telemetry.example.com"                # self-update / phone-home checks
-    - '/^update[0-9]*\.example\.com$/'       # regex works in denylists too
+    - '*.github.com'                         # deny broad GitHub subdomains
+    - '*.doubleclick.net'                    # analytics
+    - '*.google-analytics.com'
+    - 'telemetry.example.com'                # self-update / phone-home checks
+    - '/update[0-9]*\.example\.com/'       # regex works in denylists too
