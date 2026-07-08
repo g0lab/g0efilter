@@ -18,8 +18,8 @@ if [ -z "$IMAGE" ]; then
 fi
 
 case "$MODE" in
-  https|dns) ;;
-  *) echo "::error::mode must be 'https' or 'dns' (got '$MODE')"; exit 1 ;;
+  https|dns|dns-strict) ;;
+  *) echo "::error::mode must be 'https', 'dns', or 'dns-strict' (got '$MODE')"; exit 1 ;;
 esac
 case "$POLICY" in
   block|audit) ;;
@@ -115,7 +115,7 @@ DOCKER_ARGS=(
 # proxy's alt port. Forward to the host's real resolvers - the default
 # 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with
 # every :53 redirected takes out the whole runner's DNS.
-if [ "$MODE" = "dns" ]; then
+if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")

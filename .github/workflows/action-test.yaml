@@ -157,6 +157,44 @@ jobs:
           fi
           echo "OK: example.com blocked"
 
+  dns-strict:
+    name: mode dns-strict
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (dns-strict)
+        uses: ./
+        with:
+          mode: dns-strict
+          allowed-domains: |
+            api.github.com
+
+      - name: Allowed domain resolves and connects
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+
+      - name: Non-allowlisted domain is blocked
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "example.com should have been blocked under dns-strict"
+            exit 1
+          fi
+          echo "OK: example.com blocked"
+
+      # The dns-strict differentiator: a hardcoded IP never resolved through the
+      # proxy (and not IP-allowlisted) is dropped. In plain dns mode it would connect.
+      - name: Hardcoded IP never resolved is dropped
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 10 https://1.1.1.1 -o /dev/null; then
+            echo "connection to unresolved hardcoded IP should have been dropped"
+            exit 1
+          fi
+          echo "OK: unresolved hardcoded IP dropped"
+
   audit:
     name: egress-policy audit
     runs-on: ubuntu-latest

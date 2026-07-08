@@ -26,7 +26,7 @@ jobs:
 | `allowed-domains` | Newline-separated domains (wildcards and regex supported) | |
 | `allowed-ips` | Newline-separated IPs/CIDRs | |
 | `egress-policy` | `block` or `audit` | `block` |
-| `mode` | `https` (SNI/Host inspection) or `dns` | `https` |
+| `mode` | `https` (SNI/Host inspection), `dns` (resolution filtering), or `dns-strict` (resolution filtering plus kernel connection-time enforcement) | `https` |
 | `log-level` | g0efilter log level | `INFO` |
 | `image` | Container image to run | matches the action's release tag, or `:latest` for branch refs |
 

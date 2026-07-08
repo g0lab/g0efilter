@@ -37,8 +37,9 @@ inputs:
 
   mode:
     description: >-
-      Filtering mode. Use `https` for TLS SNI / HTTP Host inspection, or
-      `dns` for resolution filtering.
+      Filtering mode. Use `https` for TLS SNI / HTTP Host inspection, `dns`
+      for resolution filtering, or `dns-strict` to also drop connections to
+      IPs never resolved through the proxy (and not IP-allowlisted).
     required: false
     default: "https"
 

@@ -61,6 +61,7 @@ run_setup 1 "log-level must be" "invalid log-level rejected" LOG_LEVEL=verbose
 # Accept paths run through to the stubbed container and exit 0.
 run_setup 0 "" "defaults accepted"
 run_setup 0 "" "mode dns accepted" FILTER_MODE=dns
+run_setup 0 "" "mode dns-strict accepted" FILTER_MODE=dns-strict
 run_setup 0 "" "egress-policy audit accepted" EGRESS_POLICY=audit
 run_setup 0 "" "log-level lowercase accepted" LOG_LEVEL=debug
 run_setup 0 "" "log-level WARNING alias accepted" LOG_LEVEL=WARNING
