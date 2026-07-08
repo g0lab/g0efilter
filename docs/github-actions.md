@@ -36,6 +36,25 @@ GitHub's [documented runner communication domains](https://docs.github.com/actio
 > [!NOTE]
 > Limitations: GitHub-hosted Ubuntu runners only. Docker containers started by later steps are filtered only when they use `--network host`; containers on the default bridge network are **not** filtered and can egress freely. Jobs that run inside a container (`container:`) are not supported.
 
+## Threat model
+
+g0efilter blocks arbitrary egress to destinations that are not allowlisted. It does not, and cannot, stop data leaving through destinations that *are* allowlisted, including the GitHub infrastructure that must stay reachable for the workflow to run.
+
+**Blocked**
+
+- Arbitrary internet egress to any domain or IP not in the allowlist (or, in `audit` mode, logged instead of blocked).
+
+**Not blocked**
+
+- Exfiltration through the always-allowed GitHub control plane. The baseline allowlist keeps `github.com`, `api.github.com`, `*.actions.githubusercontent.com`, and the Azure blob storage endpoints (`*.blob.core.windows.net`) reachable so the runner, logs, artifacts, and caches work. A compromised step can still stage data out through these paths, for example:
+  - the GitHub API (`api.github.com`), bounded by the job token's permissions
+  - workflow logs and job summaries
+  - build artifacts and caches (uploaded to Azure blob storage)
+  - releases, if the token can write them
+- Anything you add to `allowed-domains` / `allowed-ips`. Keep the allowlist as small as the job needs.
+
+g0efilter controls network egress; it does not constrain what the GitHub token itself can do. To narrow the control-plane side channel, set restrictive [`permissions:`](https://docs.github.com/actions/using-jobs/assigning-permissions-to-jobs) on the job and avoid write scopes it does not need.
+
 ## Lockdown mode
 
 Passwordless `sudo` and Docker socket access are root-equivalent on GitHub-hosted runners, so by default a later (potentially compromised) step could remove the filter with `sudo nft flush ruleset` or `docker rm -f g0efilter`. Set `lockdown-runner: true` to close that gap: once the filter is confirmed active, the action restricts `/var/run/docker.sock` to root and disables `sudo` for the rest of the job. g0efilter keeps running (the Docker daemon is not stopped), and teardown is skipped because the runner VM is discarded after the job anyway.
