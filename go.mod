@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/florianl/go-nflog/v2 v2.3.0
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.1
 	github.com/google/gopacket v1.1.19
 	github.com/miekg/dns v1.1.72
 	github.com/rs/zerolog v1.35.1
