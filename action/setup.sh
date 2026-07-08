@@ -37,17 +37,13 @@ case "$LOCKDOWN" in
   *) echo "::error::lockdown-runner must be 'true' or 'false' (got '$LOCKDOWN')"; exit 1 ;;
 esac
 
-# GitHub-hosted runners only: after the filter is up, disable later sudo and
-# restrict the Docker socket so a later step cannot remove the hardening. The
-# runner VM is discarded after the job, so leftover rules are harmless there.
+# GitHub-hosted only: disable later sudo/Docker so a later step cannot undo the hardening.
 apply_lockdown() {
   [ "$LOCKDOWN" = "true" ] || return 0
   echo "Applying runner lockdown (GitHub-hosted runners only)"
-  # Restrict the Docker socket first, while sudo still works; g0efilter keeps
-  # running because we never stop the daemon.
+  # Socket first, while sudo still works; the daemon (and g0efilter) keeps running.
   sudo chown root:root /var/run/docker.sock 2>/dev/null || true
   sudo chmod 0600 /var/run/docker.sock 2>/dev/null || true
-  # Disable passwordless sudo last, once we no longer need it.
   sudo chmod 000 /usr/bin/sudo 2>/dev/null || true
   echo "Lockdown applied: later sudo and Docker access disabled; teardown will be skipped"
 }
