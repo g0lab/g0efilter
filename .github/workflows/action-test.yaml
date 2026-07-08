@@ -10,6 +10,7 @@ on:
     paths:
       - "action.yml"
       - "action/**"
+      - ".github/test-actions/**"
       - ".github/workflows/action-test.yaml"
 
 permissions:
@@ -35,15 +36,8 @@ jobs:
         with:
           node-version: 24.x
 
-      - name: Syntax-check action scripts
-        run: |
-          for f in action/*.js; do node --check "$f"; done
-
-      - name: Run action unit tests
-        run: node --test 'action/*.test.js'
-
-      - name: Run setup.sh validation tests
-        run: bash action/setup.test.sh
+      - name: Run action test suite
+        run: scripts/test-action.sh
 
   block:
     name: egress-policy block
@@ -82,6 +76,27 @@ jobs:
             exit 1
           fi
           echo "OK: http://example.com blocked"
+
+  post-egress:
+    name: later action post hook is filtered
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      # Used after g0efilter, so its post hook runs before g0efilter's
+      # teardown: the filter is still active when the post egress is attempted.
+      - name: Register later action with a blocked post hook
+        uses: ./.github/test-actions/post-egress-check
 
   domain-patterns:
     name: allowed-domains wildcard + regex

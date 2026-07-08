@@ -17,17 +17,14 @@ Run the groups that match the files touched.
 Go:
 
 ```sh
-go mod tidy
-go test -race -covermode=atomic -coverprofile=coverage.txt ./...
+scripts/test-go.sh                    # go mod tidy check, vet, race + coverage
 golangci-lint run --timeout=10m ./...
 ```
 
 Action:
 
 ```sh
-for f in action/*.js; do node --check "$f"; done
-node --test 'action/*.test.js'
-bash action/setup.test.sh
+scripts/test-action.sh                # node --check, unit tests, setup.sh checks
 ```
 
 Docker/e2e:

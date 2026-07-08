@@ -1,0 +1,23 @@
+---
+name: "post-egress-check"
+
+description: >-
+  Test-only action standing in for a later, potentially compromised action.
+  Its main step probes allowed and blocked egress; its post hook re-probes
+  blocked egress, proving a later action's post still runs behind g0efilter
+  when g0efilter is used first (its teardown runs last). With lockdown set,
+  the main step also tries to escalate via sudo and control Docker, failing
+  if either succeeds.
+
+inputs:
+  lockdown:
+    description: >-
+      When 'true', additionally assert that sudo escalation and Docker
+      access are denied (used to test the action's lockdown-runner mode).
+    required: false
+    default: "false"
+
+runs:
+  using: "node24"
+  main: main.js
+  post: post.js

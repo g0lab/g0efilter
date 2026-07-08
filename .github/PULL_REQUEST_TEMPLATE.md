@@ -11,17 +11,14 @@ Suggested checks by area:
 ### Go
 
 ```sh
-go mod tidy
-go test -race -covermode=atomic -coverprofile=coverage.txt ./...
+scripts/test-go.sh
 golangci-lint run --timeout=10m ./...
 ```
 
 ### Action
 
 ```sh
-for f in action/*.js; do node --check "$f"; done
-node --test 'action/*.test.js'
-bash action/setup.test.sh
+scripts/test-action.sh
 ```
 
 ### Docker/e2e
