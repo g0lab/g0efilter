@@ -49,6 +49,15 @@ inputs:
     required: false
     default: "INFO"
 
+  lockdown-runner:
+    description: >-
+      GitHub-hosted runners only. After the filter starts, disable later
+      passwordless sudo and restrict the Docker socket so subsequent steps
+      cannot remove the hardening, and skip teardown. Unsafe on self-hosted
+      runners: leftover nftables rules persist and can break later jobs.
+    required: false
+    default: "false"
+
   image:
     description: >-
       g0efilter container image to run. Defaults to the image matching the

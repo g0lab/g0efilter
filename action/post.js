@@ -74,11 +74,17 @@ function escapeCell(v) {
     .replace(/[\r\n]+/g, " ");
 }
 
-function buildSummary(raw) {
+function buildSummary(raw, { lockdown = false } = {}) {
   let md = "## g0efilter egress report\n\n";
 
+  if (lockdown) {
+    md += "> Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.\n\n";
+  }
+
   if (!raw.trim()) {
-    return md + "No g0efilter logs found - the filter may have failed to start.\n";
+    return md + (lockdown
+      ? "No logs captured - Docker access was locked down after startup.\n"
+      : "No g0efilter logs found - the filter may have failed to start.\n");
   }
 
   const { decisions, allowed } = collectDecisions(raw);
@@ -100,29 +106,44 @@ function buildSummary(raw) {
   return md;
 }
 
+function run(cmd, args) {
+  execFileSync(cmd, args, { stdio: "ignore" });
+}
+
+const TEARDOWN_TABLES = [
+  ["ip", "g0efilter_v4"],
+  ["ip", "g0efilter_nat_v4"],
+  ["ip6", "g0efilter_v6"],
+  ["ip6", "g0efilter_nat_v6"],
+];
+
 // Rules live in the host netns; a leftover container or ruleset would brick the
 // runner's DNS/egress after the job. Best-effort - never fail the post step.
-function teardown() {
+function teardown(exec = run) {
   try {
-    execFileSync("docker", ["rm", "-f", "g0efilter"], { stdio: "ignore" });
+    exec("docker", ["rm", "-f", "g0efilter"]);
   } catch {}
 
-  for (const table of [
-    ["ip", "g0efilter_v4"],
-    ["ip", "g0efilter_nat_v4"],
-    ["ip6", "g0efilter_v6"],
-    ["ip6", "g0efilter_nat_v6"],
-  ]) {
+  for (const table of TEARDOWN_TABLES) {
     try {
-      execFileSync("sudo", ["nft", "delete", "table", ...table], { stdio: "ignore" });
+      exec("sudo", ["nft", "delete", "table", ...table]);
     } catch {} // table absent, or no sudo on self-hosted runners
   }
 }
 
-function main() {
-  const summary = buildSummary(containerLogs());
+// Lockdown intentionally skips teardown: sudo/Docker were disabled after
+// startup and the GitHub-hosted runner VM is discarded once the job ends.
+function maybeTeardown(lockdown, exec = run) {
+  if (lockdown) return false;
+  teardown(exec);
+  return true;
+}
 
-  teardown();
+function main() {
+  const lockdown = process.env["INPUT_LOCKDOWN-RUNNER"] === "true";
+  const summary = buildSummary(containerLogs(), { lockdown });
+
+  maybeTeardown(lockdown);
 
   if (process.env.GITHUB_STEP_SUMMARY) {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + "\n");
@@ -135,4 +156,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { parseLine, collectDecisions, escapeCell, buildSummary };
+module.exports = { parseLine, collectDecisions, escapeCell, buildSummary, teardown, maybeTeardown };

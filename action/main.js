@@ -20,6 +20,7 @@ const res = spawnSync("bash", [path.join(__dirname, "setup.sh")], {
     FILTER_MODE: input("mode", "https"),
     LOG_LEVEL: input("log-level", "INFO"),
     G0EFILTER_IMAGE: input("image"),
+    LOCKDOWN_RUNNER: input("lockdown-runner", "false"),
   },
 });
 

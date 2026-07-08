@@ -31,6 +31,27 @@ case "${LOG_LEVEL_VALUE^^}" in
 esac
 [ "$LOG_LEVEL_VALUE" = "WARNING" ] && LOG_LEVEL_VALUE="WARN"
 
+LOCKDOWN="${LOCKDOWN_RUNNER:-false}"
+case "$LOCKDOWN" in
+  true|false) ;;
+  *) echo "::error::lockdown-runner must be 'true' or 'false' (got '$LOCKDOWN')"; exit 1 ;;
+esac
+
+# GitHub-hosted runners only: after the filter is up, disable later sudo and
+# restrict the Docker socket so a later step cannot remove the hardening. The
+# runner VM is discarded after the job, so leftover rules are harmless there.
+apply_lockdown() {
+  [ "$LOCKDOWN" = "true" ] || return 0
+  echo "Applying runner lockdown (GitHub-hosted runners only)"
+  # Restrict the Docker socket first, while sudo still works; g0efilter keeps
+  # running because we never stop the daemon.
+  sudo chown root:root /var/run/docker.sock 2>/dev/null || true
+  sudo chmod 0600 /var/run/docker.sock 2>/dev/null || true
+  # Disable passwordless sudo last, once we no longer need it.
+  sudo chmod 000 /usr/bin/sudo 2>/dev/null || true
+  echo "Lockdown applied: later sudo and Docker access disabled; teardown will be skipped"
+}
+
 WORKDIR="${RUNNER_TEMP:-/tmp}/g0efilter"
 mkdir -p "$WORKDIR/policy"
 POLICY_FILE="$WORKDIR/policy/policy.yaml"
@@ -129,6 +150,7 @@ for _ in $(seq 1 60); do
   # startup.ready covers all released versions; policy.applied is the reload marker
   if docker logs g0efilter 2>&1 | grep -qE "startup\.ready|policy\.applied"; then
     echo "g0efilter is active - egress is now filtered ($POLICY mode)"
+    apply_lockdown
     exit 0
   fi
   if [ -z "$(docker ps -q --filter name=g0efilter)" ]; then

@@ -325,6 +325,31 @@ jobs:
           fi
           echo "OK: unresolved hardcoded IP dropped"
 
+  lockdown:
+    name: lockdown-runner disables sudo and docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block, lockdown)
+        uses: ./
+        with:
+          lockdown-runner: "true"
+          allowed-domains: |
+            api.github.com
+
+      # Runs after lockdown: egress must stay filtered and sudo/Docker escalation
+      # must be denied. Used after g0efilter so g0efilter's post (which skips
+      # teardown under lockdown) runs last.
+      - name: Assert egress filtered and escalation blocked
+        uses: ./.github/test-actions/post-egress-check
+        with:
+          lockdown: "true"
+
   audit:
     name: egress-policy audit
     runs-on: ubuntu-latest
