@@ -33,4 +33,4 @@ jobs:
 GitHub's [documented runner communication domains](https://docs.github.com/actions/reference/runners/self-hosted-runners) and the runner's DNS resolvers are always allowed so the workflow itself keeps working. Package registries are **not** in the baseline - if a step pulls containers or packages, add the registry (`ghcr.io`, `*.pkg.github.com`, `registry.npmjs.org`, ...) to `allowed-domains`.
 
 > [!NOTE]
-> Limitations: GitHub-hosted Ubuntu runners only. Traffic from Docker containers started by later steps is filtered only when they use `--network host`; jobs that run inside a container (`container:`) are not supported.
+> Limitations: GitHub-hosted Ubuntu runners only. Docker containers started by later steps are filtered only when they use `--network host`; containers on the default bridge network are **not** filtered and can egress freely. Jobs that run inside a container (`container:`) are not supported.
