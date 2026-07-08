@@ -47,10 +47,13 @@ Start
 +- Redirect to local DNS proxy
 |
 +- Domain matches policy? -- Yes -> FORWARD to upstream resolver
-|                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
+|                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
 |
 +- LOG decision -> dashboard (if enabled)
 ```
+
+When the policy has IP allowlist entries, a domain that is not domain-allowlisted is still resolved so its addresses can be checked; if any resolved IP is allowlisted the proxy replies with only those records (non-allowlisted IPs are stripped), matching https mode's connection-time IP allowance. With no IPs in the policy the domain is sinkholed as before.
 
 Strengths: covers every protocol and port, cheapest data path (no proxying of the traffic itself).
 Limits: enforcement happens at resolution only. A process that connects to a hardcoded IP, uses DNS-over-HTTPS, or replays a cached answer bypasses filtering entirely. Use `dns-strict` to close that gap.

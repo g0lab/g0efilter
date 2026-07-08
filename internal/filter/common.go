@@ -55,6 +55,11 @@ type Options struct {
 	DefaultAllow bool
 	Denylist     []string
 
+	// AllowIPs is the policy IP/CIDR allowlist. In DNS mode it lets a domain that
+	// is not domain-allowlisted still resolve when it points at an allowlisted IP,
+	// matching HTTPS mode's connection-time IP allowance.
+	AllowIPs []string
+
 	// LearningMode never blocks; hosts/IPs not already covered by the allowlist
 	// are reported through OnLearn so they can be recorded in the policy.
 	LearningMode bool
