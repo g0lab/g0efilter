@@ -138,6 +138,8 @@ signs:
     output: true
 
 
+# Store signatures in a dedicated repo (COSIGN_REPOSITORY) so the image repos stay
+# free of .sig tags. Verify with the same COSIGN_REPOSITORY set.
 docker_signs:
   - cmd: cosign
     artifacts: all
@@ -145,4 +147,6 @@ docker_signs:
       - sign
       - ${artifact}@${digest}
       - --yes
+    env:
+      - COSIGN_REPOSITORY=docker.io/g0lab/signatures
     output: true
