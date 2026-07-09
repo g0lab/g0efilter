@@ -12,7 +12,22 @@ FILTER_MODE=dns   scripts/e2e.sh
 ```
 
 `scripts/e2e.sh` builds and starts the `examples/build` stack, runs every phase, dumps
-container logs on failure, and tears down (restoring the baseline policy file).
+container logs on failure, and tears down (restoring the baseline policy file). This is
+the recommended local run: all phases, one shared stack, in order.
+
+To iterate on a single phase (or a few), pass their two-digit prefixes:
+
+```sh
+FILTER_MODE=dns scripts/e2e.sh 09           # just dns-strict
+FILTER_MODE=dns E2E_SKIP_INITIAL_UP=1 scripts/e2e.sh 09   # skip the baseline bring-up
+                                                          # (phase recreates the stack itself)
+```
+
+`E2E_SKIP_INITIAL_UP=1` is for the phases that recreate the stack themselves (08-11, 13);
+it avoids bringing up a baseline stack that the phase immediately replaces. CI uses these
+knobs to fan the suite out across parallel runners (see the matrix in `test.yaml`); locally
+the phases share fixed container names and ports, so run them one stack at a time rather
+than in parallel.
 
 ## Phases
 

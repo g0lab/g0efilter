@@ -20,11 +20,28 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # One scenario per runner, run in parallel. "shared" phases (01-07) share one
+  # baseline stack; each stack-recreating phase runs alone. skip_up=1 skips the
+  # baseline bring-up for scenarios whose phases recreate the stack themselves.
+  e2e:
+    name: e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        filter_mode: [https, dns]
+        include:
+          - {mode: https, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
+          - {mode: https, scenario: load, phases: "12", skip_up: "0"}
+          - {mode: https, scenario: learning, phases: "08", skip_up: "1"}
+          - {mode: https, scenario: audit, phases: "10", skip_up: "1"}
+          - {mode: https, scenario: resources, phases: "11", skip_up: "1"}
+          - {mode: dns, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
+          - {mode: dns, scenario: load, phases: "12", skip_up: "0"}
+          - {mode: dns, scenario: learning, phases: "08", skip_up: "1"}
+          - {mode: dns, scenario: dns-strict, phases: "09", skip_up: "1"}
+          - {mode: dns, scenario: resources, phases: "11", skip_up: "1"}
+          - {mode: dns, scenario: ip-allowlist, phases: "13", skip_up: "1"}
+          - {mode: dns-strict, scenario: ip-allowlist, phases: "13", skip_up: "1"}
 
     steps:
       - name: Checkout
@@ -33,7 +50,8 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
 
-      - name: Run e2e suite (${{ matrix.filter_mode }} mode)
+      - name: Run e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
         env:
-          FILTER_MODE: ${{ matrix.filter_mode }}
-        run: scripts/e2e.sh
+          FILTER_MODE: ${{ matrix.mode }}
+          E2E_SKIP_INITIAL_UP: ${{ matrix.skip_up }}
+        run: scripts/e2e.sh ${{ matrix.phases }}
