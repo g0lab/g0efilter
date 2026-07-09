@@ -37,7 +37,7 @@ Limits: domain filtering applies to ports 80/443 only; a client that sends no SN
 
 ## dns mode
 
-All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver; non-allowlisted A/AAAA queries are sinkholed to 0.0.0.0/:: and other blocked query types get NXDOMAIN.
+All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver. A non-allowlisted A/AAAA query is resolved and its records checked against the IP allowlist (when the policy has IP entries); if none are allowlisted it is sinkholed to 0.0.0.0/::. Other blocked query types get NXDOMAIN.
 
 ```text
 Start
@@ -70,7 +70,8 @@ Start
 +- DNS query to port 53? -- Yes -> Redirect to DNS proxy
 |      |
 |      +- Domain matches policy? -- Yes -> Resolve, add answer IPs, return answer
-|      |                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|      |                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
+|      |                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
 |
 +- Connection already established? -- Yes -> ALLOW
 |

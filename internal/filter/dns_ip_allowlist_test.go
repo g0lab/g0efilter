@@ -76,8 +76,12 @@ func TestFilterToAllowlistedIPs(t *testing.T) {
 	}
 
 	kept := handler.filterToAllowlistedIPs(resp)
-	if len(kept) != 2 {
-		t.Fatalf("kept %d records, want 2", len(kept))
+	if len(kept) != 3 {
+		t.Fatalf("kept %d records, want 3", len(kept))
+	}
+
+	if _, ok := kept[0].(*dns.CNAME); !ok {
+		t.Fatalf("first kept record = %T, want CNAME", kept[0])
 	}
 
 	for _, rr := range kept {
@@ -90,8 +94,9 @@ func TestFilterToAllowlistedIPs(t *testing.T) {
 			if !rec.AAAA.Equal(net.ParseIP("2001:db8::1")) {
 				t.Errorf("unexpected AAAA record kept: %v", rec.AAAA)
 			}
+		case *dns.CNAME:
 		default:
-			t.Errorf("non-address record leaked into reply: %T", rr)
+			t.Errorf("unexpected record leaked into reply: %T", rr)
 		}
 	}
 }

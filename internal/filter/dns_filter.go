@@ -672,25 +672,34 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 	return true
 }
 
-// filterToAllowlistedIPs returns only the A/AAAA answer records whose address is
-// in the IP allowlist, so a filtered reply cannot leak non-allowlisted IPs.
+// filterToAllowlistedIPs keeps only the A/AAAA answer records whose address is in
+// the IP allowlist, so a filtered reply cannot leak non-allowlisted IPs. The CNAME
+// chain is preserved alongside them, since resolvers may ignore terminal address
+// records whose owner name is an unresolved alias. Returns nil when no address is
+// allowlisted, so the caller falls through to the sinkhole.
 func (handler *dnsHandler) filterToAllowlistedIPs(resp *dns.Msg) []dns.RR {
-	var kept []dns.RR
+	var addrs, cnames []dns.RR
 
 	for _, rr := range resp.Answer {
 		switch rec := rr.(type) {
 		case *dns.A:
 			if handler.ipAllow.contains(rec.A) {
-				kept = append(kept, rr)
+				addrs = append(addrs, rr)
 			}
 		case *dns.AAAA:
 			if handler.ipAllow.contains(rec.AAAA) {
-				kept = append(kept, rr)
+				addrs = append(addrs, rr)
 			}
+		case *dns.CNAME:
+			cnames = append(cnames, rr)
 		}
 	}
 
-	return kept
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	return append(cnames, addrs...)
 }
 
 // reportResolvedIPs hands the answer's A/AAAA addresses to the OnResolved hook.
