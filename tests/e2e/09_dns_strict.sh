@@ -42,4 +42,32 @@ run_curl "curl -sS --max-time 10 -H 'Cache-Control: no-cache' https://github.com
   || fail "repeat request to allowed domain failed"
 log "OK: repeat resolution/connection works"
 
+log "[Strict] QUIC (UDP/443) is gated by destination IP, not intercepted"
+# dns-strict accepts/drops by destination IP regardless of L4 protocol, so QUIC to an
+# allow-listed IP is permitted and QUIC to a never-resolved IP is dropped. curl has no
+# HTTP/3, so probe with a raw UDP/443 datagram and read the verdict off the nflog stream.
+run_curl "for i in 1 2 3; do echo quic | nc -u -w1 1.1.1.1 443 >/dev/null 2>&1 || true; done"   # allow-listed
+run_curl "for i in 1 2 3; do echo quic | nc -u -w1 1.0.0.2 443 >/dev/null 2>&1 || true; done"   # never resolved
+
+# quic_verdict <ip> <action>: true if the nflog stream shows a UDP <action> for <ip>.
+# Strip ANSI from the console logs; grep -c (not -q) consumes the whole stream, else
+# the early-close SIGPIPE on `docker compose logs` trips pipefail.
+quic_verdict() {
+  local n
+  n=$($COMPOSE logs g0efilter 2>/dev/null \
+    | sed 's/\x1b\[[0-9;]*m//g' \
+    | grep "destination_ip=$1 " | grep "protocol=UDP" | grep -c "action=$2 ") || true
+  [ "${n:-0}" -gt 0 ]
+}
+
+for _ in $(seq 1 10); do
+  quic_verdict 1.1.1.1 ALLOWED && quic_verdict 1.0.0.2 BLOCKED && break
+  sleep 1
+done
+
+quic_verdict 1.1.1.1 ALLOWED || { dump_logs; fail "QUIC (UDP/443) to allow-listed 1.1.1.1 was not accepted"; }
+log "OK: QUIC to allow-listed IP accepted (no interception)"
+quic_verdict 1.0.0.2 BLOCKED || { dump_logs; fail "QUIC (UDP/443) to non-resolved 1.0.0.2 was not dropped"; }
+log "OK: QUIC to non-resolved IP dropped (no egress bypass)"
+
 log "OK: dns-strict mode verified"

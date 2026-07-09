@@ -109,10 +109,7 @@ func Run(version, date, commit string) error {
 	startNflogStream(ctx, lg)
 
 	reloadCh := make(chan policyUpdate, 1)
-
-	lg.Info("policy.watcher_started", "path", cfg.policyPath, "interval", policyPollInterval.String())
-
-	go pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh)
+	startPolicyWatcher(ctx, cfg, lg, initialHash, reloadCh)
 
 	startRemoteUnblockPolling(ctx, cfg, lg)
 
@@ -619,6 +616,7 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 		Logger:       lg,
 		DefaultAllow: effectiveDefaultAllow(cfg, pol),
 		Denylist:     pol.DenyDomains,
+		AllowIPs:     pol.AllowIPs,
 		LearningMode: cfg.learningMode,
 		OnLearn:      learnFunc(cfg.learner),
 		AuditMode:    cfg.auditMode,
@@ -731,6 +729,31 @@ func startRemoteUnblockPolling(ctx context.Context, cfg config, lg *slog.Logger)
 	)
 
 	go pollRemoteUnblocks(ctx, cfg, lg)
+}
+
+// shouldWatchPolicy is false in learning mode: the ruleset is forced permissive and
+// the learner keeps appending to the policy file, so a reload only churns services.
+func shouldWatchPolicy(cfg config) bool {
+	return !cfg.learningMode
+}
+
+func startPolicyWatcher(
+	ctx context.Context,
+	cfg config,
+	lg *slog.Logger,
+	initialHash string,
+	reloadCh chan policyUpdate,
+) {
+	if !shouldWatchPolicy(cfg) {
+		lg.Info("policy.watcher_disabled",
+			"reason", "learning mode forces a permissive ruleset, so policy reloads have no effect")
+
+		return
+	}
+
+	lg.Info("policy.watcher_started", "path", cfg.policyPath, "interval", policyPollInterval.String())
+
+	go pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh)
 }
 
 func pollPolicyChanges(

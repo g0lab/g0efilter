@@ -10,6 +10,7 @@ on:
     paths:
       - "action.yml"
       - "action/**"
+      - ".github/test-actions/**"
       - ".github/workflows/action-test.yaml"
 
 permissions:
@@ -35,15 +36,8 @@ jobs:
         with:
           node-version: 24.x
 
-      - name: Syntax-check action scripts
-        run: |
-          for f in action/*.js; do node --check "$f"; done
-
-      - name: Run action unit tests
-        run: node --test 'action/*.test.js'
-
-      - name: Run setup.sh validation tests
-        run: bash action/setup.test.sh
+      - name: Run action test suite
+        run: scripts/test-action.sh
 
   block:
     name: egress-policy block
@@ -82,6 +76,27 @@ jobs:
             exit 1
           fi
           echo "OK: http://example.com blocked"
+
+  post-egress:
+    name: later action post hook is filtered
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      # Used after g0efilter, so its post hook runs before g0efilter's
+      # teardown: the filter is still active when the post egress is attempted.
+      - name: Register later action with a blocked post hook
+        uses: ./.github/test-actions/post-egress-check
 
   domain-patterns:
     name: allowed-domains wildcard + regex
@@ -141,6 +156,199 @@ jobs:
             exit 1
           fi
           echo "OK: example.com blocked"
+
+  docker-host-network:
+    name: docker --network host is filtered
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Pull before the filter starts: the registry is not allowlisted.
+      - name: Pre-pull curl image
+        run: docker pull curlimages/curl:latest
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      - name: Allowed domain works over host network
+        run: |
+          docker run --rm --network host curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            https://api.github.com -o /dev/null
+
+      - name: Non-allowlisted domain is blocked over host network
+        run: |
+          if docker run --rm --network host curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            https://example.com -o /dev/null; then
+            echo "docker --network host bypassed the filter"
+            exit 1
+          fi
+          echo "OK: docker --network host traffic filtered"
+
+  ipv6:
+    name: ipv6 egress is filtered
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      - name: IPv6 filter tables are installed
+        run: |
+          sudo nft list table ip6 g0efilter_v6 > /dev/null
+          sudo nft list table ip6 g0efilter_nat_v6 > /dev/null
+          echo "OK: IPv6 filter tables present"
+
+      - name: IPv6 egress to a non-allowlisted domain is blocked
+        run: |
+          if curl -6 --fail --silent --show-error --connect-timeout 10 --max-time 10 https://google.com -o /dev/null; then
+            echo "IPv6 egress should have been blocked"
+            exit 1
+          fi
+          echo "OK: IPv6 egress blocked (or unavailable)"
+
+  non-web-ports:
+    name: non-web port egress is blocked
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      # https mode redirects 80/443 for inspection and drops other ports unless
+      # the destination IP is allowlisted. 8.8.8.8:53 is reachable unfiltered, so
+      # a failure here genuinely means the filter dropped it.
+      - name: DNS-over-TCP to a non-allowlisted resolver is blocked
+        run: |
+          if timeout 10 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null; then
+            echo "TCP/53 to a non-allowlisted resolver should have been blocked"
+            exit 1
+          fi
+          echo "OK: non-web port egress blocked"
+
+  fail-closed:
+    name: egress stays closed if filter dies
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block)
+        uses: ./
+        with:
+          allowed-domains: |
+            api.github.com
+
+      - name: Baseline - non-allowlisted domain is blocked
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "example.com should have been blocked"
+            exit 1
+          fi
+          echo "OK: example.com blocked while filter is running"
+
+      - name: Kill the filter container
+        run: docker rm -f g0efilter
+
+      # Killing the container leaves the nftables rules in the host namespace,
+      # so egress must stay blocked rather than opening up.
+      - name: Egress stays closed after the filter dies
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "egress opened up after the filter died - not fail-closed"
+            exit 1
+          fi
+          echo "OK: egress remained blocked after filter death"
+
+  dns-strict:
+    name: mode dns-strict
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (dns-strict)
+        uses: ./
+        with:
+          mode: dns-strict
+          allowed-domains: |
+            api.github.com
+
+      - name: Allowed domain resolves and connects
+        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+
+      - name: Non-allowlisted domain is blocked
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
+            echo "example.com should have been blocked under dns-strict"
+            exit 1
+          fi
+          echo "OK: example.com blocked"
+
+      # The dns-strict differentiator: a hardcoded IP never resolved through the
+      # proxy (and not IP-allowlisted) is dropped. In plain dns mode it would connect.
+      - name: Hardcoded IP never resolved is dropped
+        run: |
+          if curl --fail --silent --show-error --connect-timeout 10 --max-time 10 https://1.1.1.1 -o /dev/null; then
+            echo "connection to unresolved hardcoded IP should have been dropped"
+            exit 1
+          fi
+          echo "OK: unresolved hardcoded IP dropped"
+
+  lockdown:
+    name: lockdown-runner disables sudo and docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Start g0efilter (block, lockdown)
+        uses: ./
+        with:
+          lockdown-runner: "true"
+          allowed-domains: |
+            api.github.com
+
+      # Runs after lockdown: egress must stay filtered and sudo/Docker escalation
+      # must be denied. Used after g0efilter so g0efilter's post (which skips
+      # teardown under lockdown) runs last.
+      - name: Assert egress filtered and escalation blocked
+        uses: ./.github/test-actions/post-egress-check
+        with:
+          lockdown: "true"
 
   audit:
     name: egress-policy audit

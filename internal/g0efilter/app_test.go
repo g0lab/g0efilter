@@ -156,6 +156,20 @@ func TestLoadConfigCustomValues(t *testing.T) {
 	}
 }
 
+func TestShouldWatchPolicy(t *testing.T) {
+	t.Parallel()
+
+	//nolint:exhaustruct
+	if !shouldWatchPolicy(config{learningMode: false}) {
+		t.Error("policy watcher should run when not in learning mode")
+	}
+
+	//nolint:exhaustruct
+	if shouldWatchPolicy(config{learningMode: true}) {
+		t.Error("policy watcher should be disabled in learning mode (reloads have no effect)")
+	}
+}
+
 func writeTestPolicyFile(t *testing.T, path string) {
 	t.Helper()
 

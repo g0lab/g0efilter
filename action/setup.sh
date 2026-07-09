@@ -18,8 +18,8 @@ if [ -z "$IMAGE" ]; then
 fi
 
 case "$MODE" in
-  https|dns) ;;
-  *) echo "::error::mode must be 'https' or 'dns' (got '$MODE')"; exit 1 ;;
+  https|dns|dns-strict) ;;
+  *) echo "::error::mode must be 'https', 'dns', or 'dns-strict' (got '$MODE')"; exit 1 ;;
 esac
 case "$POLICY" in
   block|audit) ;;
@@ -30,6 +30,28 @@ case "${LOG_LEVEL_VALUE^^}" in
   *) echo "::error::log-level must be one of TRACE, DEBUG, INFO, WARN, or ERROR (got '$LOG_LEVEL_VALUE')"; exit 1 ;;
 esac
 [ "$LOG_LEVEL_VALUE" = "WARNING" ] && LOG_LEVEL_VALUE="WARN"
+
+LOCKDOWN="${LOCKDOWN_RUNNER:-false}"
+case "$LOCKDOWN" in
+  true|false) ;;
+  *) echo "::error::lockdown-runner must be 'true' or 'false' (got '$LOCKDOWN')"; exit 1 ;;
+esac
+
+# GitHub-hosted only: disable later sudo/Docker so a later step cannot undo the hardening.
+apply_lockdown() {
+  [ "$LOCKDOWN" = "true" ] || return 0
+  if [ "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]; then
+    echo "::error::lockdown-runner requires a GitHub-hosted runner"
+    exit 1
+  fi
+  echo "Applying runner lockdown (GitHub-hosted runners only)"
+  # Socket first, while sudo still works; the daemon (and g0efilter) keeps running.
+  # Fail closed: a failed hardening step must abort, not silently report success.
+  sudo chown root:root /var/run/docker.sock
+  sudo chmod 0600 /var/run/docker.sock
+  sudo chmod 000 /usr/bin/sudo
+  echo "Lockdown applied: later sudo and Docker access disabled; teardown will be skipped"
+}
 
 WORKDIR="${RUNNER_TEMP:-/tmp}/g0efilter"
 mkdir -p "$WORKDIR/policy"
@@ -115,7 +137,7 @@ DOCKER_ARGS=(
 # proxy's alt port. Forward to the host's real resolvers - the default
 # 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with
 # every :53 redirected takes out the whole runner's DNS.
-if [ "$MODE" = "dns" ]; then
+if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
@@ -129,6 +151,7 @@ for _ in $(seq 1 60); do
   # startup.ready covers all released versions; policy.applied is the reload marker
   if docker logs g0efilter 2>&1 | grep -qE "startup\.ready|policy\.applied"; then
     echo "g0efilter is active - egress is now filtered ($POLICY mode)"
+    apply_lockdown
     exit 0
   fi
   if [ -z "$(docker ps -q --filter name=g0efilter)" ]; then

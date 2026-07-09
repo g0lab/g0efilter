@@ -199,9 +199,12 @@ services:
 
 ### Verifying container signatures
 
-Images are signed with [Cosign](https://github.com/sigstore/cosign) keyless signing:
+Images are signed with [Cosign](https://github.com/sigstore/cosign) keyless signing. To
+keep the image repositories clean, signatures are stored in a dedicated repo rather than
+alongside the images, so point cosign at it with `COSIGN_REPOSITORY`:
 
 ```bash
+COSIGN_REPOSITORY=docker.io/g0lab/signatures \
 cosign verify g0lab/g0efilter:latest \
   --certificate-identity-regexp=https://github.com/g0lab/g0efilter \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \

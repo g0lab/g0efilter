@@ -267,6 +267,9 @@ table ip g0efilter_v4 {
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
+
         # Allow local proxies on 127.0.0.1
         ip daddr 127.0.0.1 tcp dport %d accept    # HTTP proxy
         ip daddr 127.0.0.1 tcp dport %d accept    # HTTPS proxy
@@ -332,6 +335,9 @@ table ip6 g0efilter_v6 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local proxies on ::1
         ip6 daddr ::1 tcp dport %d accept    # HTTP proxy
@@ -399,6 +405,9 @@ table ip g0efilter_v4 {
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
+
         # Allow local DNS proxy on loopback
         ip daddr 127.0.0.1 udp dport %d accept
         ip daddr 127.0.0.1 tcp dport %d accept
@@ -432,6 +441,9 @@ table ip6 g0efilter_v6 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local DNS proxy on loopback
         ip6 daddr ::1 udp dport %d accept
@@ -473,6 +485,9 @@ table ip g0efilter_v4 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local DNS proxy on loopback
         ip daddr 127.0.0.1 udp dport %d accept
@@ -518,6 +533,9 @@ table ip6 g0efilter_v6 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local DNS proxy on loopback
         ip6 daddr ::1 udp dport %d accept
@@ -567,6 +585,9 @@ table ip g0efilter_v4 {
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
+
         # Allow local DNS proxy on loopback
         ip daddr 127.0.0.1 udp dport %d accept
         ip daddr 127.0.0.1 tcp dport %d accept
@@ -599,6 +620,9 @@ table ip g0efilter_v4 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local proxies on 127.0.0.1
         ip daddr 127.0.0.1 tcp dport %d accept    # HTTP proxy
@@ -698,6 +722,9 @@ table ip6 g0efilter_v6 {
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
 
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
+
         # Allow local proxies on ::1
         ip6 daddr ::1 tcp dport %d accept    # HTTP proxy
         ip6 daddr ::1 tcp dport %d accept    # HTTPS proxy
@@ -769,6 +796,9 @@ table ip6 g0efilter_v6 {
 
         # Bypass marked traffic (SO_MARK=0x1)
         meta mark 0x1 accept
+
+        # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
+        ct state invalid drop
 
         # Allow local DNS proxy on loopback
         ip6 daddr ::1 udp dport %d accept

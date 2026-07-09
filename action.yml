@@ -37,8 +37,9 @@ inputs:
 
   mode:
     description: >-
-      Filtering mode. Use `https` for TLS SNI / HTTP Host inspection, or
-      `dns` for resolution filtering.
+      Filtering mode. Use `https` for TLS SNI / HTTP Host inspection, `dns`
+      for resolution filtering, or `dns-strict` to also drop connections to
+      IPs never resolved through the proxy (and not IP-allowlisted).
     required: false
     default: "https"
 
@@ -47,6 +48,15 @@ inputs:
       g0efilter log level: `TRACE`, `DEBUG`, `INFO`, `WARN`, or `ERROR`.
     required: false
     default: "INFO"
+
+  lockdown-runner:
+    description: >-
+      GitHub-hosted runners only. After the filter starts, disable later
+      passwordless sudo and restrict the Docker socket so subsequent steps
+      cannot remove the hardening, and skip teardown. Unsafe on self-hosted
+      runners: leftover nftables rules persist and can break later jobs.
+    required: false
+    default: "false"
 
   image:
     description: >-

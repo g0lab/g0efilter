@@ -37,7 +37,7 @@ Limits: domain filtering applies to ports 80/443 only; a client that sends no SN
 
 ## dns mode
 
-All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver; non-allowlisted A/AAAA queries are sinkholed to 0.0.0.0/:: and other blocked query types get NXDOMAIN.
+All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver. A non-allowlisted A/AAAA query is resolved and its records checked against the IP allowlist (when the policy has IP entries); if none are allowlisted it is sinkholed to 0.0.0.0/::. Other blocked query types get NXDOMAIN.
 
 ```text
 Start
@@ -47,10 +47,13 @@ Start
 +- Redirect to local DNS proxy
 |
 +- Domain matches policy? -- Yes -> FORWARD to upstream resolver
-|                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
+|                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
 |
 +- LOG decision -> dashboard (if enabled)
 ```
+
+When the policy has IP allowlist entries, a domain that is not domain-allowlisted is still resolved so its addresses can be checked; if any resolved IP is allowlisted the proxy replies with only those records (non-allowlisted IPs are stripped), matching https mode's connection-time IP allowance. With no IPs in the policy the domain is sinkholed as before.
 
 Strengths: covers every protocol and port, cheapest data path (no proxying of the traffic itself).
 Limits: enforcement happens at resolution only. A process that connects to a hardcoded IP, uses DNS-over-HTTPS, or replays a cached answer bypasses filtering entirely. Use `dns-strict` to close that gap.
@@ -67,7 +70,8 @@ Start
 +- DNS query to port 53? -- Yes -> Redirect to DNS proxy
 |      |
 |      +- Domain matches policy? -- Yes -> Resolve, add answer IPs, return answer
-|      |                          -- No  -> SINKHOLE A/AAAA or NXDOMAIN
+|      |                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
+|      |                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
 |
 +- Connection already established? -- Yes -> ALLOW
 |

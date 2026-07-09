@@ -37,6 +37,7 @@ func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 
 	return &dnsHandler{
 		allowlist: newMatcher(allowlist),
+		ipAllow:   newIPAllowlist(opts.AllowIPs),
 		opts:      opts,
 		upstreams: upstreams,
 		timeout:   timeoutFromOptions(opts, 3*time.Second),
@@ -115,10 +116,63 @@ func startTCPServer(tcpSrv *dns.Server, errCh chan error, opts Options) {
 
 type dnsHandler struct {
 	allowlist *hostMatcher
+	ipAllow   *ipAllowlist
 	opts      Options
 	upstreams []string
 	timeout   time.Duration
 	limiter   *dnsRateLimiter
+}
+
+// ipAllowlist matches resolved IPs against the policy IP/CIDR allowlist.
+type ipAllowlist struct {
+	exact map[string]struct{}
+	cidrs []*net.IPNet
+}
+
+func newIPAllowlist(entries []string) *ipAllowlist {
+	m := &ipAllowlist{exact: make(map[string]struct{}, len(entries)), cidrs: nil}
+
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+
+		_, ipnet, err := net.ParseCIDR(e)
+		if err == nil {
+			m.cidrs = append(m.cidrs, ipnet)
+
+			continue
+		}
+
+		if ip := net.ParseIP(e); ip != nil {
+			m.exact[ip.String()] = struct{}{}
+		}
+	}
+
+	return m
+}
+
+func (m *ipAllowlist) len() int {
+	return len(m.exact) + len(m.cidrs)
+}
+
+func (m *ipAllowlist) contains(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+
+	if _, ok := m.exact[ip.String()]; ok {
+		return true
+	}
+
+	for _, n := range m.cidrs {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // sanitizeAndLogQname validates and sanitizes the DNS query name. ok is false
@@ -210,11 +264,7 @@ func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
 	if wasAudited {
 		handler.logAuditedQuery(lg, qname, qtype, remoteAddr, remotePort, flowID)
 	} else if !permitted {
-		if enforce {
-			handler.handleBlockedEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
-		} else {
-			handler.handleBlockedNonEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
-		}
+		handler.handleNotPermitted(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
 
 		return
 	}
@@ -437,6 +487,35 @@ func (handler *dnsHandler) logAuditedQuery(
 	lg.Warn("dns.audit", fields...)
 }
 
+// handleNotPermitted handles a query whose domain is not allowlisted. For A/AAAA
+// it first tries the IP allowlist (resolve and keep only allowlisted IPs); if
+// that does not apply it sinkholes. Other query types get NXDOMAIN.
+func (handler *dnsHandler) handleNotPermitted(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
+	enforce := (qtype == dns.TypeA || qtype == dns.TypeAAAA)
+	if !enforce {
+		handler.handleBlockedNonEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+
+		return
+	}
+
+	// Domain is not allowlisted, but it may resolve to an allowlisted IP; if so,
+	// respond with only those IPs.
+	if handler.resolveViaIPAllowlist(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID) {
+		return
+	}
+
+	handler.handleBlockedEnforcedType(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+}
+
 // handleBlockedEnforcedType handles blocked A/AAAA queries by responding with a sinkhole address.
 func (handler *dnsHandler) handleBlockedEnforcedType(
 	lg *slog.Logger,
@@ -543,6 +622,84 @@ func (handler *dnsHandler) handleAllowedRequest(
 	}
 
 	_ = writer.WriteMsg(resp)
+}
+
+// resolveViaIPAllowlist handles a non-allowlisted domain that may point at an
+// allowlisted IP: it resolves upstream and, if any answer IP is in the IP
+// allowlist, replies with only those records. Returns false to fall through to
+// the normal sinkhole. It never widens the dns-strict resolved set: the static
+// IP allowlist already permits these destinations at the packet level.
+func (handler *dnsHandler) resolveViaIPAllowlist(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) bool {
+	if handler.ipAllow == nil || handler.ipAllow.len() == 0 {
+		return false
+	}
+
+	resp, err := handler.forward(request)
+	if err != nil || resp == nil {
+		return false
+	}
+
+	if handler.blockExfilResponse(lg, writer, request, resp, qname, qtype, remoteAddr, remotePort, flowID) {
+		return true
+	}
+
+	kept := handler.filterToAllowlistedIPs(resp)
+	if len(kept) == 0 {
+		return false
+	}
+
+	reply := new(dns.Msg)
+	reply.SetReply(request)
+	reply.Answer = kept
+
+	if lg != nil {
+		fields := handler.dnsLogFields("ALLOWED", qname, qtype, remoteAddr, remotePort, flowID)
+		fields = append(fields, "note", "ip-allowlisted")
+		lg.Info("dns.allowed", fields...)
+	}
+
+	_ = writer.WriteMsg(reply)
+
+	return true
+}
+
+// filterToAllowlistedIPs keeps only the A/AAAA answer records whose address is in
+// the IP allowlist, so a filtered reply cannot leak non-allowlisted IPs. The CNAME
+// chain is preserved alongside them, since resolvers may ignore terminal address
+// records whose owner name is an unresolved alias. Returns nil when no address is
+// allowlisted, so the caller falls through to the sinkhole.
+func (handler *dnsHandler) filterToAllowlistedIPs(resp *dns.Msg) []dns.RR {
+	var addrs, cnames []dns.RR
+
+	for _, rr := range resp.Answer {
+		switch rec := rr.(type) {
+		case *dns.A:
+			if handler.ipAllow.contains(rec.A) {
+				addrs = append(addrs, rr)
+			}
+		case *dns.AAAA:
+			if handler.ipAllow.contains(rec.AAAA) {
+				addrs = append(addrs, rr)
+			}
+		case *dns.CNAME:
+			cnames = append(cnames, rr)
+		}
+	}
+
+	if len(addrs) == 0 {
+		return nil
+	}
+
+	return append(cnames, addrs...)
 }
 
 // reportResolvedIPs hands the answer's A/AAAA addresses to the OnResolved hook.

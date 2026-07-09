@@ -12,7 +12,90 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/g0lab/g0efilter/internal/policy"
 )
+
+// legacyMatcher reproduces the pre-optimization design (exact map plus a linear
+// matchPattern scan over all wildcard/regex patterns) for old-vs-new comparison.
+type legacyMatcher struct {
+	exact    map[string]struct{}
+	patterns []string
+}
+
+func newLegacyMatcher(patterns []string) *legacyMatcher {
+	m := &legacyMatcher{exact: make(map[string]struct{}, len(patterns)), patterns: nil}
+	for _, p := range patterns {
+		p = normalizeDomain(p)
+		if strings.Contains(p, "*") || policy.IsRegexPattern(p) {
+			m.patterns = append(m.patterns, p)
+		} else {
+			m.exact[p] = struct{}{}
+		}
+	}
+
+	return m
+}
+
+func (m *legacyMatcher) allows(host string) bool {
+	host = normalizeDomain(host)
+	if _, ok := m.exact[host]; ok {
+		return true
+	}
+
+	for _, p := range m.patterns {
+		if matchPattern(host, p) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// BenchmarkMatcherComparison runs the legacy linear matcher and the new bucketed
+// matcher over the same allowlists, so the two can be compared side by side.
+func BenchmarkMatcherComparison(b *testing.B) {
+	kinds := []struct {
+		name  string
+		build func(int) []string
+		hit   func(int) string
+	}{
+		{"exact", makeAllowlist, func(s int) string { return fmt.Sprintf("host-%04d.example.com", s-1) }},
+		{"suffix", makeSuffixAllowlist, func(s int) string { return fmt.Sprintf("a.svc-%04d.example.com", s-1) }},
+		{"regex", makeRegexAllowlist, func(s int) string { return fmt.Sprintf("host-%04d-42.example.com", s-1) }},
+	}
+
+	const miss = "definitely-not-allowlisted.example.org"
+
+	for _, k := range kinds {
+		for _, size := range []int{100, 1000} {
+			patterns := k.build(size)
+			legacy := newLegacyMatcher(patterns)
+			modern := newMatcher(patterns)
+			hit := k.hit(size)
+
+			for _, probe := range []struct {
+				label string
+				host  string
+			}{{"hit", hit}, {"miss", miss}} {
+				b.Run(fmt.Sprintf("%s/old/size=%d/%s", k.name, size, probe.label), func(b *testing.B) {
+					b.ReportAllocs()
+
+					for range b.N {
+						_ = legacy.allows(probe.host)
+					}
+				})
+				b.Run(fmt.Sprintf("%s/new/size=%d/%s", k.name, size, probe.label), func(b *testing.B) {
+					b.ReportAllocs()
+
+					for range b.N {
+						_ = modern.allows(probe.host)
+					}
+				})
+			}
+		}
+	}
+}
 
 func makeAllowlist(n int) []string {
 	patterns := make([]string, 0, n+2)
@@ -25,11 +108,32 @@ func makeAllowlist(n int) []string {
 	return NormalizePatterns(patterns)
 }
 
-func BenchmarkAllowedHost(b *testing.B) {
+func makeSuffixAllowlist(n int) []string {
+	patterns := make([]string, 0, n)
+	for i := range n {
+		patterns = append(patterns, fmt.Sprintf("*.svc-%04d.example.com", i))
+	}
+
+	return NormalizePatterns(patterns)
+}
+
+func makeRegexAllowlist(n int) []string {
+	patterns := make([]string, 0, n)
+	for i := range n {
+		patterns = append(patterns, fmt.Sprintf(`/^host-%04d-[0-9]+\.example\.com$/`, i))
+	}
+
+	return NormalizePatterns(patterns)
+}
+
+func benchMatcher(b *testing.B, build func(int) []string, hitFor func(int) string) {
+	b.Helper()
+
+	const miss = "definitely-not-allowlisted.example.org"
+
 	for _, size := range []int{10, 100, 1000} {
-		matcher := newMatcher(makeAllowlist(size))
-		hit := fmt.Sprintf("host-%04d.example.com", size-1)
-		miss := "definitely-not-allowlisted.example.org"
+		matcher := newMatcher(build(size))
+		hit := hitFor(size)
 
 		b.Run(fmt.Sprintf("size=%d/hit", size), func(b *testing.B) {
 			b.ReportAllocs()
@@ -51,6 +155,24 @@ func BenchmarkAllowedHost(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkAllowedHost(b *testing.B) {
+	benchMatcher(b, makeAllowlist, func(size int) string {
+		return fmt.Sprintf("host-%04d.example.com", size-1)
+	})
+}
+
+func BenchmarkAllowedHostSuffix(b *testing.B) {
+	benchMatcher(b, makeSuffixAllowlist, func(size int) string {
+		return fmt.Sprintf("a.svc-%04d.example.com", size-1)
+	})
+}
+
+func BenchmarkAllowedHostRegex(b *testing.B) {
+	benchMatcher(b, makeRegexAllowlist, func(size int) string {
+		return fmt.Sprintf("host-%04d-42.example.com", size-1)
+	})
 }
 
 func BenchmarkMatchPattern(b *testing.B) {

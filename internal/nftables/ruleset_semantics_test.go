@@ -4,6 +4,8 @@ package nftables
 import (
 	"strings"
 	"testing"
+
+	"github.com/g0lab/g0efilter/internal/actions"
 )
 
 // splitTables slices a generated ruleset into per-table bodies keyed by "family name".
@@ -177,6 +179,58 @@ func TestRulesetSemanticsHTTPSDefaultDenyChains(t *testing.T) {
 	)
 }
 
+// Regression for #118: every filter chain must drop invalid conntrack state before any
+// log rule, else out-of-state packets on closed flows are misreported as policy blocks.
+func TestRulesetSemanticsInvalidStateDroppedBeforeAnyLog(t *testing.T) {
+	t.Parallel()
+
+	modes := []string{actions.ModeHTTPS, actions.ModeDNS, actions.ModeDNSStrict}
+
+	for _, mode := range modes {
+		for _, defaultAllow := range []bool{false, true} {
+			for _, audit := range []bool{false, true} {
+				//nolint:exhaustruct
+				cfg := RulesetConfig{
+					AllowV4:      []string{"192.0.2.1"},
+					AllowV6:      []string{"2001:db8::1"},
+					DenyV4:       []string{"198.51.100.1"},
+					DenyV6:       []string{"2001:db8::dead"},
+					HTTPSPort:    8443,
+					HTTPPort:     8080,
+					DNSPort:      5353,
+					Mode:         mode,
+					DefaultAllow: defaultAllow,
+					Audit:        audit,
+				}
+
+				for name, body := range splitTables(t, GenerateRuleset(cfg)) {
+					if strings.Contains(name, "nat") {
+						continue
+					}
+
+					assertInvalidDropBeforeLog(t, cfg, name, body)
+				}
+			}
+		}
+	}
+}
+
+func assertInvalidDropBeforeLog(t *testing.T, cfg RulesetConfig, name, body string) {
+	t.Helper()
+
+	invalid := strings.Index(body, "ct state invalid drop")
+	if invalid < 0 {
+		t.Errorf("cfg %+v: filter chain %q missing 'ct state invalid drop'\n%s", cfg, name, body)
+
+		return
+	}
+
+	// Must drop before any log rule (blocked, or audit under dry-run).
+	if firstLog := strings.Index(body, "log prefix"); firstLog >= 0 && invalid > firstLog {
+		t.Errorf("cfg %+v: chain %q logs before dropping invalid state\n%s", cfg, name, body)
+	}
+}
+
 func TestRulesetSemanticsDNSDefaultDeny(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +294,42 @@ func TestRulesetSemanticsDNSStrictDefaultDeny(t *testing.T) {
 	natV4 := tableBody(t, ruleset, "ip g0efilter_nat_v4")
 	assertHasAll(t, natV4, "udp dport 53  redirect to :5353", "tcp dport 53  redirect to :5353")
 	assertLacksAll(t, natV4, "dport 80", "dport 443")
+}
+
+// dns-strict enforces at the IP layer, so QUIC (UDP/443) needs no special casing: the
+// daddr allow rules carry no protocol/dport qualifier, so QUIC to an allow-listed IP is
+// accepted and default-drop blocks the rest. A tcp/udp/dport qualifier would break this.
+func TestRulesetSemanticsDNSStrictQUICProtocolAgnostic(t *testing.T) {
+	t.Parallel()
+
+	//nolint:exhaustruct
+	ruleset := GenerateRuleset(RulesetConfig{
+		AllowV4: []string{"192.0.2.10"},
+		AllowV6: []string{"2001:db8::5"},
+		DNSPort: 5353,
+		Mode:    actions.ModeDNSStrict,
+	})
+
+	filterV4 := tableBody(t, ruleset, "ip g0efilter_v4")
+
+	// Default-drop catches UDP/QUIC to non-allow-listed destinations.
+	assertHasAll(t, filterV4, "policy drop;")
+
+	// Allows carry no protocol qualifier, so QUIC to an allowed/resolved IP is accepted.
+	assertHasAll(t, filterV4,
+		"ip daddr @allow_daddr_v4 accept",
+		"ip daddr @resolved_allow_v4 accept",
+	)
+	assertLacksAll(t, filterV4,
+		"ip daddr @allow_daddr_v4 tcp",
+		"ip daddr @allow_daddr_v4 udp",
+		"ip daddr @resolved_allow_v4 tcp",
+		"ip daddr @resolved_allow_v4 udp",
+	)
+
+	// Strict mode redirects only DNS, never 443 - no TCP-proxy path for UDP to miss.
+	natV4 := tableBody(t, ruleset, "ip g0efilter_nat_v4")
+	assertLacksAll(t, natV4, "dport 443")
 }
 
 func TestRulesetSemanticsDefaultAllowDenylist(t *testing.T) {

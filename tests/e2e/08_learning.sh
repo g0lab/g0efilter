@@ -28,8 +28,16 @@ if [ "$FILTER_MODE" = "https" ]; then
   log "OK: 1.0.0.1 learned into policy.yaml"
 fi
 
-log "[Learn] Traffic still passes after the learning-triggered policy reload"
-wait_for_policy_reload
+log "[Learn] Learning must not churn the stack: the policy watcher is disabled"
+LEARN_LOGS=$($COMPOSE logs g0efilter 2>/dev/null)
+grep -q "policy.watcher_disabled" <<< "$LEARN_LOGS" \
+  || { dump_logs; fail "expected policy.watcher_disabled in learning mode"; }
+if grep -q "policy.applied" <<< "$LEARN_LOGS"; then
+  dump_logs; fail "learning mode triggered a policy reload (policy.applied) but should not"
+fi
+log "OK: no reload churn in learning mode"
+
+log "[Learn] Traffic still passes (learning is non-blocking, no reload needed)"
 assert_allowed https://github.com
 
 log "OK: learning mode verified"

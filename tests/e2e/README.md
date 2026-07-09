@@ -12,7 +12,22 @@ FILTER_MODE=dns   scripts/e2e.sh
 ```
 
 `scripts/e2e.sh` builds and starts the `examples/build` stack, runs every phase, dumps
-container logs on failure, and tears down (restoring the baseline policy file).
+container logs on failure, and tears down (restoring the baseline policy file). This is
+the recommended local run: all phases, one shared stack, in order.
+
+To iterate on a single phase (or a few), pass their two-digit prefixes:
+
+```sh
+FILTER_MODE=dns scripts/e2e.sh 09           # just dns-strict
+FILTER_MODE=dns E2E_SKIP_INITIAL_UP=1 scripts/e2e.sh 09   # skip the baseline bring-up
+                                                          # (phase recreates the stack itself)
+```
+
+`E2E_SKIP_INITIAL_UP=1` is for the phases that recreate the stack themselves (08-11, 13);
+it avoids bringing up a baseline stack that the phase immediately replaces. CI uses these
+knobs to fan the suite out across parallel runners (see the matrix in `test.yaml`); locally
+the phases share fixed container names and ports, so run them one stack at a time rather
+than in parallel.
 
 ## Phases
 
@@ -30,6 +45,7 @@ container logs on failure, and tears down (restoring the baseline policy file).
 | `10_audit.sh` | audit (dry-run) enforcement: would-be-blocked traffic passes and reaches the dashboard as AUDIT (https lane only) |
 | `11_resources.sh` | coarse CPU and memory guardrails after modest allowed/blocked traffic |
 | `12_load.sh` | concurrent allowed/blocked traffic, leak checks, latency, and stability under load |
+| `13_dns_ip_allowlist.sh` | dns mode: a non-domain-allowlisted host pointing at an allowlisted IP resolves; the behaviour is off when the policy has no IPs (dns lane only) |
 
 Individual phase scripts assume the stack is already up, though mode-specific
 phases may recreate the g0efilter container with different environment flags.

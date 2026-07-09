@@ -5,7 +5,14 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { parseLine, collectDecisions, escapeCell, buildSummary } = require("./post.js");
+const {
+  parseLine,
+  collectDecisions,
+  escapeCell,
+  buildSummary,
+  teardown,
+  maybeTeardown,
+} = require("./post.js");
 
 test("parseLine extracts a blocked HTTPS decision", () => {
   const line =
@@ -81,6 +88,46 @@ test("buildSummary reports when no logs were captured", () => {
 test("buildSummary reports a clean run with only allowed decisions", () => {
   const md = buildSummary("action=ALLOWED component=https https=example.org");
   assert.match(md, /No blocked or audited connections \(1 allowed decisions logged\)/);
+});
+
+test("teardown removes the container and deletes each managed nft table", () => {
+  const calls = [];
+  teardown((cmd, args) => calls.push([cmd, args]));
+  assert.deepEqual(calls, [
+    ["docker", ["rm", "-f", "g0efilter"]],
+    ["sudo", ["nft", "delete", "table", "ip", "g0efilter_v4"]],
+    ["sudo", ["nft", "delete", "table", "ip", "g0efilter_nat_v4"]],
+    ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_v6"]],
+    ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_nat_v6"]],
+  ]);
+});
+
+test("teardown swallows command failures without throwing", () => {
+  assert.doesNotThrow(() =>
+    teardown(() => {
+      throw new Error("boom");
+    }),
+  );
+});
+
+test("maybeTeardown skips teardown under lockdown", () => {
+  const calls = [];
+  const ran = maybeTeardown(true, (cmd, args) => calls.push([cmd, args]));
+  assert.equal(ran, false);
+  assert.equal(calls.length, 0);
+});
+
+test("maybeTeardown runs teardown when not locked down", () => {
+  const calls = [];
+  const ran = maybeTeardown(false, (cmd, args) => calls.push([cmd, args]));
+  assert.equal(ran, true);
+  assert.ok(calls.length > 0);
+});
+
+test("buildSummary notes lockdown when no logs were captured", () => {
+  const md = buildSummary("", { lockdown: true });
+  assert.match(md, /Lockdown-runner mode/);
+  assert.match(md, /Docker access was locked down/);
 });
 
 test("buildSummary renders a decision table and honours the policy env var", () => {

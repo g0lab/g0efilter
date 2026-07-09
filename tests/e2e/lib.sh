@@ -40,8 +40,12 @@ allowlist:
 }
 
 # stack_up [extra docker compose env as VAR=val args]
+# Builds the image unless E2E_NO_BUILD=1, in which case it expects a pre-loaded
+# g0efilter:e2e image (CI builds once and shares it across parallel jobs).
 stack_up() {
-  (cd "$BUILD_DIR" && env FILTER_MODE="$FILTER_MODE" "$@" docker compose -f docker-compose-build.yaml up -d --build --force-recreate g0efilter g0efilter-dashboard tester)
+  local -a build_args=(--build)
+  [ "${E2E_NO_BUILD:-0}" = "1" ] && build_args=()
+  (cd "$BUILD_DIR" && env FILTER_MODE="$FILTER_MODE" "$@" docker compose -f docker-compose-build.yaml up -d "${build_args[@]}" --force-recreate g0efilter g0efilter-dashboard tester)
   RELOAD_BASE=0 # fresh container, fresh logs
 }
 

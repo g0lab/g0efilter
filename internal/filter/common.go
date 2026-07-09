@@ -55,6 +55,11 @@ type Options struct {
 	DefaultAllow bool
 	Denylist     []string
 
+	// AllowIPs is the policy IP/CIDR allowlist. In DNS mode it lets a domain that
+	// is not domain-allowlisted still resolve when it points at an allowlisted IP,
+	// matching HTTPS mode's connection-time IP allowance.
+	AllowIPs []string
+
 	// LearningMode never blocks; hosts/IPs not already covered by the allowlist
 	// are reported through OnLearn so they can be recorded in the policy.
 	LearningMode bool
@@ -165,21 +170,46 @@ func cachedCompile(pattern string, compile func(string) (*regexp.Regexp, error))
 	return re
 }
 
-// hostMatcher keeps exact matches O(1) and scans wildcard/regex patterns.
-type hostMatcher struct {
-	exact    map[string]struct{}
-	patterns []string
+type compiledPattern struct {
+	re *regexp.Regexp
+	// required, when set, is a literal the host must contain before the regex is
+	// tried: a sound pre-filter, since a match implies the literal is present.
+	required string
 }
 
-// newMatcher normalizes patterns and splits exact entries from wildcard/regex ones.
+type hostMatcher struct {
+	matchAll bool
+	exact    map[string]struct{}
+	suffixes map[string]struct{} // ".domain.com" for a *.domain.com pattern
+	regexes  []compiledPattern
+}
+
+// newMatcher sorts patterns into fast-match buckets, mirroring matchPattern's categories.
 func newMatcher(patterns []string) *hostMatcher {
-	m := &hostMatcher{exact: make(map[string]struct{}, len(patterns)), patterns: nil}
+	m := &hostMatcher{
+		matchAll: false,
+		exact:    make(map[string]struct{}, len(patterns)),
+		suffixes: make(map[string]struct{}),
+		regexes:  nil,
+	}
 
 	for _, p := range patterns {
 		p = normalizeDomain(p)
-		if strings.Contains(p, "*") || policy.IsRegexPattern(p) {
-			m.patterns = append(m.patterns, p)
-		} else {
+
+		switch {
+		case p == "*":
+			m.matchAll = true
+		case policy.IsRegexPattern(p):
+			if re := cachedCompile(p, policy.CompileDomainPattern); re != nil {
+				m.regexes = append(m.regexes, compiledPattern{re: re, required: ""})
+			}
+		case strings.HasPrefix(p, "*.") && !strings.Contains(p[2:], "*"):
+			m.suffixes[p[1:]] = struct{}{} // ".domain.com"
+		case strings.Contains(p, "*"):
+			if re := cachedCompile(p, policy.CompileWildcardPattern); re != nil {
+				m.regexes = append(m.regexes, compiledPattern{re: re, required: longestLiteralChunk(p)})
+			}
+		default:
 			m.exact[p] = struct{}{}
 		}
 	}
@@ -187,15 +217,61 @@ func newMatcher(patterns []string) *hostMatcher {
 	return m
 }
 
-// allows checks if a host matches the allowlist.
 func (m *hostMatcher) allows(host string) bool {
 	host = normalizeDomain(host)
+
+	if m.matchAll {
+		return true
+	}
+
 	if _, ok := m.exact[host]; ok {
 		return true
 	}
 
-	for _, pattern := range m.patterns {
-		if matchPattern(host, pattern) {
+	if m.suffixAllows(host) {
+		return true
+	}
+
+	for _, cp := range m.regexes {
+		if cp.required != "" && !strings.Contains(host, cp.required) {
+			continue
+		}
+
+		if cp.re.MatchString(host) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// longestLiteralChunk returns the longest literal run between '*'s; any matching host must contain it.
+func longestLiteralChunk(pattern string) string {
+	longest := ""
+	for chunk := range strings.SplitSeq(pattern, "*") {
+		if len(chunk) > len(longest) {
+			longest = chunk
+		}
+	}
+
+	return strings.ToLower(longest)
+}
+
+// suffixAllows matches host against *.domain.com suffixes by walking its
+// dot-suffixes, so cost is the label count, not the number of suffixes.
+func (m *hostMatcher) suffixAllows(host string) bool {
+	if len(m.suffixes) == 0 {
+		return false
+	}
+
+	// Start at 1: a *.domain.com match needs at least one label before the dot,
+	// so a leading dot (host == ".domain.com") must not match.
+	for i := 1; i < len(host); i++ {
+		if host[i] != '.' {
+			continue
+		}
+
+		if _, ok := m.suffixes[host[i:]]; ok {
 			return true
 		}
 	}
