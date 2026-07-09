@@ -307,7 +307,7 @@ func TestRulesetSemanticsDNSStrictQUICProtocolAgnostic(t *testing.T) {
 		AllowV4: []string{"192.0.2.10"},
 		AllowV6: []string{"2001:db8::5"},
 		DNSPort: 5353,
-		Mode:    "dns-strict",
+		Mode:    actions.ModeDNSStrict,
 	})
 
 	filterV4 := tableBody(t, ruleset, "ip g0efilter_v4")
