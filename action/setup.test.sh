@@ -77,12 +77,16 @@ run_setup 0 "" "egress-policy audit accepted" EGRESS_POLICY=audit
 run_setup 0 "" "log-level lowercase accepted" LOG_LEVEL=debug
 run_setup 0 "" "log-level WARNING alias accepted" LOG_LEVEL=WARNING
 run_setup 0 "" "log-level TRACE accepted" LOG_LEVEL=TRACE
-run_setup 0 "Lockdown applied" "lockdown-runner true applies lockdown" LOCKDOWN_RUNNER=true
+run_setup 0 "Lockdown applied" "lockdown-runner true applies lockdown" \
+  LOCKDOWN_RUNNER=true RUNNER_ENVIRONMENT=github-hosted
+run_setup 1 "requires a GitHub-hosted runner" "lockdown-runner rejects non-hosted runner" \
+  LOCKDOWN_RUNNER=true RUNNER_ENVIRONMENT=self-hosted
 
 # Lockdown must lock the Docker socket before disabling sudo: the reverse order
 # would leave the socket world-accessible once sudo is gone.
 : > "$WORK/sudo.log"
-env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" LOCKDOWN_RUNNER=true \
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  LOCKDOWN_RUNNER=true RUNNER_ENVIRONMENT=github-hosted \
   bash "$SETUP" > /dev/null 2>&1
 got_seq="$(cat "$WORK/sudo.log" 2>/dev/null)"
 want_seq="chown root:root /var/run/docker.sock

@@ -40,11 +40,16 @@ esac
 # GitHub-hosted only: disable later sudo/Docker so a later step cannot undo the hardening.
 apply_lockdown() {
   [ "$LOCKDOWN" = "true" ] || return 0
+  if [ "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]; then
+    echo "::error::lockdown-runner requires a GitHub-hosted runner"
+    exit 1
+  fi
   echo "Applying runner lockdown (GitHub-hosted runners only)"
   # Socket first, while sudo still works; the daemon (and g0efilter) keeps running.
-  sudo chown root:root /var/run/docker.sock 2>/dev/null || true
-  sudo chmod 0600 /var/run/docker.sock 2>/dev/null || true
-  sudo chmod 000 /usr/bin/sudo 2>/dev/null || true
+  # Fail closed: a failed hardening step must abort, not silently report success.
+  sudo chown root:root /var/run/docker.sock
+  sudo chmod 0600 /var/run/docker.sock
+  sudo chmod 000 /usr/bin/sudo
   echo "Lockdown applied: later sudo and Docker access disabled; teardown will be skipped"
 }
 

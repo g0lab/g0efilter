@@ -30,15 +30,18 @@ if (curlOK("https://example.com")) {
 }
 
 if (process.env.INPUT_LOCKDOWN === "true") {
+  // A hung probe means the command didn't succeed; timeout counts as denial.
+  const probeOpts = { timeout: 15000 };
+
   // A later step must not be able to escalate past the filter.
-  if (spawnSync("sudo", ["-n", "true"]).status === 0) {
+  if (spawnSync("sudo", ["-n", "true"], probeOpts).status === 0) {
     failures.push("sudo should be denied under lockdown");
   } else {
     console.log("OK: sudo denied");
   }
 
   // Nor stop the filter container via the Docker socket.
-  if (spawnSync("docker", ["stop", "g0efilter"]).status === 0) {
+  if (spawnSync("docker", ["stop", "g0efilter"], probeOpts).status === 0) {
     failures.push("docker access should be denied under lockdown (stopped g0efilter)");
   } else {
     console.log("OK: docker access denied");
