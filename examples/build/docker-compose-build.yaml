@@ -3,6 +3,9 @@ services:
     build:
       context: ../..
       dockerfile: examples/build/Dockerfile
+    # Named so CI can build once, `docker save`, and reuse across parallel e2e jobs
+    # (E2E_NO_BUILD=1). Local `up --build` still builds and tags this same image.
+    image: g0efilter:e2e
     container_name: g0efilter
     volumes:
       # Mount the directory (not a single file) so live reload works with all editors.
@@ -29,6 +32,7 @@ services:
     build:
       context: ../..
       dockerfile: examples/build/Dockerfile.dashboard
+    image: g0efilter-dashboard:e2e
     container_name: g0efilter-dashboard
     cap_drop:
       - ALL

@@ -20,14 +20,41 @@ permissions:
   contents: read
 
 jobs:
+  # Build the images once and share them, so the parallel e2e jobs load a prebuilt
+  # image instead of each rebuilding it.
+  build:
+    name: build images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@v2
+
+      - name: Build images
+        run: docker compose -f examples/build/docker-compose-build.yaml build g0efilter g0efilter-dashboard
+
+      - name: Save images
+        run: docker save g0efilter:e2e g0efilter-dashboard:e2e | gzip > e2e-images.tar.gz
+
+      - name: Upload images
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-images
+          path: e2e-images.tar.gz
+          retention-days: 1
+
   # One scenario per runner, run in parallel. "shared" phases (01-07) share one
   # baseline stack; each stack-recreating phase runs alone. skip_up=1 skips the
   # baseline bring-up for scenarios whose phases recreate the stack themselves.
   e2e:
     name: e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      max-parallel: 6
       matrix:
         include:
           - {mode: https, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
@@ -50,8 +77,17 @@ jobs:
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
 
+      - name: Download images
+        uses: actions/download-artifact@v8
+        with:
+          name: e2e-images
+
+      - name: Load images
+        run: docker load -i e2e-images.tar.gz
+
       - name: Run e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
         env:
           FILTER_MODE: ${{ matrix.mode }}
           E2E_SKIP_INITIAL_UP: ${{ matrix.skip_up }}
+          E2E_NO_BUILD: "1"
         run: scripts/e2e.sh ${{ matrix.phases }}
