@@ -42,6 +42,6 @@ FILTER_MODE=dns scripts/e2e.sh
 
 ## Style
 
-- Keep comments short and only for non-obvious constraints, security rationale, or workarounds.
-- Let code and test names carry the obvious parts.
-- Use no em dashes, no emojis, and no other unicode characters when not needed.
+- Use clear code and test names for routine intent and behavior.
+- Add short comments only when they explain non-obvious constraints, security rationale, or workarounds.
+- Use plain ASCII unless a file, test fixture, or domain-specific term requires unicode.
