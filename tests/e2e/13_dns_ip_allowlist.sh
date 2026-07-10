@@ -27,8 +27,18 @@ wait_ready
 log "[IP-allowlist] Non-allowlisted domain pointing at an allowlisted IP resolves and connects"
 assert_allowed https://one.one.one.one
 
+# one.one.one.one is dual-stack but only its IPv4 is allowlisted: the unmatched
+# AAAA must sinkhole silently, never log a block or raise an alert.
+log "[IP-allowlist] Dual-stack host allowlisted by IPv4 only does not false-alert on AAAA"
+assert_no_dns_block one.one.one.one
+
 log "[IP-allowlist] Domain not resolving to an allowlisted IP stays blocked"
 assert_blocked https://example.com
+
+# The genuine block must still raise an alert: its dns.blocked event carries the
+# alert flag. Guards the opposite of the AAAA case above (missed alert).
+log "[IP-allowlist] Genuine block is logged and alert-flagged"
+assert_dns_block_alerts example.com
 
 log "[IP-allowlist] Directly allowlisted IP still works"
 assert_allowed https://1.1.1.1

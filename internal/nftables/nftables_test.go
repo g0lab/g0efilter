@@ -1061,6 +1061,10 @@ func TestProcessActionEventLevels(t *testing.T) {
 		t.Errorf("BLOCKED nflog event must log at WARN, got: %s", buf.String())
 	}
 
+	if !strings.Contains(buf.String(), `"alert":true`) {
+		t.Errorf("BLOCKED nflog event must flag an alert, got: %s", buf.String())
+	}
+
 	buf.Reset()
 	processActionEvent(logger, "ALLOWED", "flow-2", pkt, 64)
 

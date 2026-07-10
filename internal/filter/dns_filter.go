@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/actions"
 	"github.com/g0lab/g0efilter/internal/netutil"
 	"github.com/miekg/dns"
 )
@@ -445,7 +446,8 @@ func (handler *dnsHandler) blockExfilResponse(
 }
 
 // dnsLogFields builds the shared decision-log fields for DNS queries, including
-// process attribution when enabled.
+// process attribution when enabled. BLOCKED records are flagged for alerting;
+// ALLOWED/AUDIT records are not.
 func (handler *dnsHandler) dnsLogFields(
 	action, qname string,
 	qtype uint16,
@@ -465,6 +467,10 @@ func (handler *dnsHandler) dnsLogFields(
 		"source_port", remotePort,
 		"flow_id", flowID,
 	)
+
+	if action == actions.ActionBlocked {
+		fields = append(fields, actions.KeyAlert, true)
+	}
 
 	return append(fields, procFields(handler.opts, remoteAddr, remotePort, "udp")...)
 }
@@ -535,21 +541,28 @@ func (handler *dnsHandler) handleBlockedEnforcedType(
 
 	message := new(dns.Msg)
 	message.SetReply(request)
-
-	switch qtype {
-	case dns.TypeA:
-		message.Answer = append(message.Answer, &dns.A{
-			Hdr: dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: defaultTTL},
-			A:   net.IPv4(0, 0, 0, 0),
-		})
-	case dns.TypeAAAA:
-		message.Answer = append(message.Answer, &dns.AAAA{
-			Hdr:  dns.RR_Header{Name: request.Question[0].Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: defaultTTL},
-			AAAA: net.IPv6zero,
-		})
-	}
+	message.Answer = sinkholeAnswer(request.Question[0].Name, qtype)
 
 	_ = writer.WriteMsg(message)
+}
+
+// sinkholeAnswer builds the zero-address record (0.0.0.0 / ::) used to sinkhole
+// an A/AAAA query without leaking a real IP.
+func sinkholeAnswer(name string, qtype uint16) []dns.RR {
+	switch qtype {
+	case dns.TypeA:
+		return []dns.RR{&dns.A{
+			Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: defaultTTL},
+			A:   net.IPv4(0, 0, 0, 0),
+		}}
+	case dns.TypeAAAA:
+		return []dns.RR{&dns.AAAA{
+			Hdr:  dns.RR_Header{Name: name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: defaultTTL},
+			AAAA: net.IPv6zero,
+		}}
+	default:
+		return nil
+	}
 }
 
 // handleBlockedNonEnforcedType handles blocked non-A/AAAA queries by responding with NXDOMAIN.
@@ -654,6 +667,16 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 
 	kept := handler.filterToAllowlistedIPs(resp)
 	if len(kept) == 0 {
+		// No allowlisted IP for this record type. If the domain reaches an
+		// allowlisted IP via the other address family (e.g. an AAAA probe for an
+		// IPv4-only allowlisted host), the sinkhole here is expected: answer it
+		// without raising a false BLOCKED alert.
+		if handler.siblingResolvesToAllowlistedIP(qname, qtype) {
+			handler.answerSinkholeSibling(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+
+			return true
+		}
+
 		return false
 	}
 
@@ -670,6 +693,67 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 	_ = writer.WriteMsg(reply)
 
 	return true
+}
+
+// siblingResolvesToAllowlistedIP reports whether qname resolves to an allowlisted
+// IP in the other address family (A<->AAAA). A per-family sinkhole stays silent
+// when the domain is still reachable, so a dual-stack client's unmatched query
+// does not raise a false BLOCKED alert.
+func (handler *dnsHandler) siblingResolvesToAllowlistedIP(qname string, qtype uint16) bool {
+	sibling := siblingQtype(qtype)
+	if sibling == 0 {
+		return false
+	}
+
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(qname), sibling)
+
+	resp, err := handler.forward(req)
+	if err != nil || resp == nil {
+		return false
+	}
+
+	return len(handler.filterToAllowlistedIPs(resp)) > 0
+}
+
+func siblingQtype(qtype uint16) uint16 {
+	switch qtype {
+	case dns.TypeA:
+		return dns.TypeAAAA
+	case dns.TypeAAAA:
+		return dns.TypeA
+	default:
+		return 0
+	}
+}
+
+// answerSinkholeSibling replies to an A/AAAA query whose own family has no
+// allowlisted IP but whose sibling family does. It returns the zero-address
+// sinkhole (0.0.0.0 / ::) rather than an empty NODATA answer: a positive answer
+// stops the stub resolver from walking its search list, which would otherwise
+// emit spurious BLOCKED alerts for suffixed names. The host is reachable via the
+// sibling family, so this logs ALLOWED without an alert.
+func (handler *dnsHandler) answerSinkholeSibling(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
+	if lg != nil {
+		fields := handler.dnsLogFields("ALLOWED", qname, qtype, remoteAddr, remotePort, flowID)
+		fields = append(fields, "note", "ip-allowlisted-other-family")
+		lg.Info("dns.allowed", fields...)
+	}
+
+	message := new(dns.Msg)
+	message.SetReply(request)
+	message.Answer = sinkholeAnswer(request.Question[0].Name, qtype)
+
+	_ = writer.WriteMsg(message)
 }
 
 // filterToAllowlistedIPs keeps only the A/AAAA answer records whose address is in

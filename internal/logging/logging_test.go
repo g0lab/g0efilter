@@ -859,6 +859,31 @@ func mkTestPoster() (*poster, chan []byte) {
 	return p, ch
 }
 
+func TestShouldAlert(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		attrs map[string]any
+		want  bool
+	}{
+		{"alert true", map[string]any{"alert": true}, true},
+		{"alert false", map[string]any{"alert": false}, false},
+		{"no alert key", map[string]any{"action": "BLOCKED"}, false},
+		{"alert not a bool", map[string]any{"alert": "true"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := shouldAlert(tt.attrs); got != tt.want {
+				t.Errorf("shouldAlert(%v) = %v, want %v", tt.attrs, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestShipToDashboard_ActionFilters(t *testing.T) {
 	t.Parallel()
 
@@ -1192,6 +1217,7 @@ func TestAlertingIntegration(t *testing.T) {
 	logger.InfoContext(ctx, "dns.blocked",
 		"component", "dns",
 		"action", "BLOCKED",
+		"alert", true,
 		"qname", "malicious.com",
 		"qtype", "A",
 		"source_ip", "192.168.1.100",
@@ -1315,8 +1341,10 @@ func TestAlertingDisabled(t *testing.T) {
 	// Test passes if no panic occurs
 }
 
-func TestAlertingOnlyBlockedEvents(t *testing.T) {
-	// Test that only BLOCKED events trigger notifications
+// TestAlertingKeyedOnAlertFlag proves notifications are driven by the alert flag,
+// not the action label: a benign event that carries a BLOCKED-shaped action but
+// no alert flag must not page, while an alert-flagged event always does.
+func TestAlertingKeyedOnAlertFlag(t *testing.T) {
 	var notificationCount atomic.Int64
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1332,16 +1360,17 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 
 	logger := NewWithContext(context.Background(), "DEBUG", io.Discard, "test-version")
 
-	// Test various actions - only BLOCKED should trigger notification
 	testCases := []struct {
+		name     string
 		action   string
+		alert    bool
 		expected bool
 	}{
-		{"BLOCKED", true},
-		{"ALLOWED", false},
-		{"REDIRECTED", false},
-		{"ERROR", false},
-		{"blocked", true}, // case insensitive
+		{"blocked with alert flag", "BLOCKED", true, true},
+		{"blocked without alert flag", "BLOCKED", false, false},
+		{"allowed with alert flag", "ALLOWED", true, true},
+		{"allowed without alert flag", "ALLOWED", false, false},
+		{"audit without alert flag", "AUDIT", false, false},
 	}
 
 	for i, tc := range testCases {
@@ -1353,6 +1382,7 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 
 		logger.Info("test.event",
 			"action", tc.action,
+			"alert", tc.alert,
 			"source_ip", sourceIP,
 			"destination_ip", destIP,
 		)
@@ -1362,11 +1392,11 @@ func TestAlertingOnlyBlockedEvents(t *testing.T) {
 
 		count := notificationCount.Load()
 		if tc.expected && count == 0 {
-			t.Errorf("Expected notification for action %s but none received", tc.action)
+			t.Errorf("%s: expected notification but none received", tc.name)
 		}
 
 		if !tc.expected && count > 0 {
-			t.Errorf("Unexpected notification for action %s", tc.action)
+			t.Errorf("%s: unexpected notification", tc.name)
 		}
 	}
 }
@@ -1395,6 +1425,7 @@ func TestAlertingBelowTerminalLevel(t *testing.T) {
 	logger.WarnContext(ctx, "https.blocked",
 		"component", "https",
 		"action", "BLOCKED",
+		"alert", true,
 		"https", "evil.example.com",
 		"source_ip", "192.168.1.100",
 		"source_port", 12345,

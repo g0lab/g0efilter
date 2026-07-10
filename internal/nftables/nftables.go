@@ -1161,6 +1161,10 @@ func processActionEvent(
 	)
 	fields = append(fields, "action", action)
 
+	if action == actions.ActionBlocked {
+		fields = append(fields, actions.KeyAlert, true)
+	}
+
 	// Level policy: REDIRECTED and ALLOWED at DEBUG, BLOCKED at WARN
 	if action == actions.ActionRedirected || action == actions.ActionAllowed {
 		lg.Debug("nflog.event", fields...)
