@@ -188,9 +188,10 @@ func TestSiblingResolvesToAllowlistedIP(t *testing.T) {
 }
 
 // TestResolveViaIPAllowlistSiblingNoData proves the false-positive fix: an AAAA
-// probe for an IPv4-only allowlisted host is answered NODATA (NOERROR, no
-// records), not sinkholed, so no BLOCKED alert fires.
-func TestResolveViaIPAllowlistSiblingNoData(t *testing.T) {
+// probe for an IPv4-only allowlisted host is answered with the zero-address
+// sinkhole (not empty NODATA, which would make the resolver walk its search
+// list), so the host stays reachable via IPv4 and no BLOCKED alert fires.
+func TestResolveViaIPAllowlistSiblingSinkhole(t *testing.T) {
 	t.Parallel()
 
 	name := "dualstack.example."
@@ -220,8 +221,13 @@ func TestResolveViaIPAllowlistSiblingNoData(t *testing.T) {
 		t.Errorf("rcode = %d, want NOERROR", resp.Rcode)
 	}
 
-	if len(resp.Answer) != 0 {
-		t.Errorf("expected NODATA (0 answers), got %d", len(resp.Answer))
+	if len(resp.Answer) != 1 {
+		t.Fatalf("expected 1 sinkhole answer, got %d", len(resp.Answer))
+	}
+
+	aaaa, ok := resp.Answer[0].(*dns.AAAA)
+	if !ok || !aaaa.AAAA.Equal(net.IPv6zero) {
+		t.Errorf("expected :: sinkhole answer, got %v", resp.Answer[0])
 	}
 }
 

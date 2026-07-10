@@ -121,8 +121,10 @@ assert_blocked() {
 # qname. Guards against the dual-stack false positive where an unmatched AAAA of
 # an IP-allowlisted host was sinkholed and paged.
 assert_no_dns_block() {
-  local qname="$1"
-  if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep -q "$qname"; then
+  local qname="$1" re
+  re="qname=${qname//./\\.}( |$)" # exact qname; a search-suffixed variant must not match
+  sleep 2                         # let a would-be AAAA block log flush before asserting its absence
+  if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep -Eq "$re"; then
     dump_logs
     fail "false-positive dns.blocked logged for $qname"
   fi
@@ -133,9 +135,10 @@ assert_no_dns_block() {
 # event for qname carrying alert=true. Guards against a genuine block silently
 # losing its notification (false negative) if a producer stops flagging alerts.
 assert_dns_block_alerts() {
-  local qname="$1"
+  local qname="$1" re
+  re="qname=${qname//./\\.}( |$)"
   for _ in $(seq 1 10); do
-    if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep "$qname" | grep -q "alert=true"; then
+    if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep -E "$re" | grep -q "alert=true"; then
       log "OK: dns.blocked for $qname is alert-flagged"
       return 0
     fi
