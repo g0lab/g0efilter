@@ -751,11 +751,19 @@ func TestDecisionLogLevels(t *testing.T) {
 		t.Errorf("blocked connection must log at WARN, got: %s", buf.String())
 	}
 
+	if !strings.Contains(buf.String(), `"alert":true`) {
+		t.Errorf("blocked connection must flag an alert, got: %s", buf.String())
+	}
+
 	buf, opts = newCapture()
 	logAuditedConnection(opts, "https", "not-allowlisted", "evil.com", conn1, "1.2.3.4", 443)
 
 	if !strings.Contains(buf.String(), `"level":"WARN"`) {
 		t.Errorf("audited connection must log at WARN, got: %s", buf.String())
+	}
+
+	if strings.Contains(buf.String(), `"alert":true`) {
+		t.Errorf("audited (would-be-block) connection must not flag an alert, got: %s", buf.String())
 	}
 
 	buf, opts = newCapture()

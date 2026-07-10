@@ -779,6 +779,10 @@ func logPolicyViolation(
 	fields := baseLogFields(component, action, identifier, sourceIP, sourcePort)
 	fields = append(fields, "reason", reason)
 
+	if action == actions.ActionBlocked {
+		fields = append(fields, actions.KeyAlert, true)
+	}
+
 	if destIP != "" {
 		flowID := actions.FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
 		fields = append(fields,

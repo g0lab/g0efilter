@@ -542,7 +542,7 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 		shipToDashboard(z.poster, z.hostname, z.version, record.Time, record.Message, act, attrs)
 	}
 
-	if z.notifier != nil && act == actions.ActionBlocked {
+	if z.notifier != nil && shouldAlert(attrs) {
 		handleBlockedAlert(ctx, z.notifier, attrs)
 	}
 
@@ -600,6 +600,19 @@ func shouldShipToDashboard(act string, attrs map[string]any) bool {
 	return true
 }
 
+// shouldAlert reports whether a record is a genuine enforcement event that
+// warrants a notification. Producers mark these with alert=true; the terminal
+// action label (BLOCKED/ALLOWED/AUDIT) drives logging and the dashboard, not paging.
+func shouldAlert(attrs map[string]any) bool {
+	if v, ok := attrs[actions.KeyAlert]; ok {
+		b, _ := v.(bool)
+
+		return b
+	}
+
+	return false
+}
+
 func extractAction(attrs map[string]any) string {
 	if v, ok := attrs[keyAction]; ok {
 		return strings.ToUpper(fmt.Sprint(v))
@@ -645,8 +658,8 @@ func shipToDashboard(
 	}
 }
 
-// handleBlockedAlert processes BLOCKED events and sends notifications.
-// The caller must ensure act == "BLOCKED" before calling.
+// handleBlockedAlert builds and sends a notification for an alert-flagged event.
+// The caller must ensure the record set alert=true before calling.
 func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs map[string]any) {
 	// Extract detailed connection information
 	info := alerting.BlockedConnectionInfo{

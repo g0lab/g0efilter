@@ -2,11 +2,47 @@
 package filter
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
 )
+
+// startTestUpstream runs a UDP DNS server answering from records keyed by
+// "<qname>/<qtype>" (e.g. "host.example./AAAA"). It returns the listen address
+// for handler.upstreams.
+func startTestUpstream(t *testing.T, records map[string][]dns.RR) string {
+	t.Helper()
+
+	var lc net.ListenConfig
+
+	pc, err := lc.ListenPacket(context.Background(), "udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen upstream: %v", err)
+	}
+
+	srv := &dns.Server{PacketConn: pc, Handler: dns.HandlerFunc(func(w dns.ResponseWriter, r *dns.Msg) {
+		reply := new(dns.Msg)
+		reply.SetReply(r)
+
+		if len(r.Question) > 0 {
+			q := r.Question[0]
+			reply.Answer = records[q.Name+"/"+typeString(q.Qtype)]
+		}
+
+		_ = w.WriteMsg(reply)
+	})} //nolint:exhaustruct
+
+	go func() { _ = srv.ActivateAndServe() }()
+
+	t.Cleanup(func() { _ = srv.Shutdown() })
+
+	return pc.LocalAddr().String()
+}
 
 func TestIPAllowlistContains(t *testing.T) {
 	t.Parallel()
@@ -120,5 +156,138 @@ func TestResolveViaIPAllowlistNoIPsSkips(t *testing.T) {
 
 	if len(writer.responses) != 0 {
 		t.Errorf("expected no response written, got %d", len(writer.responses))
+	}
+}
+
+// TestSiblingResolvesToAllowlistedIP proves an AAAA miss consults the A family
+// (and vice versa) so a dual-stack host allowlisted by one family is reachable.
+func TestSiblingResolvesToAllowlistedIP(t *testing.T) {
+	t.Parallel()
+
+	name := "dualstack.example."
+	up := startTestUpstream(t, map[string][]dns.RR{
+		name + "/A":    {answerA(name, "40.89.244.232", 60)},
+		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
+	})
+
+	handler := createDNSHandler(nil, Options{}) //nolint:exhaustruct
+	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
+	handler.upstreams = []string{up}
+
+	if !handler.siblingResolvesToAllowlistedIP("dualstack.example", dns.TypeAAAA) {
+		t.Error("AAAA query: expected sibling A to be allowlisted")
+	}
+
+	if handler.siblingResolvesToAllowlistedIP("dualstack.example", dns.TypeA) {
+		t.Error("A query: sibling AAAA is not allowlisted, want false")
+	}
+
+	if handler.siblingResolvesToAllowlistedIP("dualstack.example", dns.TypeMX) {
+		t.Error("non-address qtype has no sibling, want false")
+	}
+}
+
+// TestResolveViaIPAllowlistSiblingNoData proves the false-positive fix: an AAAA
+// probe for an IPv4-only allowlisted host is answered NODATA (NOERROR, no
+// records), not sinkholed, so no BLOCKED alert fires.
+func TestResolveViaIPAllowlistSiblingNoData(t *testing.T) {
+	t.Parallel()
+
+	name := "dualstack.example."
+	up := startTestUpstream(t, map[string][]dns.RR{
+		name + "/A":    {answerA(name, "40.89.244.232", 60)},
+		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
+	})
+
+	handler := createDNSHandler(nil, Options{}) //nolint:exhaustruct
+	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
+	handler.upstreams = []string{up}
+
+	writer := &mockDNSResponseWriter{responses: make([]*dns.Msg, 0)} //nolint:exhaustruct
+	msg := new(dns.Msg)
+	msg.SetQuestion(name, dns.TypeAAAA)
+
+	if !handler.resolveViaIPAllowlist(nil, writer, msg, "dualstack.example", dns.TypeAAAA, "1.1.1.1", 1234, "flow") {
+		t.Fatal("expected AAAA to be handled via sibling IP allowlist")
+	}
+
+	if len(writer.responses) != 1 {
+		t.Fatalf("expected 1 response, got %d", len(writer.responses))
+	}
+
+	resp := writer.responses[0]
+	if resp.Rcode != dns.RcodeSuccess {
+		t.Errorf("rcode = %d, want NOERROR", resp.Rcode)
+	}
+
+	if len(resp.Answer) != 0 {
+		t.Errorf("expected NODATA (0 answers), got %d", len(resp.Answer))
+	}
+}
+
+// TestHandleAAAASiblingLogsAllowedNotBlocked drives the full handler and asserts
+// the dual-stack AAAA probe logs ALLOWED, never the BLOCKED event that would
+// trigger a notification.
+func TestHandleAAAASiblingLogsAllowedNotBlocked(t *testing.T) {
+	t.Parallel()
+
+	name := "dualstack.example."
+	up := startTestUpstream(t, map[string][]dns.RR{
+		name + "/A":    {answerA(name, "40.89.244.232", 60)},
+		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
+	})
+
+	var buf bytes.Buffer
+
+	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))}) //nolint:exhaustruct
+	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
+	handler.upstreams = []string{up}
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(name, dns.TypeAAAA)
+	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg) //nolint:exhaustruct
+
+	logged := buf.String()
+	if strings.Contains(logged, "dns.blocked") || strings.Contains(logged, `"action":"BLOCKED"`) {
+		t.Errorf("dual-stack AAAA must not emit a BLOCKED event, got: %s", logged)
+	}
+
+	if strings.Contains(logged, `"alert":true`) {
+		t.Errorf("benign sibling sinkhole must not flag an alert, got: %s", logged)
+	}
+
+	if !strings.Contains(logged, "ip-allowlisted-other-family") {
+		t.Errorf("expected ip-allowlisted-other-family note, got: %s", logged)
+	}
+}
+
+// TestHandleAAAANeitherFamilyBlocks proves a genuine block still alerts: when no
+// family resolves to an allowlisted IP the AAAA query is sinkholed and BLOCKED.
+func TestHandleAAAANeitherFamilyBlocks(t *testing.T) {
+	t.Parallel()
+
+	name := "evil.example."
+	up := startTestUpstream(t, map[string][]dns.RR{
+		name + "/A":    {answerA(name, "203.0.113.7", 60)},
+		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
+	})
+
+	var buf bytes.Buffer
+
+	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))}) //nolint:exhaustruct
+	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
+	handler.upstreams = []string{up}
+
+	msg := new(dns.Msg)
+	msg.SetQuestion(name, dns.TypeAAAA)
+	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg) //nolint:exhaustruct
+
+	logged := buf.String()
+	if !strings.Contains(logged, "dns.blocked") {
+		t.Errorf("expected dns.blocked for a domain with no allowlisted IP, got: %s", logged)
+	}
+
+	if !strings.Contains(logged, `"alert":true`) {
+		t.Errorf("genuine block must flag an alert, got: %s", logged)
 	}
 }

@@ -17,3 +17,9 @@ const (
 	// allowed domains are pushed into a kernel timeout set and everything else drops.
 	ModeDNSStrict = "dns-strict"
 )
+
+// KeyAlert is the structured-log attribute a producer sets to true to mark a
+// record as a genuine enforcement event worth a notification. Alerting keys off
+// this flag, not the action label, so audit-mode or benign events that carry a
+// block-shaped action never page.
+const KeyAlert = "alert"

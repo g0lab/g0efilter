@@ -13,6 +13,10 @@ FILTER_MODE="${FILTER_MODE:-https}"
 log()  { echo "[e2e] $*"; }
 fail() { echo "[e2e] ERROR: $*" >&2; exit 1; }
 
+# g0efilter's console logger colorizes output, so a key and value are split by an
+# ANSI reset (alert=<ESC>true). Strip escapes before grepping structured fields.
+strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*m//g"; }
+
 # Baseline for reload detection: phases run as separate processes, so capture the
 # current count at source time (0 when the stack isn't up yet).
 RELOAD_BASE=$($COMPOSE logs g0efilter 2>/dev/null | grep -c "policy.applied" || true)
@@ -111,6 +115,34 @@ assert_blocked() {
     fail "$url was allowed but should be blocked"
   fi
   log "OK: $url blocked"
+}
+
+# assert_no_dns_block <qname>: fail if g0efilter logged a dns.blocked event for
+# qname. Guards against the dual-stack false positive where an unmatched AAAA of
+# an IP-allowlisted host was sinkholed and paged.
+assert_no_dns_block() {
+  local qname="$1"
+  if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep -q "$qname"; then
+    dump_logs
+    fail "false-positive dns.blocked logged for $qname"
+  fi
+  log "OK: no dns.blocked logged for $qname"
+}
+
+# assert_dns_block_alerts <qname>: fail unless g0efilter logged a dns.blocked
+# event for qname carrying alert=true. Guards against a genuine block silently
+# losing its notification (false negative) if a producer stops flagging alerts.
+assert_dns_block_alerts() {
+  local qname="$1"
+  for _ in $(seq 1 10); do
+    if $COMPOSE logs g0efilter 2>/dev/null | strip_ansi | grep "dns.blocked" | grep "$qname" | grep -q "alert=true"; then
+      log "OK: dns.blocked for $qname is alert-flagged"
+      return 0
+    fi
+    sleep 1
+  done
+  dump_logs
+  fail "expected an alert-flagged dns.blocked for $qname (missed alert / false negative)"
 }
 
 # wait_for_policy_reload: g0efilter polls the policy file every 5s. Waits for a

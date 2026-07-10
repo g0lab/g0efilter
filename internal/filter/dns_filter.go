@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/internal/actions"
 	"github.com/g0lab/g0efilter/internal/netutil"
 	"github.com/miekg/dns"
 )
@@ -445,7 +446,8 @@ func (handler *dnsHandler) blockExfilResponse(
 }
 
 // dnsLogFields builds the shared decision-log fields for DNS queries, including
-// process attribution when enabled.
+// process attribution when enabled. BLOCKED records are flagged for alerting;
+// ALLOWED/AUDIT records are not.
 func (handler *dnsHandler) dnsLogFields(
 	action, qname string,
 	qtype uint16,
@@ -465,6 +467,10 @@ func (handler *dnsHandler) dnsLogFields(
 		"source_port", remotePort,
 		"flow_id", flowID,
 	)
+
+	if action == actions.ActionBlocked {
+		fields = append(fields, actions.KeyAlert, true)
+	}
 
 	return append(fields, procFields(handler.opts, remoteAddr, remotePort, "udp")...)
 }
@@ -654,6 +660,16 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 
 	kept := handler.filterToAllowlistedIPs(resp)
 	if len(kept) == 0 {
+		// No allowlisted IP for this record type. If the domain reaches an
+		// allowlisted IP via the other address family (e.g. an AAAA probe for an
+		// IPv4-only allowlisted host), the sinkhole here is expected: answer
+		// NODATA rather than raising a false BLOCKED alert.
+		if handler.siblingResolvesToAllowlistedIP(qname, qtype) {
+			handler.answerNoData(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
+
+			return true
+		}
+
 		return false
 	}
 
@@ -670,6 +686,61 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 	_ = writer.WriteMsg(reply)
 
 	return true
+}
+
+// siblingResolvesToAllowlistedIP reports whether qname resolves to an allowlisted
+// IP in the other address family (A<->AAAA). A per-family sinkhole stays silent
+// when the domain is still reachable, so a dual-stack client's unmatched query
+// does not raise a false BLOCKED alert.
+func (handler *dnsHandler) siblingResolvesToAllowlistedIP(qname string, qtype uint16) bool {
+	sibling := siblingQtype(qtype)
+	if sibling == 0 {
+		return false
+	}
+
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(qname), sibling)
+
+	resp, err := handler.forward(req)
+	if err != nil || resp == nil {
+		return false
+	}
+
+	return len(handler.filterToAllowlistedIPs(resp)) > 0
+}
+
+func siblingQtype(qtype uint16) uint16 {
+	switch qtype {
+	case dns.TypeA:
+		return dns.TypeAAAA
+	case dns.TypeAAAA:
+		return dns.TypeA
+	default:
+		return 0
+	}
+}
+
+// answerNoData replies NOERROR with no records: the domain is reachable via the
+// other address family, so this record type simply has nothing to return.
+func (handler *dnsHandler) answerNoData(
+	lg *slog.Logger,
+	writer dns.ResponseWriter,
+	request *dns.Msg,
+	qname string,
+	qtype uint16,
+	remoteAddr string,
+	remotePort int,
+	flowID string,
+) {
+	if lg != nil {
+		fields := handler.dnsLogFields("ALLOWED", qname, qtype, remoteAddr, remotePort, flowID)
+		fields = append(fields, "note", "ip-allowlisted-other-family")
+		lg.Info("dns.allowed", fields...)
+	}
+
+	reply := new(dns.Msg)
+	reply.SetReply(request)
+	_ = writer.WriteMsg(reply)
 }
 
 // filterToAllowlistedIPs keeps only the A/AAAA answer records whose address is in
