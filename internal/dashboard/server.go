@@ -66,10 +66,9 @@ type Config struct {
 	// cannot be spoofed to bypass per-IP throttling.
 	TrustedProxyCIDRs []string
 
-	// Log persistence (Phase 6): when DBPath is set and LogPersist is true,
-	// logs are stored in SQLite with retention instead of the memory ring.
-	LogPersist   bool
-	LogRetention int // max rows retained (default 100000)
+	// LogRetention caps rows kept when logs are persisted (DBPath set); oldest
+	// are pruned beyond it (default 100000).
+	LogRetention int
 
 	// Fleet management (Phase 7): opt-in instance/group/policy control plane.
 	FleetEnabled bool

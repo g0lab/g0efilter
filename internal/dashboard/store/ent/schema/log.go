@@ -8,7 +8,7 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
-// LogEvent is a persisted log event (enabled via LOG_PERSIST). data holds the
+// LogEvent is a persisted log event (stored when DB_PATH is set). data holds the
 // full LogEntry as JSON; search is a lowercased haystack for substring filtering.
 // Named LogEvent (not Log) to avoid Ent's predeclared "Log" identifier; the
 // table is still "logs".

@@ -12,28 +12,21 @@ import (
 var (
 	errNoActiveAPIKeys = errors.New(
 		"no active API keys: set API_KEY, or create a key in the dashboard before removing it")
-	errLogPersistNeedsDB = errors.New("LOG_PERSIST requires DB_PATH")
-	errFleetNeedsDB      = errors.New("FLEET_ENABLED requires DB_PATH")
+	errFleetNeedsDB = errors.New("FLEET_ENABLED requires DB_PATH")
 )
 
 // wireStores swaps the in-memory defaults for SQLite-backed stores when
 // DB_PATH is configured. Migrations are applied before returning, so a
 // failure here must abort startup. The returned func closes the database.
-//
-//nolint:cyclop,funlen // linear sequence of guarded store initializations
 func (s *Server) wireStores(ctx context.Context, cfg Config) (func(), error) {
 	if cfg.DBPath == "" {
-		// Persistent logs and fleet management have no in-memory fallback.
-		if cfg.LogPersist {
-			return nil, errLogPersistNeedsDB
-		}
-
+		// Fleet management has no in-memory fallback; logs fall back to the ring.
 		if cfg.FleetEnabled {
 			return nil, errFleetNeedsDB
 		}
 
 		s.logger.Warn("dashboard.ephemeral_stores",
-			"msg", "DB_PATH not set; sessions, API keys and unblocks reset on restart",
+			"msg", "DB_PATH not set; sessions, API keys, unblocks and logs reset on restart",
 		)
 
 		return func() {}, nil
@@ -74,10 +67,8 @@ func (s *Server) wireStores(ctx context.Context, cfg Config) (func(), error) {
 	s.sessions = store.NewSessionStore(client, s.logger)
 	s.users = store.NewUserStore(client, s.logger)
 
-	if cfg.LogPersist {
-		s.store = store.NewLogStore(client, cfg.LogRetention)
-		s.logger.Info("dashboard.logs_persistent", "retention", cfg.LogRetention)
-	}
+	s.store = store.NewLogStore(client, cfg.LogRetention)
+	s.logger.Info("dashboard.logs_persistent", "retention", cfg.LogRetention)
 
 	if cfg.FleetEnabled {
 		s.fleet = store.NewFleetStore(client, s.logger)

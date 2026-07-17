@@ -22,7 +22,7 @@ const (
 )
 
 // LogStore is an Ent-backed implementation of the dashboard LogStore interface,
-// used when LOG_PERSIST is enabled. Pruning is amortized (every logPruneEvery
+// used when DB_PATH is set. Pruning is amortized (every logPruneEvery
 // inserts), so the row count settles around `retention` but can transiently
 // exceed it by up to logPruneEvery-1 rows between prunes.
 type LogStore struct {

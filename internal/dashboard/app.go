@@ -299,7 +299,6 @@ func buildConfig(version string) Config {
 
 		CORSAllowedOrigins: getenvList("CORS_ALLOWED_ORIGINS"),
 
-		LogPersist:   getenvBool("LOG_PERSIST", false),
 		LogRetention: getenvInt("LOG_RETENTION", 0),
 
 		FleetEnabled: getenvBool("FLEET_ENABLED", false),

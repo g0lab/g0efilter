@@ -21,8 +21,7 @@ stack_up \
   DASHBOARD_AUTH_MODE=session \
   DASHBOARD_ADMIN_PASSWORD_HASH="$ADMIN_HASH" \
   DASHBOARD_COOKIE_SECURE=false \
-  DASHBOARD_DB_PATH=/var/lib/g0efilter/dashboard.db \
-  DASHBOARD_LOG_PERSIST=true \
+  DASHBOARD_DB_PATH=/app/data/dashboard.db \
   DASHBOARD_FLEET_ENABLED=true \
   DASHBOARD_CORS_ALLOWED_ORIGINS=https://ui.example
 wait_ready

@@ -62,9 +62,8 @@
 | `JWT_USERNAME_CLAIM` | Claim used as the principal in `jwt` mode | `sub` |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Optional `iss` / `aud` values required in `jwt` mode | unset |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API (credentials enabled; `*` not allowed). Empty = same-origin only | unset |
-| `DB_PATH` | SQLite file persisting sessions, API keys, unblock state (and logs/fleet if enabled). Needs a writable volume (container is read-only). Unset = in-memory, reset on restart | unset |
-| `LOG_PERSIST` | Store traffic logs in SQLite (requires `DB_PATH`) instead of the in-memory ring buffer | `false` |
-| `LOG_RETENTION` | Max persisted log rows before oldest are pruned | `100000` |
+| `DB_PATH` | SQLite file persisting sessions, API keys, unblock state, traffic logs (and fleet if enabled). Needs a writable volume (container is read-only). Unset = in-memory, reset on restart | unset |
+| `LOG_RETENTION` | Max persisted log rows before oldest are pruned (only when `DB_PATH` is set) | `100000` |
 | `FLEET_ENABLED` | Enable fleet management (instances/groups/policy sync; requires `DB_PATH`) | `false` |
 
 #### Dashboard authentication
@@ -143,6 +142,7 @@ and migration status.
 
 #### Persistent logs (optional)
 
-By default traffic logs live in an in-memory ring buffer (`BUFFER_SIZE`). Set
-`LOG_PERSIST=true` (requires `DB_PATH`) to store them in SQLite with
-`LOG_RETENTION` row retention, so history survives restarts.
+Without `DB_PATH`, traffic logs live in an in-memory ring buffer (`BUFFER_SIZE`)
+and reset on restart. Set `DB_PATH` and they are stored in SQLite with
+`LOG_RETENTION` row retention (oldest pruned beyond it), so history survives
+restarts alongside the other persistent state.
