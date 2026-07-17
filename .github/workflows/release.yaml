@@ -35,6 +35,18 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # GoReleaser's before-hooks build the dashboard UI (pnpm), so the release
+      # runner needs Node + pnpm just like the UI CI job.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+
       - name: go mod tidy check
         run: |
           go mod tidy

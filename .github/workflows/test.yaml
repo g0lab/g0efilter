@@ -4,6 +4,9 @@ name: Tests
 on:
   workflow_dispatch:
 
+  schedule:
+    - cron: '0 5 * * *'
+
   pull_request:
     branches:
       - main
@@ -13,6 +16,8 @@ on:
       - 'tests/e2e/**'
       - 'scripts/**'
       - 'examples/build/**'
+      - 'examples/.env'
+      - 'examples/.env.dashboard'
       - 'go.mod'
       - 'go.sum'
 
@@ -62,6 +67,7 @@ jobs:
           - {mode: https, scenario: learning, phases: "08", skip_up: "1"}
           - {mode: https, scenario: audit, phases: "10", skip_up: "1"}
           - {mode: https, scenario: resources, phases: "11", skip_up: "1"}
+          - {mode: https, scenario: dashboard, phases: "14", skip_up: "1"}
           - {mode: dns, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
           - {mode: dns, scenario: load, phases: "12", skip_up: "0"}
           - {mode: dns, scenario: learning, phases: "08", skip_up: "1"}
@@ -85,9 +91,29 @@ jobs:
       - name: Load images
         run: docker load -i e2e-images.tar.gz
 
+      - name: Set up pnpm for dashboard browser E2E
+        if: matrix.scenario == 'dashboard'
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node for dashboard browser E2E
+        if: matrix.scenario == 'dashboard'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+
+      - name: Install dashboard browser E2E dependencies
+        if: matrix.scenario == 'dashboard'
+        working-directory: internal/dashboard/ui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
       - name: Run e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
         env:
           FILTER_MODE: ${{ matrix.mode }}
           E2E_SKIP_INITIAL_UP: ${{ matrix.skip_up }}
           E2E_NO_BUILD: "1"
+          E2E_BROWSER: ${{ matrix.scenario == 'dashboard' && '1' || '0' }}
         run: scripts/e2e.sh ${{ matrix.phases }}

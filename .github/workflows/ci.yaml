@@ -11,6 +11,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'scripts/test-go.sh'
+      - 'scripts/test-ui.sh'
       - 'go.mod'
       - 'go.sum'
 
@@ -19,6 +20,7 @@ on:
       - 'cmd/**'
       - 'internal/**'
       - 'scripts/test-go.sh'
+      - 'scripts/test-ui.sh'
       - 'go.mod'
       - 'go.sum'
 
@@ -67,3 +69,22 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
+
+  ui:
+    name: UI (type-check, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+
+      - name: Run UI test suite
+        run: scripts/test-ui.sh
