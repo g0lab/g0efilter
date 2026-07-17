@@ -41,17 +41,27 @@ Run the checks and tests that match the files you touched.
 ### Go
 
 ```sh
-scripts/test-go.sh                    # go mod tidy check, vet, race + coverage
+scripts/test-go.sh                    # tidy, ent + migration no-diff, vet, race + coverage
 golangci-lint run --timeout=10m ./...
 ```
 
-`scripts/test-go.sh` fails if `go mod tidy` changes `go.mod` or `go.sum`, so make sure any such changes are committed and expected.
+`scripts/test-go.sh` also fails if `go.mod`/`go.sum` aren't tidy, if the generated Ent client is stale, or if the committed migrations don't match the schema, so make sure any such changes are committed and expected. After editing a DB schema in `internal/dashboard/store/ent/schema/`, run `scripts/gen-migration.sh <name>` to regenerate the client and migration.
 
 ### Action
 
 ```sh
 scripts/test-action.sh                # node --check, unit tests, setup.sh checks
 ```
+
+### Dashboard UI
+
+Only when `internal/dashboard/ui/` changes. Requires Node 24 + pnpm.
+
+```sh
+scripts/test-ui.sh                    # svelte-check, eslint, build + dist no-diff
+```
+
+`scripts/test-ui.sh` fails if the embedded `dist/` doesn't match a fresh build, so rebuild and commit `dist/` after changing `ui/src/`.
 
 ### Docker/e2e
 

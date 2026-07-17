@@ -21,6 +21,12 @@ golangci-lint run --timeout=10m ./...
 scripts/test-action.sh
 ```
 
+### Dashboard UI
+
+```sh
+scripts/test-ui.sh
+```
+
 ### Docker/e2e
 
 ```sh
