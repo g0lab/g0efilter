@@ -32,6 +32,8 @@ services:
     security_opt:
       - no-new-privileges
     read_only: true
+    volumes:
+      - g0efilter-dashboard-data:/app/data
     env_file:
       - .env.dashboard
     network_mode: "service:g0efilter"
@@ -41,3 +43,6 @@ services:
     image: docker.io/alpine/curl:latest
     command: sh -c "sleep infinity"
     network_mode: "service:g0efilter"
+
+volumes:
+  g0efilter-dashboard-data:
