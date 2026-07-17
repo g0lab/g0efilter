@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
-          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
       - name: go mod tidy check
         run: |

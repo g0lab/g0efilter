@@ -6,7 +6,7 @@
 # dist/ builds and matches what's committed. Requires Node 24 + pnpm.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT/internal/dashboard/ui"
+cd "$ROOT/dashboard/ui"
 
 echo ">>> pnpm install (frozen lockfile)"
 pnpm install --frozen-lockfile

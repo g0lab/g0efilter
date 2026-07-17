@@ -21,7 +21,7 @@ go mod download
 echo ">>> pnpm (via corepack) + UI deps"
 corepack enable
 corepack prepare pnpm@11.12.0 --activate
-(cd internal/dashboard/ui && pnpm install --frozen-lockfile)
+(cd dashboard/ui && pnpm install --frozen-lockfile)
 
 cat <<'MSG'
 
@@ -33,6 +33,6 @@ g0efilter dev container ready.
   e2e (docker)       : scripts/e2e.sh            (FILTER_MODE=https)
   Go lint            : golangci-lint run ./...
   DB migration       : edit ent/schema, then scripts/gen-migration.sh <name>
-  UI type-check/lint : cd internal/dashboard/ui && pnpm check && pnpm lint
-  UI build (embed)   : cd internal/dashboard/ui && pnpm build
+  UI type-check/lint : cd dashboard/ui && pnpm check && pnpm lint
+  UI build (embed)   : cd dashboard/ui && pnpm build
 MSG

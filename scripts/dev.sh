@@ -17,7 +17,7 @@ if [ "${1:-}" = "--traffic" ]; then
   TRAFFIC=true
 fi
 
-UI_DIR="$ROOT/internal/dashboard/ui"
+UI_DIR="$ROOT/dashboard/ui"
 
 if [ ! -d "$UI_DIR/node_modules" ]; then
   echo ">>> installing UI deps (first run)"

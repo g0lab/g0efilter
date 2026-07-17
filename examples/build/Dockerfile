@@ -15,7 +15,7 @@ COPY . .
 ENV CGO_ENABLED=0 GOOS=linux
 RUN go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
-    -o /build/g0efilter ./cmd/g0efilter
+    -o /build/g0efilter ./agent
 
 # Stage 2: Runtime
 FROM alpine:3.24.1

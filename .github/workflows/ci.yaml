@@ -8,8 +8,9 @@ on:
     tags-ignore:
       - '**'
     paths:
-      - 'cmd/**'
-      - 'internal/**'
+      - 'agent/**'
+      - 'dashboard/**'
+      - 'shared/**'
       - 'scripts/test-go.sh'
       - 'scripts/test-ui.sh'
       - 'go.mod'
@@ -17,8 +18,9 @@ on:
 
   pull_request:
     paths:
-      - 'cmd/**'
-      - 'internal/**'
+      - 'agent/**'
+      - 'dashboard/**'
+      - 'shared/**'
       - 'scripts/test-go.sh'
       - 'scripts/test-ui.sh'
       - 'go.mod'
@@ -84,7 +86,7 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
-          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
       - name: Run UI test suite
         run: scripts/test-ui.sh

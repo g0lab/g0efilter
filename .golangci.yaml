@@ -18,7 +18,7 @@ linters:
       # Ent schema definitions are framework boilerplate (Fields/Edges/Indexes/
       # Annotations); the generated client is auto-excluded but the hand-written
       # schema and codegen entrypoint are not.
-      - path: internal/dashboard/store/ent
+      - path: dashboard/store/ent
         linters:
           - revive
   settings:

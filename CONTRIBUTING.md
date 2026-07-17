@@ -45,7 +45,7 @@ scripts/test-go.sh                    # tidy, ent + migration no-diff, vet, race
 golangci-lint run --timeout=10m ./...
 ```
 
-`scripts/test-go.sh` also fails if `go.mod`/`go.sum` aren't tidy, if the generated Ent client is stale, or if the committed migrations don't match the schema, so make sure any such changes are committed and expected. After editing a DB schema in `internal/dashboard/store/ent/schema/`, run `scripts/gen-migration.sh <name>` to regenerate the client and migration.
+`scripts/test-go.sh` also fails if `go.mod`/`go.sum` aren't tidy, if the generated Ent client is stale, or if the committed migrations don't match the schema, so make sure any such changes are committed and expected. After editing a DB schema in `dashboard/store/ent/schema/`, run `scripts/gen-migration.sh <name>` to regenerate the client and migration.
 
 ### Action
 
@@ -55,7 +55,7 @@ scripts/test-action.sh                # node --check, unit tests, setup.sh check
 
 ### Dashboard UI
 
-Only when `internal/dashboard/ui/` changes. Requires Node 24 + pnpm.
+Only when `dashboard/ui/` changes. Requires Node 24 + pnpm.
 
 ```sh
 scripts/test-ui.sh                    # svelte-check, eslint, build + dist no-diff

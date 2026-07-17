@@ -154,7 +154,7 @@ log "OK: SQLite migration and restart persistence"
 if [ "${E2E_BROWSER:-0}" = "1" ]; then
   log "[Browser] Run the Chromium dashboard smoke test"
   (
-    cd "$REPO_ROOT/internal/dashboard/ui"
+    cd "$REPO_ROOT/dashboard/ui"
     DASHBOARD_E2E_BASE_URL=http://127.0.0.1:8081 \
       DASHBOARD_E2E_API_KEY="$API_KEY" \
       DASHBOARD_E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" \

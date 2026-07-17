@@ -11,8 +11,9 @@ on:
     branches:
       - main
     paths:
-      - 'cmd/**'
-      - 'internal/**'
+      - 'agent/**'
+      - 'dashboard/**'
+      - 'shared/**'
       - 'tests/e2e/**'
       - 'scripts/**'
       - 'examples/build/**'
@@ -101,11 +102,11 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: internal/dashboard/ui/pnpm-lock.yaml
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
       - name: Install dashboard browser E2E dependencies
         if: matrix.scenario == 'dashboard'
-        working-directory: internal/dashboard/ui
+        working-directory: dashboard/ui
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium

@@ -15,7 +15,7 @@ The dedicated dashboard phase also has an opt-in real-browser smoke test. It
 requires Node 24, pnpm, and Playwright Chromium (CI installs these):
 
 ```sh
-cd internal/dashboard/ui && pnpm install --frozen-lockfile
+cd dashboard/ui && pnpm install --frozen-lockfile
 pnpm exec playwright install --with-deps chromium
 cd ../../..
 FILTER_MODE=https E2E_BROWSER=1 scripts/e2e.sh 14
