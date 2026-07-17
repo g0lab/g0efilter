@@ -15,7 +15,7 @@ import (
 // Serve443 starts the TLS HTTPS filter.
 func Serve443(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
-		opts.ListenAddr = ":8443"
+		opts.ListenAddr = ":65443"
 	}
 
 	opts.Denylist = NormalizePatterns(opts.Denylist)

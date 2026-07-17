@@ -8,8 +8,39 @@ import (
 	"time"
 )
 
-// Setting SO_MARK needs CAP_NET_ADMIN; without it the dial must still succeed
-// (unprivileged test/dev environments have no nftables rules to bypass anyway).
+func TestBypassMarkIsStableAndNonzero(t *testing.T) {
+	t.Parallel()
+
+	first := BypassMark()
+	if first == 0 {
+		t.Fatal("bypass mark must not be zero")
+	}
+
+	if second := BypassMark(); second != first {
+		t.Fatalf("bypass mark changed during process lifetime: %#x != %#x", first, second)
+	}
+}
+
+func TestRandomBypassMarkIsNonzeroAndVaries(t *testing.T) {
+	t.Parallel()
+
+	first := randomBypassMark()
+	for range 8 {
+		mark := randomBypassMark()
+		if mark == 0 {
+			t.Fatal("random bypass mark must not be zero")
+		}
+
+		if mark != first {
+			return
+		}
+	}
+
+	t.Fatal("random bypass mark repeated for every sample")
+}
+
+// Setting SO_MARK needs CAP_NET_ADMIN or CAP_NET_RAW on recent kernels;
+// without either capability the dial must still succeed.
 func TestMarkedDialerBestEffort(t *testing.T) {
 	t.Parallel()
 

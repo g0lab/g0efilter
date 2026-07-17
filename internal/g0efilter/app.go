@@ -164,9 +164,9 @@ func loadConfig() config {
 	//nolint:exhaustruct // learner is wired up in Run when learning mode is enabled
 	return config{
 		policyPath:          getenvDefault("POLICY_PATH", "/app/policy.yaml"),
-		httpPort:            getenvDefault("HTTP_PORT", "8080"),
-		httpsPort:           getenvDefault("HTTPS_PORT", "8443"),
-		dnsPort:             getenvDefault("DNS_PORT", "53"),
+		httpPort:            getenvDefault("HTTP_PORT", "65080"),
+		httpsPort:           getenvDefault("HTTPS_PORT", "65443"),
+		dnsPort:             getenvDefault("DNS_PORT", "65053"),
 		logLevel:            getenvDefault("LOG_LEVEL", "INFO"),
 		logFile:             getenvDefault("LOG_FILE", ""),
 		hostname:            getenvDefault("HOSTNAME", ""),

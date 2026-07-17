@@ -17,7 +17,7 @@ import (
 // Serve53 starts a DNS proxy server that filters requests based on an allowlist of domains.
 func Serve53(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
-		opts.ListenAddr = ":53"
+		opts.ListenAddr = ":65053"
 	}
 
 	handler := createDNSHandler(NormalizePatterns(allowlist), opts)
@@ -847,7 +847,7 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
 	udpClient := &dns.Client{
 		Net:     "udp",
 		Timeout: handler.timeout,
-		Dialer:  netutil.MarkedDNSDialer(handler.timeout), // SO_MARK=0x1 to bypass nft REDIRECT
+		Dialer:  netutil.MarkedDNSDialer(handler.timeout), // SO_MARK bypasses nft REDIRECT
 	}
 	tcpClient := &dns.Client{
 		Net:     "tcp",

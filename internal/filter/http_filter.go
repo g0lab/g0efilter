@@ -17,7 +17,7 @@ import (
 // Serve80 starts an HTTP Host-based egress filter.
 func Serve80(ctx context.Context, allowlist []string, opts Options) error {
 	if opts.ListenAddr == "" {
-		opts.ListenAddr = ":8080" // typical HTTP redirect port
+		opts.ListenAddr = ":65080"
 	}
 
 	opts.Denylist = NormalizePatterns(opts.Denylist)

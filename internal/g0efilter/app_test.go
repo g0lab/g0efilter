@@ -85,9 +85,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 	want := config{
 		policyPath:          "/app/policy.yaml",
-		httpPort:            "8080",
-		httpsPort:           "8443",
-		dnsPort:             "53",
+		httpPort:            "65080",
+		httpsPort:           "65443",
+		dnsPort:             "65053",
 		logLevel:            "INFO",
 		logFile:             "",
 		hostname:            "",

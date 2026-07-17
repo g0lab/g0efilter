@@ -2,10 +2,12 @@
 package nftables
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/g0lab/g0efilter/internal/actions"
+	"github.com/g0lab/g0efilter/internal/netutil"
 )
 
 // The SO_MARK bypass lets g0efilter's own polling escape the egress filter. It is
@@ -55,7 +57,7 @@ func assertBypassInEveryTable(t *testing.T, ruleset string, cfg RulesetConfig) {
 			verdict = "return"
 		}
 
-		want := "meta mark 0x1 " + verdict
+		want := fmt.Sprintf("meta mark 0x%x %s", netutil.BypassMark(), verdict)
 		if !strings.Contains(body, want) {
 			t.Errorf("cfg %+v: table %q missing bypass line %q\n%s", cfg, name, want, body)
 		}

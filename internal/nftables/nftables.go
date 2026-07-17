@@ -16,6 +16,7 @@ import (
 
 	"github.com/florianl/go-nflog/v2"
 	"github.com/g0lab/g0efilter/internal/actions"
+	"github.com/g0lab/g0efilter/internal/netutil"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 )
@@ -96,7 +97,7 @@ func splitByFamily(allowlist []string) ([]string, []string) {
 func ApplyNftRulesAuto(allowlist []string, httpsPortStr, httpPortStr string) error {
 	dnsPortStr := strings.TrimSpace(os.Getenv("DNS_PORT"))
 	if dnsPortStr == "" {
-		dnsPortStr = "53"
+		dnsPortStr = "65053"
 	}
 
 	return ApplyNftRules(allowlist, httpsPortStr, httpPortStr, dnsPortStr)
@@ -250,6 +251,10 @@ func setBlock(name, addrType, elements string) string {
 	)
 }
 
+func bypassRule(verdict string) string {
+	return fmt.Sprintf("meta mark 0x%x %s", netutil.BypassMark(), verdict)
+}
+
 // generateHTTPSFilterRulesAllow creates IPv4 filter rules for HTTPS default-allow (denylist) mode.
 func generateHTTPSFilterRulesAllow(allowSet, denySet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
@@ -264,8 +269,8 @@ table ip g0efilter_v4 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -282,8 +287,9 @@ table ip g0efilter_v4 {
         ip daddr @deny_daddr_v4 drop
     }
 }
-`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
+	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
 		setBlock("deny_daddr_v4", "ipv4_addr", denySet),
+		bypassRule("accept"),
 		httpPort, httpsPort)
 }
 
@@ -296,8 +302,8 @@ table ip g0efilter_nat_v4 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Return if allow-listed IP
         ip daddr @allow_daddr_v4 return
@@ -314,8 +320,9 @@ table ip g0efilter_nat_v4 {
         tcp dport 443 redirect to :%d
     }
 }
-`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
+	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
 		setBlock("deny_daddr_v4", "ipv4_addr", denySet),
+		bypassRule("return"),
 		httpPort, httpsPort)
 }
 
@@ -333,8 +340,8 @@ table ip6 g0efilter_v6 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -351,8 +358,9 @@ table ip6 g0efilter_v6 {
         ip6 daddr @deny_daddr_v6 drop
     }
 }
-`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
+	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
 		setBlock("deny_daddr_v6", "ipv6_addr", denySet),
+		bypassRule("accept"),
 		httpPort, httpsPort)
 }
 
@@ -364,8 +372,8 @@ table ip6 g0efilter_nat_v6 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Return if allow-listed IP
         ip6 daddr @allow_daddr_v6 return
@@ -382,8 +390,9 @@ table ip6 g0efilter_nat_v6 {
         tcp dport 443 redirect to :%d
     }
 }
-`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
+	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
 		setBlock("deny_daddr_v6", "ipv6_addr", denySet),
+		bypassRule("return"),
 		httpPort, httpsPort)
 }
 
@@ -402,8 +411,8 @@ table ip g0efilter_v4 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -420,8 +429,9 @@ table ip g0efilter_v4 {
         ip daddr @deny_daddr_v4 drop
     }
 }
-`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
+	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
 		setBlock("deny_daddr_v4", "ipv4_addr", denySet),
+		bypassRule("accept"),
 		dnsPort, dnsPort)
 }
 
@@ -439,8 +449,8 @@ table ip6 g0efilter_v6 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -457,8 +467,9 @@ table ip6 g0efilter_v6 {
         ip6 daddr @deny_daddr_v6 drop
     }
 }
-`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
+	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
 		setBlock("deny_daddr_v6", "ipv6_addr", denySet),
+		bypassRule("accept"),
 		dnsPort, dnsPort)
 }
 
@@ -483,8 +494,8 @@ table ip g0efilter_v4 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -509,7 +520,7 @@ table ip g0efilter_v4 {
         drop
     }
 }
-`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet), dnsPort, dnsPort)
+	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet), bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateDNSStrictFilterRulesV6 creates IPv6 filter rules for dns-strict mode.
@@ -531,8 +542,8 @@ table ip6 g0efilter_v6 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -560,7 +571,7 @@ table ip6 g0efilter_v6 {
         drop
     }
 }
-`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet), dnsPort, dnsPort)
+	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet), bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateDNSFilterRules creates nftables filter rules for DNS mode that block non-allowlisted traffic.
@@ -582,8 +593,8 @@ table ip g0efilter_v4 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -596,7 +607,7 @@ table ip g0efilter_v4 {
         icmp type echo-request ip daddr @allow_daddr_v4 accept
     }
 }
-`, allowSet, dnsPort, dnsPort)
+	`, allowSet, bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateHTTPSFilterRules creates nftables filter rules for HTTPS mode with logging and allowlist enforcement.
@@ -618,8 +629,8 @@ table ip g0efilter_v4 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -640,7 +651,7 @@ table ip g0efilter_v4 {
         drop
     }
 }
-`, allowSet, httpPort, httpsPort)
+	`, allowSet, bypassRule("accept"), httpPort, httpsPort)
 }
 
 // generateDNSNATRules creates nftables NAT rules that redirect all DNS traffic to the local DNS proxy.
@@ -650,8 +661,8 @@ table ip g0efilter_nat_v4 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Exempt direct access to the local DNS proxy
         ip daddr 127.0.0.1 udp dport 53 return
@@ -666,7 +677,7 @@ table ip g0efilter_nat_v4 {
         tcp dport 53  redirect to :%d
     }
 }
-`, dnsPort, dnsPort, dnsPort, dnsPort)
+	`, bypassRule("return"), dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
 // generateHTTPSNATRules creates nftables NAT rules that redirect HTTP/HTTPS to local proxies for non-allowlisted IPs.
@@ -682,8 +693,8 @@ table ip g0efilter_nat_v4 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Return if allow-listed IP
         ip daddr @allow_daddr_v4 return
@@ -697,7 +708,7 @@ table ip g0efilter_nat_v4 {
         tcp dport 443 redirect to :%d
     }
 }
-`, allowSet, httpPort, httpsPort)
+	`, allowSet, bypassRule("return"), httpPort, httpsPort)
 }
 
 // generateHTTPSFilterRulesV6 creates IPv6 nftables filter rules for HTTPS mode.
@@ -719,8 +730,8 @@ table ip6 g0efilter_v6 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -741,7 +752,7 @@ table ip6 g0efilter_v6 {
         drop
     }
 }
-`, allowSet, httpPort, httpsPort)
+	`, allowSet, bypassRule("accept"), httpPort, httpsPort)
 }
 
 // generateHTTPSNATRulesV6 creates IPv6 nftables NAT rules for HTTPS mode.
@@ -757,8 +768,8 @@ table ip6 g0efilter_nat_v6 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Return if allow-listed IP
         ip6 daddr @allow_daddr_v6 return
@@ -772,7 +783,7 @@ table ip6 g0efilter_nat_v6 {
         tcp dport 443 redirect to :%d
     }
 }
-`, allowSet, httpPort, httpsPort)
+	`, allowSet, bypassRule("return"), httpPort, httpsPort)
 }
 
 // generateDNSFilterRulesV6 creates IPv6 nftables filter rules for DNS mode.
@@ -794,8 +805,8 @@ table ip6 g0efilter_v6 {
         # Allow already established connections
         ct state established,related accept
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 accept
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Out-of-state packets (retransmits/RSTs on closed flows) aren't policy blocks.
         ct state invalid drop
@@ -808,7 +819,7 @@ table ip6 g0efilter_v6 {
         icmpv6 type echo-request ip6 daddr @allow_daddr_v6 accept
     }
 }
-`, allowSet, dnsPort, dnsPort)
+	`, allowSet, bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateDNSNATRulesV6 creates IPv6 nftables NAT rules for DNS mode.
@@ -818,8 +829,8 @@ table ip6 g0efilter_nat_v6 {
     chain output {
         type nat hook output priority -100;
 
-        # Bypass marked traffic (SO_MARK=0x1)
-        meta mark 0x1 return
+        # Bypass g0efilter's marked traffic
+        %s
 
         # Exempt direct access to the local DNS proxy
         ip6 daddr ::1 udp dport 53 return
@@ -834,7 +845,7 @@ table ip6 g0efilter_nat_v6 {
         tcp dport 53  redirect to :%d
     }
 }
-`, dnsPort, dnsPort, dnsPort, dnsPort)
+	`, bypassRule("return"), dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
 // GenerateNftRuleset generates a complete default-deny nftables ruleset for the specified
