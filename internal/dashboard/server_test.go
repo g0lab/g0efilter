@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -523,7 +525,9 @@ func TestProcessPayload(t *testing.T) {
 	})
 }
 
-// Helper function to create a test server.
+// Helper function to create a test server. AuthModeNone mirrors the
+// pre-auth reverse-proxy deployment model these route tests were written for;
+// session-mode behavior is covered in auth_test.go.
 func newTestServer() *Server {
 	logger := slog.New(slog.DiscardHandler)
 	cfg := Config{
@@ -532,6 +536,7 @@ func newTestServer() *Server {
 		ReadLimit:  50,
 		RateRPS:    100,
 		RateBurst:  200,
+		AuthMode:   AuthModeNone,
 	}
 
 	return newServer(logger, cfg)
@@ -810,9 +815,9 @@ func TestRequireAPIKey(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer()
-	handler := srv.requireAPIKey()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	handler := gin.New()
+	handler.Use(srv.requireAPIKey())
+	handler.POST("/api/v1/logs", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	t.Run("valid API key", func(t *testing.T) {
 		t.Parallel()
@@ -977,6 +982,7 @@ func TestSecurityHeaders(t *testing.T) {
 		wantSub string
 	}{
 		{"Content-Security-Policy", "default-src 'self'"},
+		{"Content-Security-Policy", "script-src 'self'; style-src 'self' 'unsafe-inline'"},
 		{"Content-Security-Policy", "frame-ancestors 'none'"},
 		{"X-Content-Type-Options", "nosniff"},
 		{"X-Frame-Options", "DENY"},
@@ -1127,6 +1133,7 @@ func TestBroadcasterMultipleClients(t *testing.T) {
 func TestMain(m *testing.M) {
 	// Suppress logger output during tests
 	slog.SetDefault(slog.New(slog.DiscardHandler))
+	gin.SetMode(gin.ReleaseMode)
 
 	os.Exit(m.Run())
 }

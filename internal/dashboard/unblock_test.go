@@ -192,7 +192,7 @@ func TestUnblockHandlers(t *testing.T) {
 			store:        newMemStore(100),
 			broadcaster:  newBroadcaster(),
 			unblockStore: newUnblockStore(),
-			apiKey:       "test-key",
+			apiKeys:      newMemAPIKeyStore("test-key"),
 			readLimit:    100,
 			rateLimiter:  newRateLimiter(50, 100),
 		}
@@ -548,7 +548,7 @@ func TestCreateUnblockHandler_OversizedBody(t *testing.T) {
 		store:        newMemStore(100),
 		broadcaster:  newBroadcaster(),
 		unblockStore: newUnblockStore(),
-		apiKey:       "test-key",
+		apiKeys:      newMemAPIKeyStore("test-key"),
 		readLimit:    100,
 		rateLimiter:  newRateLimiter(50, 100),
 	}
@@ -581,7 +581,7 @@ func TestCreateUnblockHandler_StoreFull(t *testing.T) {
 		store:        newMemStore(100),
 		broadcaster:  newBroadcaster(),
 		unblockStore: us,
-		apiKey:       "test-key",
+		apiKeys:      newMemAPIKeyStore("test-key"),
 		readLimit:    100,
 		rateLimiter:  newRateLimiter(50, 100),
 	}
@@ -633,7 +633,7 @@ func TestAckUnblockHandler_OversizedBody(t *testing.T) {
 		store:        newMemStore(100),
 		broadcaster:  newBroadcaster(),
 		unblockStore: newUnblockStore(),
-		apiKey:       "test-key",
+		apiKeys:      newMemAPIKeyStore("test-key"),
 		readLimit:    100,
 		rateLimiter:  newRateLimiter(50, 100),
 	}
@@ -661,7 +661,7 @@ func TestAckUnblockHandler_EmptyID(t *testing.T) {
 		store:        newMemStore(100),
 		broadcaster:  newBroadcaster(),
 		unblockStore: newUnblockStore(),
-		apiKey:       "test-key",
+		apiKeys:      newMemAPIKeyStore("test-key"),
 		readLimit:    100,
 		rateLimiter:  newRateLimiter(50, 100),
 	}
@@ -702,7 +702,7 @@ func TestCreateUnblockHandler_InvalidIP(t *testing.T) {
 		store:        newMemStore(100),
 		broadcaster:  newBroadcaster(),
 		unblockStore: newUnblockStore(),
-		apiKey:       "test-key",
+		apiKeys:      newMemAPIKeyStore("test-key"),
 		readLimit:    100,
 		rateLimiter:  newRateLimiter(50, 100),
 	}

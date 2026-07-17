@@ -49,10 +49,10 @@ func validateHTMLStructure(t *testing.T, bodyStr string) {
 		t.Error("Response should start with HTML doctype")
 	}
 
-	// Check for essential HTML elements
+	// The Svelte build ships a minimal shell; the app renders client-side.
 	requiredElements := []string{
 		"<html", "<head>", "<title>g0efilter dashboard</title>",
-		"<body>", "<header>", "<main>", "</html>",
+		"<body>", `<div id="app">`, "</html>",
 	}
 
 	for _, element := range requiredElements {
@@ -65,13 +65,18 @@ func validateHTMLStructure(t *testing.T, bodyStr string) {
 func validateHTMLContent(t *testing.T, bodyStr string) {
 	t.Helper()
 
-	// Check for CSS and JavaScript links (now external files)
-	if !strings.Contains(bodyStr, `href="style.css"`) {
-		t.Error("HTML should contain link to CSS file (style.css)")
+	// Hashed Vite script bundles are external; runtime Svelte style directives
+	// are covered by the browser E2E and the style-src policy.
+	if !strings.Contains(bodyStr, `src="/assets/`) {
+		t.Error("HTML should reference a hashed JS bundle under /assets/")
 	}
 
-	if !strings.Contains(bodyStr, `src="app.js"`) {
-		t.Error("HTML should contain link to JavaScript file (app.js)")
+	if !strings.Contains(bodyStr, `rel="stylesheet"`) {
+		t.Error("HTML should reference an external stylesheet")
+	}
+
+	if strings.Contains(bodyStr, "onclick=") || strings.Contains(bodyStr, "style=") {
+		t.Error("built HTML must not contain inline handlers or styles (CSP)")
 	}
 }
 

@@ -6,28 +6,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/g0lab/g0efilter/internal/dashboard/model"
 )
 
 // UnblockRequest represents a pending request to remove a block rule.
-//
-//nolint:tagliatelle // JSON uses snake_case for API compatibility
-type UnblockRequest struct {
-	ID             string    `json:"id"`
-	Type           string    `json:"type"` // "domain" or "ip"
-	Value          string    `json:"value"`
-	TargetHostname string    `json:"target_hostname"` // empty means "all"
-	CreatedAt      time.Time `json:"created_at"`
-}
+type UnblockRequest = model.UnblockRequest
 
 // CompletedUnblock records an unblock operation that has been acknowledged and applied.
-//
-//nolint:tagliatelle // JSON uses snake_case for API compatibility
-type CompletedUnblock struct {
-	Type           string    `json:"type"`
-	Value          string    `json:"value"`
-	TargetHostname string    `json:"target_hostname"`
-	CompletedAt    time.Time `json:"completed_at"`
-}
+type CompletedUnblock = model.CompletedUnblock
 
 // UnblockStore manages pending unblock requests with thread-safe operations.
 type UnblockStore interface {
@@ -59,14 +46,12 @@ func (s *memUnblockStore) Add(reqType, value, targetHostname string) string {
 
 	targetHostname = strings.ToLower(strings.TrimSpace(targetHostname))
 
-	// Check for duplicate pending requests (same type, value, and target)
 	for _, req := range s.requests {
 		if req.Type == reqType && req.Value == value && req.TargetHostname == targetHostname {
 			return req.ID
 		}
 	}
 
-	// Reject if at capacity
 	if len(s.requests) >= s.maxPending {
 		return ""
 	}
@@ -106,7 +91,6 @@ func (s *memUnblockStore) GetPendingForHost(hostname string) []UnblockRequest {
 
 	result := make([]UnblockRequest, 0, len(s.requests))
 	for _, req := range s.requests {
-		// Match if target is empty (all hosts) or matches specific hostname
 		if req.TargetHostname == "" || req.TargetHostname == hostname {
 			result = append(result, req)
 		}

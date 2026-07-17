@@ -49,19 +49,25 @@ func TestConfigHandler(t *testing.T) {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 
-	var resp map[string]float64
+	//nolint:tagliatelle // snake_case JSON API
+	var resp struct {
+		BufferSize   float64 `json:"buffer_size"`
+		ReadLimit    float64 `json:"read_limit"`
+		AuthMode     string  `json:"auth_mode"`
+		FleetEnabled bool    `json:"fleet_enabled"`
+	}
 
 	err := json.NewDecoder(w.Body).Decode(&resp)
 	if err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if resp["buffer_size"] != 100 {
-		t.Errorf("buffer_size = %v, want 100", resp["buffer_size"])
+	if resp.BufferSize != 100 {
+		t.Errorf("buffer_size = %v, want 100", resp.BufferSize)
 	}
 
-	if resp["read_limit"] != 50 {
-		t.Errorf("read_limit = %v, want 50", resp["read_limit"])
+	if resp.ReadLimit != 50 {
+		t.Errorf("read_limit = %v, want 50", resp.ReadLimit)
 	}
 }
 
@@ -476,6 +482,7 @@ func TestClearLogsHandler_BroadcastsCleared(t *testing.T) {
 	t.Parallel()
 
 	srv := newTestServer()
+
 	ch := srv.broadcaster.Add()
 
 	defer srv.broadcaster.Remove(ch)
@@ -496,6 +503,58 @@ func TestClearLogsHandler_BroadcastsCleared(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Error("no cleared event broadcast")
+	}
+}
+
+func TestUnblockHandlers_BroadcastStatusInvalidation(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+
+	ch := srv.broadcaster.Add()
+	defer srv.broadcaster.Remove(ch)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/unblocks",
+		strings.NewReader(`{"type":"domain","value":"example.com"}`))
+	w := httptest.NewRecorder()
+	srv.createUnblockHandler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create unblock = %d, want 201", w.Code)
+	}
+
+	select {
+	case msg := <-ch:
+		if string(msg) != `{"type":"unblock_status"}` {
+			t.Errorf("broadcast = %s, want unblock status invalidation", msg)
+		}
+	case <-time.After(time.Second):
+		t.Error("no unblock status invalidation broadcast")
+	}
+
+	var created map[string]string
+
+	err := json.Unmarshal(w.Body.Bytes(), &created)
+	if err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	ack := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/unblocks/ack",
+		strings.NewReader(`{"id":"`+created["id"]+`"}`))
+	ackRecorder := httptest.NewRecorder()
+	srv.ackUnblockHandler(ackRecorder, ack)
+
+	if ackRecorder.Code != http.StatusOK {
+		t.Fatalf("ack unblock = %d, want 200", ackRecorder.Code)
+	}
+
+	select {
+	case msg := <-ch:
+		if string(msg) != `{"type":"unblock_status"}` {
+			t.Errorf("ack broadcast = %s, want unblock status invalidation", msg)
+		}
+	case <-time.After(time.Second):
+		t.Error("no unblock status invalidation broadcast after ack")
 	}
 }
 

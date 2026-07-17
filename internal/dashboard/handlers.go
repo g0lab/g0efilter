@@ -18,18 +18,22 @@ const (
 	unblockTypeDomain = "domain"
 	unblockTypeIP     = "ip"
 
-	keyStatus  = "status"
-	keyPending = "pending"
-	keyHTTPS   = "https"
+	keyStatus   = "status"
+	keyPending  = "pending"
+	keyHTTPS    = "https"
+	keyAuthMode = "auth_mode"
 )
 
-// configHandler returns buffer and read-limit configuration for UI synchronisation.
+// configHandler returns buffer/read-limit config plus feature flags the UI
+// uses to gate navigation (fleet page, logout button).
 func (s *Server) configHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	err := json.NewEncoder(w).Encode(map[string]any{
-		"buffer_size": s.bufferSize,
-		"read_limit":  s.readLimit,
+		"buffer_size":   s.bufferSize,
+		"read_limit":    s.readLimit,
+		keyAuthMode:     s.authMode,
+		"fleet_enabled": s.fleetEnabled,
 	})
 	if err != nil {
 		s.logger.Error("failed to encode config response", "error", err)
@@ -302,7 +306,7 @@ func (s *Server) clearLogsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // unblockStatusHandler handles GET /api/v1/unblocks/status requests.
-// Returns pending and completed unblocks for UI polling (no API key required).
+// Returns a snapshot used for initial load and SSE reconnection recovery.
 func (s *Server) unblockStatusHandler(w http.ResponseWriter, _ *http.Request) {
 	pending := s.unblockStore.GetPending()
 	completed := s.unblockStore.GetCompleted()
@@ -409,6 +413,7 @@ func (s *Server) createUnblockHandler(w http.ResponseWriter, r *http.Request) {
 		"remote", r.RemoteAddr, "type", req.Type,
 		"value", value, "target_hostname", targetHost, "id", id,
 	)
+	s.broadcaster.Send([]byte(`{"type":"unblock_status"}`))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -466,6 +471,7 @@ func (s *Server) ackUnblockHandler(w http.ResponseWriter, r *http.Request) {
 		"remote", r.RemoteAddr,
 		"id", req.ID,
 	)
+	s.broadcaster.Send([]byte(`{"type":"unblock_status"}`))
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -481,7 +487,6 @@ func SanitizeSearchQuery(q string) string {
 		return q
 	}
 
-	// Limit query length
 	const maxQueryLength = 200
 
 	if len(q) > maxQueryLength {
