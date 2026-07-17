@@ -7,6 +7,10 @@ before:
   hooks:
     - go mod tidy
     - go generate ./...
+    # Build the dashboard UI so the embedded assets (go:embed ui/dist) are
+    # fresh in released binaries. Requires pnpm on the release runner.
+    - pnpm --dir internal/dashboard/ui install --frozen-lockfile
+    - pnpm --dir internal/dashboard/ui run build
 
 builds:
   - id: g0efilter
