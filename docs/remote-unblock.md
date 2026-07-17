@@ -2,6 +2,10 @@
 
 Administrators can unblock domains/IPs from the dashboard UI; g0efilter instances poll for pending requests and update their policy files.
 
+This is the compatibility transport. The fleet control-plane plan moves command
+delivery onto bounded long-poll reconciliation while retaining explicit REST
+acknowledgements; see [dashboard-control-plane.md](dashboard-control-plane.md).
+
 > [!WARNING]
 > Disabled by default. Only enable behind authentication middleware: `POST /api/v1/unblocks` must be protected (Authelia, Authentik, PocketID, ...) or anyone reaching the dashboard can modify your allowlist.
 

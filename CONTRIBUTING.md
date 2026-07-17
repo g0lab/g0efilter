@@ -62,6 +62,6 @@ FILTER_MODE=dns scripts/e2e.sh
 
 ## Security
 
-Please do not open a public issue for security vulnerabilities.
+Please do not open a public issue or PR for security vulnerabilities.
 
-If the repository has a security policy, follow the instructions in `SECURITY.md`. Otherwise, contact the maintainers privately with enough detail to understand and reproduce the issue.
+Follow the instructions in `SECURITY.md`.
