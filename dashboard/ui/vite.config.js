@@ -2,10 +2,20 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'node:path';
+import { writeFileSync } from 'node:fs';
+
+// dist/ is gitignored except a tracked .gitkeep that keeps `go:embed all:dist`
+// compiling on a clean checkout. emptyOutDir wipes it, so restore it post-build.
+const keepGitkeep = {
+  name: 'keep-dist-gitkeep',
+  closeBundle() {
+    writeFileSync(resolve(import.meta.dirname, 'dist/.gitkeep'), '');
+  },
+};
 
 export default defineConfig({
   // Tailwind must precede the Svelte plugin.
-  plugins: [tailwindcss(), svelte()],
+  plugins: [tailwindcss(), svelte(), keepGitkeep],
   resolve: {
     alias: { $lib: resolve(import.meta.dirname, 'src/lib') },
   },
