@@ -17,12 +17,9 @@ import (
 func requireUIBuilt(t *testing.T) {
 	t.Helper()
 
-	f, err := ui.Assets.Open("dist/index.html")
-	if err != nil {
+	if !ui.Built() {
 		t.Skip("dashboard UI not built (run pnpm build); skipping embed test")
 	}
-
-	_ = f.Close()
 }
 
 func TestIndexHandler(t *testing.T) {
