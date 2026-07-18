@@ -40,6 +40,7 @@ const (
 
 	defaultDialTimeout = 5000
 	defaultIdleTimeout = 600000
+	defaultMaxConns    = 4096
 	retryDelay         = 5 * time.Second
 
 	policyPollInterval = 5 * time.Second
@@ -153,6 +154,8 @@ type config struct {
 	dnsHardening        bool
 	dnsRateQPS          int
 	dnsRateBurst        int
+	maxConns            int
+	connMaxLifetime     int
 	procInfo            *procinfo.ProcProvider
 	enableRemoteUnblock bool
 	dashboardHost       string
@@ -179,6 +182,8 @@ func loadConfig() config {
 		dnsHardening:        strings.EqualFold(getenvDefault("DNS_HARDENING", "true"), "true"),
 		dnsRateQPS:          parseIntDefault(getenvDefault("DNS_RATE_QPS", ""), 0),
 		dnsRateBurst:        parseIntDefault(getenvDefault("DNS_RATE_BURST", ""), 0),
+		maxConns:            parseIntDefault(getenvDefault("MAX_CONNECTIONS", ""), defaultMaxConns),
+		connMaxLifetime:     parseIntDefault(getenvDefault("CONN_MAX_LIFETIME_MS", ""), defaultIdleTimeout),
 		enableRemoteUnblock: strings.EqualFold(getenvDefault("ENABLE_REMOTE_UNBLOCK", "false"), "true"),
 		dashboardHost:       strings.TrimSpace(getenvDefault("DASHBOARD_HOST", "")),
 		dashboardAPIKey:     strings.TrimSpace(getenvDefault("DASHBOARD_API_KEY", "")),
@@ -613,7 +618,8 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 	//nolint:exhaustruct
 	opts := filter.Options{
 		DialTimeout:  defaultDialTimeout,
-		IdleTimeout:  defaultIdleTimeout,
+		IdleTimeout:  cfg.connMaxLifetime,
+		MaxConns:     cfg.maxConns,
 		DropWithRST:  true,
 		Logger:       lg,
 		DefaultAllow: effectiveDefaultAllow(cfg, pol),

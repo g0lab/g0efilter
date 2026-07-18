@@ -96,6 +96,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 		learningMode:        false,
 		learner:             nil,
 		dnsHardening:        true,
+		maxConns:            defaultMaxConns,
+		connMaxLifetime:     defaultIdleTimeout,
 		enableRemoteUnblock: false,
 		dashboardHost:       "",
 		dashboardAPIKey:     "",
@@ -128,6 +130,8 @@ func TestLoadConfigCustomValues(t *testing.T) {
 	t.Setenv("UNBLOCK_POLL_INTERVAL", "30s")
 	t.Setenv("NOTIFICATION_HOST", "notify.example.com")
 	t.Setenv("NOTIFICATION_KEY", "nkey456")
+	t.Setenv("MAX_CONNECTIONS", "2000")
+	t.Setenv("CONN_MAX_LIFETIME_MS", "120000")
 
 	want := config{
 		policyPath:          "/custom/policy.yaml",
@@ -142,6 +146,8 @@ func TestLoadConfigCustomValues(t *testing.T) {
 		learningMode:        true,
 		learner:             nil,
 		dnsHardening:        false,
+		maxConns:            2000,
+		connMaxLifetime:     120000,
 		enableRemoteUnblock: true,
 		dashboardHost:       "dash.example.com",
 		dashboardAPIKey:     "secret123",

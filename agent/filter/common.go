@@ -46,7 +46,10 @@ var (
 type Options struct {
 	ListenAddr  string
 	DialTimeout int // ms
-	IdleTimeout int // ms
+	// IdleTimeout is applied as a single deadline at connect time, so it is a
+	// maximum connection lifetime rather than a true idle timeout (ms; 0 = none).
+	IdleTimeout int
+	MaxConns    int // max concurrent connections per listener (0 = unlimited)
 	DropWithRST bool
 	Logger      *slog.Logger
 
@@ -382,7 +385,8 @@ func newMarkedDialer(dialTimeout time.Duration) *net.Dialer {
 	return netutil.MarkedDialer(dialTimeout)
 }
 
-// setConnTimeouts applies idle timeout deadlines to both client and backend connections if configured.
+// setConnTimeouts caps a connection's lifetime: it sets a single absolute
+// deadline on both ends, not a refreshing idle timeout. 0 disables the cap.
 func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 	if opts.IdleTimeout > 0 {
 		timeout := time.Duration(opts.IdleTimeout) * time.Millisecond
@@ -391,76 +395,66 @@ func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 	}
 }
 
-// bidirectionalCopy copies data in both directions between connections, using zero-copy splice when possible.
+// bidirectionalCopy copies data in both directions between connections, using
+// zero-copy splice when possible. One direction runs in the caller's goroutine,
+// so an established connection uses two goroutines rather than three.
 func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
-	var wg sync.WaitGroup
-
-	wg.Add(2)
+	done := make(chan struct{})
 
 	go func() {
-		// Check if we can use the splice optimization (reader is *bytes.Buffer)
-		if buf, ok := reader.(*bytes.Buffer); ok {
-			// Copy peeked bytes first
-			_, _ = io.Copy(backend, buf)
-			// Then copy rest directly from conn to enable splice(2) on Linux
-			_, _ = io.Copy(backend, conn)
-		} else {
-			// For other reader types (e.g., bufio.Reader), use standard copy
-			_, _ = io.Copy(backend, reader)
-		}
+		defer close(done)
 
-		if btc, ok := backend.(*net.TCPConn); ok {
-			_ = btc.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	go func() {
 		_, _ = io.Copy(conn, backend)
 		if tc, ok := conn.(*net.TCPConn); ok {
 			_ = tc.CloseWrite()
 		}
-
-		wg.Done()
 	}()
 
-	wg.Wait()
+	// Check if we can use the splice optimization (reader is *bytes.Buffer).
+	if buf, ok := reader.(*bytes.Buffer); ok {
+		// Copy peeked bytes first, then the rest directly to enable splice(2).
+		_, _ = io.Copy(backend, buf)
+		_, _ = io.Copy(backend, conn)
+	} else {
+		// For other reader types (e.g., bufio.Reader), use standard copy.
+		_, _ = io.Copy(backend, reader)
+	}
+
+	if btc, ok := backend.(*net.TCPConn); ok {
+		_ = btc.CloseWrite()
+	}
+
+	<-done
 }
 
-// bidirectionalCopyWithBufferedReader copies data in both directions, flushing buffered data then using splice.
+// bidirectionalCopyWithBufferedReader copies data in both directions, flushing
+// buffered data then using splice. One direction runs in the caller's goroutine.
 func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bufio.Reader) {
-	var wg sync.WaitGroup
-
-	wg.Add(2)
+	done := make(chan struct{})
 
 	go func() {
-		// First, copy any data already buffered by bufio.Reader
-		if br.Buffered() > 0 {
-			buffered := make([]byte, br.Buffered())
-			_, _ = io.ReadFull(br, buffered)
-			_, _ = backend.Write(buffered)
-		}
-		// Then copy rest directly from conn to enable splice(2) on Linux
-		_, _ = io.Copy(backend, conn)
+		defer close(done)
 
-		if btc, ok := backend.(*net.TCPConn); ok {
-			_ = btc.CloseWrite()
-		}
-
-		wg.Done()
-	}()
-
-	go func() {
 		_, _ = io.Copy(conn, backend)
 		if tc, ok := conn.(*net.TCPConn); ok {
 			_ = tc.CloseWrite()
 		}
-
-		wg.Done()
 	}()
 
-	wg.Wait()
+	// First, copy any data already buffered by bufio.Reader.
+	if br.Buffered() > 0 {
+		buffered := make([]byte, br.Buffered())
+		_, _ = io.ReadFull(br, buffered)
+		_, _ = backend.Write(buffered)
+	}
+	// Then copy rest directly from conn to enable splice(2) on Linux.
+	_, _ = io.Copy(backend, conn)
+
+	if btc, ok := backend.(*net.TCPConn); ok {
+		_ = btc.CloseWrite()
+	}
+
+	<-done
 }
 
 const (
@@ -686,6 +680,27 @@ func serveTCP(
 		_ = ln.Close()
 	}()
 
+	// Admission control: bound concurrent connections so a flood cannot exhaust
+	// goroutines/FDs/memory. Full = backpressure (the accept loop waits).
+	var sem chan struct{}
+	if opts.MaxConns > 0 {
+		sem = make(chan struct{}, opts.MaxConns)
+	}
+
+	return acceptLoop(ctx, ln, logger, sem, handler, allowlist, opts)
+}
+
+// acceptLoop accepts connections until the listener closes, dispatching each
+// through the admission semaphore.
+func acceptLoop(
+	ctx context.Context,
+	ln net.Listener,
+	logger *slog.Logger,
+	sem chan struct{},
+	handler func(net.Conn, *hostMatcher, Options) error,
+	allowlist *hostMatcher,
+	opts Options,
+) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -701,8 +716,30 @@ func serveTCP(
 			}
 		}
 
-		go func() { _ = handler(conn, allowlist, opts) }()
+		dispatchConn(sem, conn, handler, allowlist, opts)
 	}
+}
+
+// dispatchConn runs handler for conn in a goroutine, respecting the admission
+// semaphore (nil = unlimited). Acquiring before spawning applies backpressure.
+func dispatchConn(
+	sem chan struct{},
+	conn net.Conn,
+	handler func(net.Conn, *hostMatcher, Options) error,
+	allowlist *hostMatcher,
+	opts Options,
+) {
+	if sem != nil {
+		sem <- struct{}{}
+	}
+
+	go func() {
+		if sem != nil {
+			defer func() { <-sem }()
+		}
+
+		_ = handler(conn, allowlist, opts)
+	}()
 }
 
 // baseLogFields builds the shared decision-log fields for a component.

@@ -38,6 +38,8 @@
 | `NOTIFICATION_IGNORE_DOMAINS` | Domains to skip for notifications (wildcards ok) | unset |
 | `NFLOG_BUFSIZE` | Netfilter log buffer size | `96` |
 | `NFLOG_QTHRESH` | Netfilter log queue threshold | `50` |
+| `MAX_CONNECTIONS` | Max concurrent connections per listener; excess is held via backpressure (`0` = unlimited) | `4096` |
+| `CONN_MAX_LIFETIME_MS` | Max connection lifetime in ms (a single deadline, not an idle timeout; `0` = none) | `600000` |
 | `PUID` | Drop to this uid at startup (`0` = run as root) | `65534` (nobody) |
 | `PGID` | Drop to this gid at startup | `65534` |
 
