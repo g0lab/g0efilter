@@ -26,8 +26,9 @@ import (
 	"github.com/g0lab/g0efilter/agent/nftables"
 	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/agent/procinfo"
-	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/agent/telemetry"
 	"github.com/g0lab/g0efilter/shared/actions"
+	"github.com/g0lab/g0efilter/shared/logging"
 	"golang.org/x/sys/unix"
 )
 
@@ -65,7 +66,8 @@ type policyUpdate struct {
 func Run(version, date, commit string) error {
 	cfg := loadConfig()
 
-	lg := logging.NewWithContext(context.Background(), cfg.logLevel, os.Stdout, version)
+	hook := telemetry.NewFromEnv(context.Background(), os.Stdout, logging.ParseLevel(cfg.logLevel), version)
+	lg := logging.New(cfg.logLevel, os.Stdout, logging.WithHook(hook))
 	slog.SetDefault(lg)
 
 	cfg = normalizeMode(cfg, lg)

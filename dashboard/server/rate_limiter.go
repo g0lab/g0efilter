@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/shared/logging"
 )
 
 type rateLimiter struct {

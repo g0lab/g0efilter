@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/dashboard/store"
-	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/shared/logging"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -361,7 +361,7 @@ func normalizeAddr(cfg *Config) {
 }
 
 func setupLogging(cfg Config, version, date, commit string) (*slog.Logger, error) {
-	lg := logging.NewWithContext(context.Background(), cfg.LogLevel, os.Stdout, version)
+	lg := logging.New(cfg.LogLevel, os.Stdout)
 	slog.SetDefault(lg)
 
 	// API_KEY is validated in Run once stores are wired: with a database the

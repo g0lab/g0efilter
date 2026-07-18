@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/g0lab/g0efilter/internal/logging"
 	"github.com/g0lab/g0efilter/shared/actions"
+	"github.com/g0lab/g0efilter/shared/logging"
 )
 
 // processPayloads converts raw payloads to LogEntry structs, inserts them, and broadcasts to SSE clients.

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/shared/logging"
 )
 
 type broadcaster struct {

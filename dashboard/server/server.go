@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/dashboard/model"
-	"github.com/g0lab/g0efilter/internal/logging"
+	"github.com/g0lab/g0efilter/shared/logging"
 	"github.com/gin-gonic/gin"
 )
 
@@ -116,7 +116,7 @@ func Run(ctx context.Context, cfg Config) error {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	lg := logging.NewWithContext(ctx, cfg.LogLevel, os.Stdout, cfg.Version)
+	lg := logging.New(cfg.LogLevel, os.Stdout)
 	slog.SetDefault(lg)
 
 	err := validateAuthConfig(cfg)
