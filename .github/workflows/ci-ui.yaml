@@ -1,0 +1,57 @@
+---
+name: CI (UI)
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+    paths:
+      - 'dashboard/ui/**'
+      - '!dashboard/ui/*.go'
+      - 'scripts/test-ui.sh'
+      - '.github/workflows/ci-ui.yaml'
+
+  pull_request:
+    paths:
+      - 'dashboard/ui/**'
+      - '!dashboard/ui/*.go'
+      - 'scripts/test-ui.sh'
+      - '.github/workflows/ci-ui.yaml'
+
+  workflow_dispatch: {}
+
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui:
+    name: UI (type-check, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: dashboard/ui/package.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
+
+      - name: Run UI test suite
+        run: scripts/test-ui.sh

@@ -1,5 +1,5 @@
 ---
-name: CI
+name: CI (Go)
 
 on:
   push:
@@ -9,22 +9,26 @@ on:
       - '**'
     paths:
       - 'agent/**'
-      - 'dashboard/**'
       - 'shared/**'
-      - 'scripts/test-go.sh'
-      - 'scripts/test-ui.sh'
+      - 'dashboard/**'
+      - '!dashboard/ui/**'
+      - 'dashboard/ui/*.go'
       - 'go.mod'
       - 'go.sum'
+      - 'scripts/test-go.sh'
+      - '.github/workflows/ci-go.yaml'
 
   pull_request:
     paths:
       - 'agent/**'
-      - 'dashboard/**'
       - 'shared/**'
-      - 'scripts/test-go.sh'
-      - 'scripts/test-ui.sh'
+      - 'dashboard/**'
+      - '!dashboard/ui/**'
+      - 'dashboard/ui/*.go'
       - 'go.mod'
       - 'go.sum'
+      - 'scripts/test-go.sh'
+      - '.github/workflows/ci-go.yaml'
 
   workflow_dispatch: {}
 
@@ -36,7 +40,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-go-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -48,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -55,10 +61,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      # The dashboard UI is embedded at compile time (go:embed all:dist), and
+      # server route tests assert on the real UI, so dist/ must be built before
+      # `go test` compiles the test binary.
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 11.12.0
+          package_json_file: dashboard/ui/package.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -88,24 +97,3 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
-
-  ui:
-    name: UI (type-check, lint, build)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.12.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: pnpm
-          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
-
-      - name: Run UI test suite
-        run: scripts/test-ui.sh
