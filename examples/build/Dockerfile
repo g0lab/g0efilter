@@ -20,11 +20,12 @@ RUN go build -trimpath \
 # Stage 2: Runtime
 FROM alpine:3.24.1
 
-RUN apk add --no-cache nftables ca-certificates \
+RUN apk add --no-cache nftables ca-certificates setpriv \
     && update-ca-certificates
 
 WORKDIR /app
 
 COPY --from=builder /build/g0efilter /app/g0efilter
+COPY scripts/docker/agent-entrypoint.sh /app/entrypoint.sh
 
-ENTRYPOINT ["/app/g0efilter"]
+ENTRYPOINT ["/app/entrypoint.sh"]

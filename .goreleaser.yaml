@@ -47,6 +47,8 @@ dockers_v2:
     dockerfile: ./Dockerfile
     ids:
       - g0efilter
+    extra_files:
+      - scripts/docker/agent-entrypoint.sh
     images:
       - docker.io/g0lab/g0efilter
     tags:

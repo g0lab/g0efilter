@@ -38,6 +38,30 @@
 | `NOTIFICATION_IGNORE_DOMAINS` | Domains to skip for notifications (wildcards ok) | unset |
 | `NFLOG_BUFSIZE` | Netfilter log buffer size | `96` |
 | `NFLOG_QTHRESH` | Netfilter log queue threshold | `50` |
+| `PUID` | Drop to this uid at startup (`0` = run as root) | `65534` (nobody) |
+| `PGID` | Drop to this gid at startup | `65534` |
+
+#### Running as a non-root user
+
+The g0efilter container runs as a non-root user (`nobody`, uid 65534) by default.
+Its entrypoint starts as root, hands the writable dirs (`/app/policy`, `/app/data`)
+to the runtime user, then drops privileges - keeping `NET_ADMIN`/`NET_RAW` as
+*ambient* capabilities so nftables and the SO_MARK dialer keep working. The binary
+stays root-owned and read-only.
+
+- Override the uid/gid with `PUID`/`PGID` (e.g. to match a host user that edits the
+  policy file). Set `PUID=0` to run as root.
+- The privilege drop needs a few capabilities *at startup*, in addition to the
+  runtime `NET_ADMIN`/`NET_RAW`: `SETUID`, `SETGID`, `SETPCAP` (switch user) and
+  `CHOWN` (hand over the writable dirs). They are not retained by the running
+  process. Without them the entrypoint logs a warning and stays root, so existing
+  `NET_ADMIN`-only setups keep working.
+- Compatible with `read_only: true` and `no-new-privileges` (the numeric uid needs
+  no `/etc/passwd` entry, and ambient caps survive `no-new-privileges`).
+
+The g0efilter-dashboard image already runs non-root (`distroless` nonroot, uid
+65532); its data volume just needs matching ownership (the compose examples chown
+it once via an init container).
 
 ### g0efilter-dashboard
 

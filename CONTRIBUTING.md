@@ -58,10 +58,10 @@ scripts/test-action.sh                # node --check, unit tests, setup.sh check
 Only when `dashboard/ui/` changes. Requires Node 24 + pnpm.
 
 ```sh
-scripts/test-ui.sh                    # svelte-check, eslint, build + dist no-diff
+scripts/test-ui.sh                    # svelte-check, eslint, build
 ```
 
-`scripts/test-ui.sh` fails if the embedded `dist/` doesn't match a fresh build, so rebuild and commit `dist/` after changing `ui/src/`.
+The embedded `dist/` is generated, not committed - `scripts/dev.sh`, CI and the Docker/release build produce it. Just make sure `ui/src/` type-checks, lints, and builds cleanly.
 
 ### Docker/e2e
 

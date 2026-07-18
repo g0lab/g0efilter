@@ -52,7 +52,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN       # nftables
+      - NET_RAW         # SO_MARK dialer
+      - SETUID          # entrypoint drops to a non-root user (nobody) at startup;
+      - SETGID          # these are used only then, not by the running process
+      - SETPCAP
+      - CHOWN
     security_opt:
       - no-new-privileges
 
@@ -62,7 +67,7 @@ services:
     network_mode: "service:g0efilter"
 ```
 
-See [examples](https://github.com/g0lab/g0efilter/tree/main/examples) for ready-to-run compose files and policies.
+See [examples](https://github.com/g0lab/g0efilter/tree/main/examples) for ready-to-run compose files and policies. The container runs as a non-root user (`nobody`) by default - see [Running as a non-root user](docs/configuration.md#running-as-a-non-root-user) to customise the uid/gid or run as root.
 
 ### How it works
 
@@ -166,7 +171,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN                # required for nftables
+      - NET_ADMIN                # nftables
+      - NET_RAW                  # SO_MARK dialer
+      - SETUID                   # drop to a non-root user (nobody) at startup;
+      - SETGID                   # override with PUID/PGID, or PUID=0 to stay root
+      - SETPCAP
+      - CHOWN
     security_opt:
       - no-new-privileges
     ports:
