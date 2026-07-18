@@ -17,9 +17,6 @@ on:
         description: "concurrent connections per wave"
         default: "100"
 
-  pull_request:
-    types: [labeled]
-
 permissions:
   contents: read
 
