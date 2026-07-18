@@ -100,7 +100,7 @@ jobs:
 
       - name: Set up Node for dashboard browser E2E
         if: matrix.scenario == 'dashboard'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
