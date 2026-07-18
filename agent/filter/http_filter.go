@@ -36,6 +36,16 @@ func handleHTTP(conn net.Conn, allowlist *hostMatcher, opts Options) error {
 		return nil
 	}
 
+	// Un-redirected connections to our own listener (e.g. the healthcheck) would
+	// loop back through the proxy in audit/learning/default-allow modes.
+	if isSelfConnection(conn, tc) {
+		if opts.Logger != nil {
+			opts.Logger.Debug("http.self_connection_dropped", "src", conn.RemoteAddr().String())
+		}
+
+		return nil
+	}
+
 	host, headBytes, br, parseErr := parseAndValidateHTTP(conn, tc, opts)
 
 	// A parse failure always yields an empty host, so hostPermitted covers it:

@@ -33,6 +33,16 @@ func handle(conn net.Conn, allowlist *hostMatcher, opts Options) error {
 		return nil
 	}
 
+	// Un-redirected connections to our own listener (e.g. the healthcheck) would
+	// loop back through the proxy in audit/learning/default-allow modes.
+	if isSelfConnection(conn, tc) {
+		if opts.Logger != nil {
+			opts.Logger.Debug("https.self_connection_dropped", "src", conn.RemoteAddr().String())
+		}
+
+		return nil
+	}
+
 	// 1) Extract SNI from ClientHello
 	sni, buf := extractSNIFromConnection(conn, opts)
 

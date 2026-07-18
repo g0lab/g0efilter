@@ -496,6 +496,20 @@ func originalDstTCP(conn *net.TCPConn) (string, error) {
 	return out, nil
 }
 
+// isSelfConnection reports whether a connection was never redirected to the
+// proxy: its original destination is the proxy's own listen address. Forwarding
+// one would splice the proxy back to itself in the modes that pass
+// non-allowlisted traffic (audit/learning/default-allow), causing an infinite
+// loop. The container healthcheck, which dials the listener directly, hits this.
+func isSelfConnection(conn net.Conn, tc *net.TCPConn) bool {
+	orig, err := originalDstTCP(tc)
+	if err != nil {
+		return false
+	}
+
+	return orig == conn.LocalAddr().String()
+}
+
 // getsockoptDst performs a SYS_GETSOCKOPT syscall to retrieve a raw socket address option.
 func getsockoptDst(fd, level, opt uintptr, p unsafe.Pointer, optlen *uint32) error { // #nosec G103
 	_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT,
