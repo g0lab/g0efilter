@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -24,16 +25,21 @@ type memAPIKey struct {
 }
 
 type memAPIKeyStore struct {
-	mu   sync.RWMutex
-	keys map[string]*memAPIKey
+	mu     sync.RWMutex
+	keys   map[string]*memAPIKey
+	pepper []byte
 }
 
-// newMemAPIKeyStore seeds the store with the env-provided key, if any.
+// newMemAPIKeyStore seeds the store with the env-provided key, if any. The
+// pepper is per-process: this store is ephemeral, so key hashes never need to
+// survive a restart.
 func newMemAPIKeyStore(envKey string) *memAPIKeyStore {
-	s := &memAPIKeyStore{keys: map[string]*memAPIKey{}}
+	pepper := make([]byte, 32)
+	_, _ = rand.Read(pepper)
+
+	s := &memAPIKeyStore{keys: map[string]*memAPIKey{}, pepper: pepper}
 
 	if envKey != "" {
-		h := sha256.Sum256([]byte(envKey))
 		id := randomHexID()
 		s.keys[id] = &memAPIKey{
 			rec: APIKey{
@@ -42,7 +48,7 @@ func newMemAPIKeyStore(envKey string) *memAPIKeyStore {
 				Prefix:    "(env)",
 				CreatedAt: time.Now().UTC(),
 			},
-			hash: h[:],
+			hash: s.keyHash(envKey),
 		}
 	}
 
@@ -54,7 +60,7 @@ func (s *memAPIKeyStore) Validate(_ context.Context, presented string) (string, 
 		return "", false
 	}
 
-	h := sha256.Sum256([]byte(presented))
+	h := s.keyHash(presented)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -62,7 +68,7 @@ func (s *memAPIKeyStore) Validate(_ context.Context, presented string) (string, 
 	var matched string
 
 	for id, k := range s.keys {
-		if k.rec.RevokedAt == nil && subtle.ConstantTimeCompare(k.hash, h[:]) == 1 {
+		if k.rec.RevokedAt == nil && subtle.ConstantTimeCompare(k.hash, h) == 1 {
 			matched = id
 		}
 	}
@@ -87,7 +93,7 @@ func (s *memAPIKeyStore) Create(_ context.Context, label string) (string, APIKey
 	_, _ = rand.Read(raw)
 
 	key := "g0e_" + hex.EncodeToString(raw)
-	h := sha256.Sum256([]byte(key))
+	h := s.keyHash(key)
 
 	rec := APIKey{
 		ID:        randomHexID(),
@@ -97,7 +103,7 @@ func (s *memAPIKeyStore) Create(_ context.Context, label string) (string, APIKey
 	}
 
 	s.mu.Lock()
-	s.keys[rec.ID] = &memAPIKey{rec: rec, hash: h[:]}
+	s.keys[rec.ID] = &memAPIKey{rec: rec, hash: h}
 	s.mu.Unlock()
 
 	return key, rec, nil
@@ -116,6 +122,14 @@ func (s *memAPIKeyStore) Revoke(_ context.Context, id string) error {
 	k.rec.RevokedAt = &now
 
 	return nil
+}
+
+// keyHash returns HMAC-SHA256 of the key under the per-process pepper.
+func (s *memAPIKeyStore) keyHash(key string) []byte {
+	m := hmac.New(sha256.New, s.pepper)
+	m.Write([]byte(key))
+
+	return m.Sum(nil)
 }
 
 type memSessionStore struct {

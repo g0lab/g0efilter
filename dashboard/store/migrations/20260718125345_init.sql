@@ -24,6 +24,10 @@ CREATE TABLE `sessions` (`id` integer NOT NULL PRIMARY KEY AUTOINCREMENT, `token
 CREATE UNIQUE INDEX `sessions_token_hash_key` ON `sessions` (`token_hash`);
 -- Create index "session_expires_at" to table: "sessions"
 CREATE INDEX `session_expires_at` ON `sessions` (`expires_at`);
+-- Create "settings" table
+CREATE TABLE `settings` (`id` integer NOT NULL PRIMARY KEY AUTOINCREMENT, `key` text NOT NULL, `value` blob NOT NULL);
+-- Create index "settings_key_key" to table: "settings"
+CREATE UNIQUE INDEX `settings_key_key` ON `settings` (`key`);
 -- Create "unblock_requests" table
 CREATE TABLE `unblock_requests` (`id` text NOT NULL, `type` text NOT NULL, `value` text NOT NULL, `target_hostname` text NOT NULL DEFAULT (''), `created_at` integer NOT NULL, PRIMARY KEY (`id`));
 -- Create index "unblockrequest_type_value_target_hostname" to table: "unblock_requests"

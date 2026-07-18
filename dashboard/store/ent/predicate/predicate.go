@@ -24,6 +24,9 @@ type LogEvent func(*sql.Selector)
 // Session is the predicate function for session builders.
 type Session func(*sql.Selector)
 
+// Setting is the predicate function for setting builders.
+type Setting func(*sql.Selector)
+
 // UnblockRequest is the predicate function for unblockrequest builders.
 type UnblockRequest func(*sql.Selector)
 

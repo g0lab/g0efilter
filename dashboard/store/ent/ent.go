@@ -18,6 +18,7 @@ import (
 	"github.com/g0lab/g0efilter/dashboard/store/ent/instance"
 	"github.com/g0lab/g0efilter/dashboard/store/ent/logevent"
 	"github.com/g0lab/g0efilter/dashboard/store/ent/session"
+	"github.com/g0lab/g0efilter/dashboard/store/ent/setting"
 	"github.com/g0lab/g0efilter/dashboard/store/ent/unblockrequest"
 	"github.com/g0lab/g0efilter/dashboard/store/ent/user"
 )
@@ -86,6 +87,7 @@ func checkColumn(t, c string) error {
 			instance.Table:         instance.ValidColumn,
 			logevent.Table:         logevent.ValidColumn,
 			session.Table:          session.ValidColumn,
+			setting.Table:          setting.ValidColumn,
 			unblockrequest.Table:   unblockrequest.ValidColumn,
 			user.Table:             user.ValidColumn,
 		})

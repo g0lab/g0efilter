@@ -135,6 +135,18 @@ var (
 			},
 		},
 	}
+	// SettingsColumns holds the columns for the "settings" table.
+	SettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "key", Type: field.TypeString, Unique: true},
+		{Name: "value", Type: field.TypeBytes},
+	}
+	// SettingsTable holds the schema information for the "settings" table.
+	SettingsTable = &schema.Table{
+		Name:       "settings",
+		Columns:    SettingsColumns,
+		PrimaryKey: []*schema.Column{SettingsColumns[0]},
+	}
 	// UnblockRequestsColumns holds the columns for the "unblock_requests" table.
 	UnblockRequestsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString},
@@ -177,6 +189,7 @@ var (
 		FleetInstancesTable,
 		LogsTable,
 		SessionsTable,
+		SettingsTable,
 		UnblockRequestsTable,
 		UsersTable,
 	}
@@ -202,6 +215,9 @@ func init() {
 	SessionsTable.ForeignKeys[0].RefTable = UsersTable
 	SessionsTable.Annotation = &entsql.Annotation{
 		Table: "sessions",
+	}
+	SettingsTable.Annotation = &entsql.Annotation{
+		Table: "settings",
 	}
 	UnblockRequestsTable.Annotation = &entsql.Annotation{
 		Table: "unblock_requests",

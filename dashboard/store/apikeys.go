@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
@@ -12,6 +14,7 @@ import (
 	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/dashboard/store/ent"
 	"github.com/g0lab/g0efilter/dashboard/store/ent/apikey"
+	"github.com/g0lab/g0efilter/dashboard/store/ent/setting"
 )
 
 const (
@@ -30,27 +33,73 @@ const (
 type APIKeyStore struct {
 	client *ent.Client
 	lg     *slog.Logger
+	pepper []byte
 
 	mu        sync.RWMutex
-	active    map[string][]byte // key ID -> sha256(key)
+	active    map[string][]byte // key ID -> hmac(key)
 	lastTouch map[string]time.Time
 }
 
 // NewAPIKeyStore creates the store and loads the active-key cache.
 func NewAPIKeyStore(ctx context.Context, client *ent.Client, lg *slog.Logger) (*APIKeyStore, error) {
+	pepper, err := loadOrCreatePepper(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &APIKeyStore{
 		client:    client,
 		lg:        lg,
+		pepper:    pepper,
 		active:    map[string][]byte{},
 		lastTouch: map[string]time.Time{},
 	}
 
-	err := s.reload(ctx)
+	err = s.reload(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return s, nil
+}
+
+const (
+	apiKeyPepperKey = "api_key_pepper"
+	pepperBytes     = 32
+)
+
+// loadOrCreatePepper returns the persisted API-key HMAC pepper, generating and
+// storing one on first boot so key hashes stay valid across restarts.
+func loadOrCreatePepper(ctx context.Context, client *ent.Client) ([]byte, error) {
+	row, err := client.Setting.Query().Where(setting.Key(apiKeyPepperKey)).Only(ctx)
+	if err == nil {
+		return row.Value, nil
+	}
+
+	if !ent.IsNotFound(err) {
+		return nil, fmt.Errorf("load api key pepper: %w", err)
+	}
+
+	pepper := make([]byte, pepperBytes)
+	_, _ = rand.Read(pepper)
+
+	err = client.Setting.Create().
+		SetKey(apiKeyPepperKey).
+		SetValue(pepper).
+		OnConflictColumns(setting.FieldKey).
+		Ignore().
+		Exec(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("persist api key pepper: %w", err)
+	}
+
+	// Re-read so a concurrent boot that won the insert wins the pepper too.
+	row, err = client.Setting.Query().Where(setting.Key(apiKeyPepperKey)).Only(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reload api key pepper: %w", err)
+	}
+
+	return row.Value, nil
 }
 
 // Validate reports whether the presented key matches an active key.
@@ -61,14 +110,14 @@ func (s *APIKeyStore) Validate(_ context.Context, presented string) (string, boo
 		return "", false
 	}
 
-	h := sha256.Sum256([]byte(presented))
+	h := s.keyHash(presented)
 
 	var matched string
 
 	s.mu.RLock()
 
 	for id, kh := range s.active {
-		if subtle.ConstantTimeCompare(kh, h[:]) == 1 {
+		if subtle.ConstantTimeCompare(kh, h) == 1 {
 			matched = id
 		}
 	}
@@ -88,7 +137,7 @@ func (s *APIKeyStore) Validate(_ context.Context, presented string) (string, boo
 // Create mints a new key, returning the plaintext exactly once.
 func (s *APIKeyStore) Create(ctx context.Context, label string) (string, model.APIKey, error) {
 	key := apiKeyPrefix + randomHex(apiKeyRandBytes)
-	hash := sha256.Sum256([]byte(key))
+	hash := s.keyHash(key)
 	now := time.Now().UTC()
 
 	rec := model.APIKey{
@@ -101,7 +150,7 @@ func (s *APIKeyStore) Create(ctx context.Context, label string) (string, model.A
 	err := s.client.APIKey.Create().
 		SetID(rec.ID).
 		SetLabel(rec.Label).
-		SetKeyHash(hash[:]).
+		SetKeyHash(hash).
 		SetKeyPrefix(rec.Prefix).
 		SetCreatedAt(now.Unix()).
 		Exec(ctx)
@@ -121,12 +170,12 @@ func (s *APIKeyStore) Create(ctx context.Context, label string) (string, model.A
 // bootstrap). If the key already exists - including revoked - it is left
 // untouched, so a revocation in the database sticks across restarts.
 func (s *APIKeyStore) Seed(ctx context.Context, label, key string) error {
-	hash := sha256.Sum256([]byte(key))
+	hash := s.keyHash(key)
 
 	err := s.client.APIKey.Create().
 		SetID(randomHex(8)).
 		SetLabel(label).
-		SetKeyHash(hash[:]).
+		SetKeyHash(hash).
 		SetKeyPrefix(envKeyDisplayPrefix).
 		SetCreatedAt(time.Now().Unix()).
 		OnConflictColumns(apikey.FieldKeyHash).
@@ -178,6 +227,16 @@ func (s *APIKeyStore) Revoke(ctx context.Context, id string) error {
 	}
 
 	return s.reload(ctx)
+}
+
+// keyHash returns HMAC-SHA256 of the key under the server pepper. Keys are
+// high-entropy random tokens, so a keyed fast hash (not a slow KDF) is correct
+// and keeps Validate's constant-time scan off the ingest hot path cheap.
+func (s *APIKeyStore) keyHash(key string) []byte {
+	m := hmac.New(sha256.New, s.pepper)
+	m.Write([]byte(key))
+
+	return m.Sum(nil)
 }
 
 func (s *APIKeyStore) reload(ctx context.Context) error {

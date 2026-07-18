@@ -7,7 +7,7 @@ import (
 	"entgo.io/ent/schema/field"
 )
 
-// APIKey is a machine credential. Only the SHA-256 hash of the key is stored.
+// APIKey is a machine credential. Only the HMAC-SHA256 hash of the key is stored.
 type APIKey struct {
 	ent.Schema
 }

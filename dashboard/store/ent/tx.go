@@ -24,6 +24,8 @@ type Tx struct {
 	LogEvent *LogEventClient
 	// Session is the client for interacting with the Session builders.
 	Session *SessionClient
+	// Setting is the client for interacting with the Setting builders.
+	Setting *SettingClient
 	// UnblockRequest is the client for interacting with the UnblockRequest builders.
 	UnblockRequest *UnblockRequestClient
 	// User is the client for interacting with the User builders.
@@ -165,6 +167,7 @@ func (tx *Tx) init() {
 	tx.Instance = NewInstanceClient(tx.config)
 	tx.LogEvent = NewLogEventClient(tx.config)
 	tx.Session = NewSessionClient(tx.config)
+	tx.Setting = NewSettingClient(tx.config)
 	tx.UnblockRequest = NewUnblockRequestClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 }
