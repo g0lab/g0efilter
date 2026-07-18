@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -35,12 +36,14 @@ const (
 
 	shutdownGracePeriod = 3 * time.Second
 	resetTimeout        = 10 * time.Second
+	healthTimeout       = 2 * time.Second
 )
 
 var (
-	errMissingAPIKey = errors.New("API_KEY is required but not set")
-	errEmptyPassword = errors.New("empty password on stdin")
-	errResetNeedsDB  = errors.New("reset-password requires DB_PATH (persistence must be enabled)")
+	errMissingAPIKey   = errors.New("API_KEY is required but not set")
+	errEmptyPassword   = errors.New("empty password on stdin")
+	errResetNeedsDB    = errors.New("reset-password requires DB_PATH (persistence must be enabled)")
+	errHealthUnhealthy = errors.New("healthcheck: unhealthy status")
 )
 
 // RunDashboard is the dashboard entrypoint used by dashboard/main.go.
@@ -117,7 +120,45 @@ func dispatchSubcommand(args []string, version, date, commit string) (bool, erro
 		return true, err
 	}
 
+	if done, err := handleHealthcheck(args); done {
+		return true, err
+	}
+
 	return false, nil
+}
+
+// handleHealthcheck implements the healthcheck subcommand (used by the container
+// HEALTHCHECK): it GETs the local /health endpoint and errors on a non-200.
+func handleHealthcheck(args []string) (bool, error) {
+	if len(args) < 2 || args[1] != "healthcheck" {
+		return false, nil
+	}
+
+	addr := getenv("PORT", ":8081")
+	if !strings.Contains(addr, ":") {
+		addr = ":" + addr
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://127.0.0.1"+addr+"/health", nil)
+	if err != nil {
+		return true, fmt.Errorf("healthcheck request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return true, fmt.Errorf("healthcheck: %w", err)
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return true, fmt.Errorf("%w: %d", errHealthUnhealthy, resp.StatusCode)
+	}
+
+	return true, nil
 }
 
 func handleVersionFlag(args []string, version, date, commit string) bool {

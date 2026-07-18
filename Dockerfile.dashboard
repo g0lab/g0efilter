@@ -10,4 +10,7 @@ EXPOSE 8081
 
 USER nonroot
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/g0efilter-dashboard", "healthcheck"]
+
 ENTRYPOINT ["/app/g0efilter-dashboard"]

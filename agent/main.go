@@ -35,6 +35,10 @@ func main() {
 		return
 	}
 
+	if handled, code := g0efilter.HandleHealthcheck(os.Args); handled {
+		os.Exit(code)
+	}
+
 	err := g0efilter.Run(version, date, commit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
