@@ -24,6 +24,11 @@ if [ ! -d "$UI_DIR/node_modules" ]; then
   (cd "$UI_DIR" && pnpm install --frozen-lockfile)
 fi
 
+# dist/ is not committed; build it so the backend's go:embed serves a real UI
+# on :8081 (the Vite dev server on :5000 has its own HMR build).
+echo ">>> building UI (dist/ is generated, not committed)"
+(cd "$UI_DIR" && pnpm build)
+
 # Track child PIDs and tear the whole group down on exit.
 pids=()
 cleanup() {

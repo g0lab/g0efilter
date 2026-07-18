@@ -8,10 +8,26 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/g0lab/g0efilter/dashboard/ui"
 )
+
+// requireUIBuilt skips embed-dependent tests when dist/ holds only the tracked
+// placeholder (dist/ is generated, not committed - run pnpm build).
+func requireUIBuilt(t *testing.T) {
+	t.Helper()
+
+	f, err := ui.Assets.Open("dist/index.html")
+	if err != nil {
+		t.Skip("dashboard UI not built (run pnpm build); skipping embed test")
+	}
+
+	_ = f.Close()
+}
 
 func TestIndexHandler(t *testing.T) {
 	t.Parallel()
+	requireUIBuilt(t)
 
 	handler := IndexHandler()
 	// http.FileServer automatically serves index.html for directory requests
@@ -92,6 +108,7 @@ func validateContentType(t *testing.T, rr *httptest.ResponseRecorder) {
 
 func TestIndexHandlerWithDifferentMethods(t *testing.T) {
 	t.Parallel()
+	requireUIBuilt(t)
 
 	handler := IndexHandler()
 
