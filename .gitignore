@@ -35,10 +35,6 @@ go.work.sum
 # Dev specific files and directories
 data/
 dist/
-# The dashboard frontend build is committed so `go build` works standalone
-# (go:embed all:ui/dist). Rebuild with: cd internal/dashboard/ui && pnpm build
-!internal/dashboard/ui/dist/
-test/*
 .trunk/
 .dev/
 

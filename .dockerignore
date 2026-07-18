@@ -13,12 +13,10 @@ test/
 .trunk/
 .dev/
 
-# Node / UI: the dashboard image builds the UI itself in a Node stage, so keep
-# host node_modules and the committed dist out of the build context. The UI
-# *source* (internal/dashboard/ui/{src,*.html,*.js,package.json,lockfile}) stays.
+# The dashboard image rebuilds the UI in a Node stage; keep host artifacts out
+# (dist/ is covered above; UI source stays).
 **/node_modules/
-internal/dashboard/ui/dist/
-internal/dashboard/ui/.vite/
+**/.vite/
 
 # Env files
 .env
