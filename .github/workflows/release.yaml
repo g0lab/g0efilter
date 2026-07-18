@@ -38,7 +38,7 @@ jobs:
       # GoReleaser's before-hooks build the dashboard UI (pnpm), so the release
       # runner needs Node + pnpm just like the UI CI job.
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.12.0
 

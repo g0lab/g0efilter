@@ -94,7 +94,7 @@ jobs:
 
       - name: Set up pnpm for dashboard browser E2E
         if: matrix.scenario == 'dashboard'
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.12.0
 
