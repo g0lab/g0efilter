@@ -1,4 +1,4 @@
-/* Domain types mirroring the dashboard JSON API (internal/dashboard/model). */
+/* Domain types mirroring the dashboard JSON API (dashboard/model). */
 
 export interface LogEntry {
   id?: number;
