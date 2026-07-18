@@ -8,17 +8,21 @@ on:
     tags-ignore:
       - '**'
     paths:
-      - 'cmd/**'
-      - 'internal/**'
+      - 'agent/**'
+      - 'dashboard/**'
+      - 'shared/**'
       - 'scripts/test-go.sh'
+      - 'scripts/test-ui.sh'
       - 'go.mod'
       - 'go.sum'
 
   pull_request:
     paths:
-      - 'cmd/**'
-      - 'internal/**'
+      - 'agent/**'
+      - 'dashboard/**'
+      - 'shared/**'
       - 'scripts/test-go.sh'
+      - 'scripts/test-ui.sh'
       - 'go.mod'
       - 'go.sum'
 
@@ -51,6 +55,23 @@ jobs:
           go-version: '1.26'
           cache: true
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
+
+      - name: Build dashboard UI
+        run: |
+          pnpm --dir dashboard/ui install --frozen-lockfile
+          pnpm --dir dashboard/ui build
+
       - name: Run Go test suite
         run: scripts/test-go.sh
 
@@ -67,3 +88,24 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
+
+  ui:
+    name: UI (type-check, lint, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
+
+      - name: Run UI test suite
+        run: scripts/test-ui.sh

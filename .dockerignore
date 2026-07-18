@@ -11,6 +11,12 @@ data/
 dist/
 test/
 .trunk/
+.dev/
+
+# The dashboard image rebuilds the UI in a Node stage; keep host artifacts out
+# (dist/ is covered above; UI source stays).
+**/node_modules/
+**/.vite/
 
 # Env files
 .env

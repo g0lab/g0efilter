@@ -7,10 +7,14 @@ before:
   hooks:
     - go mod tidy
     - go generate ./...
+    # Build the dashboard UI so the embedded assets (go:embed ui/dist) are
+    # fresh in released binaries. Requires pnpm on the release runner.
+    - pnpm --dir dashboard/ui install --frozen-lockfile
+    - pnpm --dir dashboard/ui run build
 
 builds:
   - id: g0efilter
-    main: ./cmd/g0efilter
+    main: ./agent
     binary: g0efilter
     env: ["CGO_ENABLED=0"]
     goos: [linux]
@@ -23,7 +27,7 @@ builds:
       - -X main.date={{ .Date }}
 
   - id: g0efilter-dashboard
-    main: ./cmd/g0efilter-dashboard
+    main: ./dashboard
     binary: g0efilter-dashboard
     env: ["CGO_ENABLED=0"]
     goos: [linux]
@@ -43,6 +47,8 @@ dockers_v2:
     dockerfile: ./Dockerfile
     ids:
       - g0efilter
+    extra_files:
+      - scripts/docker/agent-entrypoint.sh
     images:
       - docker.io/g0lab/g0efilter
     tags:

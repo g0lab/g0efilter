@@ -31,6 +31,22 @@ updates:
     commit-message:
       prefix: "chore"
 
+  - package-ecosystem: "npm"
+    directory: "/dashboard/ui"
+    schedule:
+      interval: "cron"
+      cronjob: "0 9 * * *"
+    labels: ["dependencies", "npm"]
+    commit-message:
+      prefix: "chore"
+    groups:
+      npm:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
   - package-ecosystem: "docker"
     directories:
       - "/"

@@ -1,0 +1,7 @@
+# Supply-chain settings.
+# Never install package versions younger than 1 day (minutes).
+minimumReleaseAge: 1440
+# Do not run esbuild's postinstall script; its platform binary arrives via an
+# optional dependency and the script is only a validation fallback.
+allowBuilds:
+  esbuild: false

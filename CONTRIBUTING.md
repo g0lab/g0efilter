@@ -41,17 +41,27 @@ Run the checks and tests that match the files you touched.
 ### Go
 
 ```sh
-scripts/test-go.sh                    # go mod tidy check, vet, race + coverage
+scripts/test-go.sh                    # tidy, ent + migration no-diff, vet, race + coverage
 golangci-lint run --timeout=10m ./...
 ```
 
-`scripts/test-go.sh` fails if `go mod tidy` changes `go.mod` or `go.sum`, so make sure any such changes are committed and expected.
+`scripts/test-go.sh` also fails if `go.mod`/`go.sum` aren't tidy, if the generated Ent client is stale, or if the committed migrations don't match the schema, so make sure any such changes are committed and expected. After editing a DB schema in `dashboard/store/ent/schema/`, run `scripts/gen-migration.sh <name>` to regenerate the client and migration.
 
 ### Action
 
 ```sh
 scripts/test-action.sh                # node --check, unit tests, setup.sh checks
 ```
+
+### Dashboard UI
+
+Only when `dashboard/ui/` changes. Requires Node 24 + pnpm.
+
+```sh
+scripts/test-ui.sh                    # svelte-check, eslint, build
+```
+
+The embedded `dist/` is generated, not committed - `scripts/dev.sh`, CI and the Docker/release build produce it. Just make sure `ui/src/` type-checks, lints, and builds cleanly.
 
 ### Docker/e2e
 
@@ -62,6 +72,6 @@ FILTER_MODE=dns scripts/e2e.sh
 
 ## Security
 
-Please do not open a public issue for security vulnerabilities.
+Please do not open a public issue or PR for security vulnerabilities.
 
-If the repository has a security policy, follow the instructions in `SECURITY.md`. Otherwise, contact the maintainers privately with enough detail to understand and reproduce the issue.
+Follow the instructions in `SECURITY.md`.

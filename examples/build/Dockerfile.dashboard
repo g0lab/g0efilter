@@ -1,4 +1,20 @@
-# Stage 1: Build
+# Stage 1: build the embedded UI (Svelte + Vite via pnpm).
+# Building here (rather than trusting the committed dashboard/ui/dist)
+# guarantees the image's UI always matches source.
+FROM node:24-alpine AS ui
+
+RUN corepack enable
+
+WORKDIR /ui
+
+# Install deps against the lockfile first for layer caching.
+COPY dashboard/ui/package.json dashboard/ui/pnpm-lock.yaml dashboard/ui/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY dashboard/ui/ ./
+RUN pnpm build
+
+# Stage 2: build the Go binary, embedding the freshly built UI.
 FROM golang:1.26.5-alpine3.23 AS builder
 
 ARG VERSION=dev
@@ -11,13 +27,15 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+# Overwrite any committed/absent dist with the fresh build from stage 1.
+COPY --from=ui /ui/dist ./dashboard/ui/dist
 
 ENV CGO_ENABLED=0 GOOS=linux
 RUN go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
-    -o /build/g0efilter-dashboard ./cmd/g0efilter-dashboard
+    -o /build/g0efilter-dashboard ./dashboard
 
-# Stage 2: Runtime
+# Stage 3: runtime
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /app
@@ -27,5 +45,8 @@ COPY --from=builder /build/g0efilter-dashboard /app/g0efilter-dashboard
 EXPOSE 8081
 
 USER nonroot
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/g0efilter-dashboard", "healthcheck"]
 
 ENTRYPOINT ["/app/g0efilter-dashboard"]

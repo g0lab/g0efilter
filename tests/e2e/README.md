@@ -11,6 +11,16 @@ FILTER_MODE=https scripts/e2e.sh
 FILTER_MODE=dns   scripts/e2e.sh
 ```
 
+The dedicated dashboard phase also has an opt-in real-browser smoke test. It
+requires Node 24, pnpm, and Playwright Chromium (CI installs these):
+
+```sh
+cd dashboard/ui && pnpm install --frozen-lockfile
+pnpm exec playwright install --with-deps chromium
+cd ../../..
+FILTER_MODE=https E2E_BROWSER=1 scripts/e2e.sh 14
+```
+
 `scripts/e2e.sh` builds and starts the `examples/build` stack, runs every phase, dumps
 container logs on failure, and tears down (restoring the baseline policy file). This is
 the recommended local run: all phases, one shared stack, in order.
@@ -23,7 +33,7 @@ FILTER_MODE=dns E2E_SKIP_INITIAL_UP=1 scripts/e2e.sh 09   # skip the baseline br
                                                           # (phase recreates the stack itself)
 ```
 
-`E2E_SKIP_INITIAL_UP=1` is for the phases that recreate the stack themselves (08-11, 13);
+`E2E_SKIP_INITIAL_UP=1` is for the phases that recreate the stack themselves (08-11, 13-14);
 it avoids bringing up a baseline stack that the phase immediately replaces. CI uses these
 knobs to fan the suite out across parallel runners (see the matrix in `test.yaml`); locally
 the phases share fixed container names and ports, so run them one stack at a time rather
@@ -46,6 +56,7 @@ than in parallel.
 | `11_resources.sh` | coarse CPU and memory guardrails after modest allowed/blocked traffic |
 | `12_load.sh` | concurrent allowed/blocked traffic, leak checks, latency, and stability under load |
 | `13_dns_ip_allowlist.sh` | dns mode: a non-domain-allowlisted host pointing at an allowlisted IP resolves; the behaviour is off when the policy has no IPs (dns lane only) |
+| `14_dashboard.sh` | production dashboard container with session auth, CORS/CSRF, static assets, SSE, API-key lifecycle, SQLite migrations/restart persistence, persistent logs, and fleet reconciliation (https lane only) |
 
 Individual phase scripts assume the stack is already up, though mode-specific
 phases may recreate the g0efilter container with different environment flags.

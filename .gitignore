@@ -35,8 +35,13 @@ go.work.sum
 # Dev specific files and directories
 data/
 dist/
-test/
 .trunk/
+.dev/
 
 # Tooling config
 eslint.config.mjs
+
+.claude/
+
+# Local planning scratch (not part of the repo)
+/test/

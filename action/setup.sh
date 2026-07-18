@@ -141,7 +141,7 @@ if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
-  DOCKER_ARGS+=(-e DNS_PORT=5353)
+	DOCKER_ARGS+=(-e DNS_PORT=65053)
 fi
 
 docker run "${DOCKER_ARGS[@]}" "$IMAGE"

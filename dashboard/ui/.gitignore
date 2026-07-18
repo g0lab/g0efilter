@@ -1,0 +1,10 @@
+node_modules/
+.vite/
+test-results/
+playwright-report/
+*.tsbuildinfo
+# dist/ is generated (Vite build) and embedded via go:embed. Not committed;
+# build it on the fly (scripts/dev.sh, CI, Docker). Keep the dir tracked so
+# `go:embed all:dist` still compiles from a clean checkout.
+dist/
+!dist/.gitkeep

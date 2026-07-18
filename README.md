@@ -52,7 +52,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN       # nftables
+      - NET_RAW         # SO_MARK dialer
+      - SETUID          # entrypoint drops to a non-root user (nobody) at startup;
+      - SETGID          # these are used only then, not by the running process
+      - SETPCAP
+      - CHOWN
     security_opt:
       - no-new-privileges
 
@@ -62,7 +67,7 @@ services:
     network_mode: "service:g0efilter"
 ```
 
-See [examples](https://github.com/g0lab/g0efilter/tree/main/examples) for ready-to-run compose files and policies.
+See [examples](https://github.com/g0lab/g0efilter/tree/main/examples) for ready-to-run compose files and policies. The container runs as a non-root user (`nobody`) by default - see [Running as a non-root user](docs/configuration.md#running-as-a-non-root-user) to customise the uid/gid or run as root.
 
 ### How it works
 
@@ -77,7 +82,7 @@ Attached containers share g0efilter's network namespace. Traffic to allowlisted 
 See [docs/modes.md](docs/modes.md) for detailed flow diagrams and mode-specific limits.
 
 > [!NOTE]
-> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (8080), `HTTPS_PORT` (8443), and `DNS_PORT` (53) in dns modes.
+> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (65080), `HTTPS_PORT` (65443), and `DNS_PORT` (65053) in dns modes.
 
 ### Policy
 
@@ -141,12 +146,18 @@ See [docs/github-actions.md](docs/github-actions.md) for inputs, baseline allow 
 
 The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set `DASHBOARD_HOST` and `DASHBOARD_API_KEY` on g0efilter to ship logs to it.
 
+The web UI is protected by a built-in login by default (`AUTH_MODE=session`). If you don't set `ADMIN_PASSWORD_HASH` (a bcrypt hash from `g0efilter-dashboard hash-password`), a random admin password is generated and logged once on first startup; recover it later with the `reset-password` subcommand. Set `AUTH_MODE=none` to instead rely on a reverse proxy, or `forward` to trust an authenticating proxy header. Set `DB_PATH` (with a writable volume) to persist sessions, API keys and unblock state. See [docs/configuration.md](docs/configuration.md) for details.
+
 ![g0efilter-dashboard-example](https://raw.githubusercontent.com/g0lab/g0efilter/main/examples/images/g0efilter-dashboard-example.png)
 
 Remote unblock lets administrators unblock domains/IPs from the dashboard UI. Instances poll for approved requests and apply them via live reload. It is disabled by default. To enable it, set `ENABLE_REMOTE_UNBLOCK=true` on g0efilter along with `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. See [docs/remote-unblock.md](docs/remote-unblock.md) for setup, endpoints, and a Traefik example.
 
+Fleet control uses bounded HTTP long-poll reconciliation rather than a
+WebSocket-only protocol. See the [dashboard control-plane plan](docs/dashboard-control-plane.md)
+for the transport decisions and migration sequence.
+
 > [!WARNING]
-> Do not enable remote unblock without protecting `POST /api/v1/unblocks` behind authentication middleware. Anyone who can reach that endpoint can modify your allowlist.
+> Do not enable remote unblock with `AUTH_MODE=none` unless `POST /api/v1/unblocks` is protected by reverse-proxy authentication. Anyone who can reach that endpoint can modify your allowlist. With the default `AUTH_MODE=session` it requires a logged-in session (or a valid API key).
 
 ### Example docker-compose.yaml
 
@@ -160,7 +171,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN                # required for nftables
+      - NET_ADMIN                # nftables
+      - NET_RAW                  # SO_MARK dialer
+      - SETUID                   # drop to a non-root user (nobody) at startup;
+      - SETGID                   # override with PUID/PGID, or PUID=0 to stay root
+      - SETPCAP
+      - CHOWN
     security_opt:
       - no-new-privileges
     ports:

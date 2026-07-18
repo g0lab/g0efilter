@@ -11,9 +11,21 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN  # Required for nftables modification
+      - NET_ADMIN  # nftables
+      - NET_RAW    # SO_MARK dialer
+      # The entrypoint drops to a non-root user (nobody by default); these let it
+      # switch user (retained at runtime: only NET_ADMIN/NET_RAW). Without them it
+      # falls back to running as root.
+      - SETUID
+      - SETGID
+      - SETPCAP
+      - CHOWN
     security_opt:
       - no-new-privileges
+    # Runs as non-root (nobody) by default. Override the uid/gid - e.g. to match a
+    # host user editing the policy - or set PUID=0 to stay root:
+    #   environment: { PUID: "1000", PGID: "1000" }
+    #   environment: { PUID: "0" }
     # Host-exposed port for dashboard (dashboard runs in same netns)
     ports:
       - 8081:8081  # Dashboard port
@@ -25,13 +37,17 @@ services:
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:latest
     container_name: g0efilter-dashboard
-    # optional - custom user
-    # user: 1000:1000
+    # Already runs non-root (distroless nonroot, uid 65532). Override the uid
+    # with `user:` if you prefer - the /app/data volume must then be writable by
+    # that uid (chown the named volume, or run a one-shot init container).
+    #   user: "1000:1000"
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges
     read_only: true
+    volumes:
+      - g0efilter-dashboard-data:/app/data
     env_file:
       - .env.dashboard
     network_mode: "service:g0efilter"
@@ -41,3 +57,6 @@ services:
     image: docker.io/alpine/curl:latest
     command: sh -c "sleep infinity"
     network_mode: "service:g0efilter"
+
+volumes:
+  g0efilter-dashboard-data:

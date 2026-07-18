@@ -9,7 +9,7 @@ Attached containers share g0efilter's network namespace. Traffic to allowlisted 
 | `dns-strict` | DNS plus kernel connection-time enforcement | Yes | Strong default-deny egress control |
 
 > [!NOTE]
-> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (8080), `HTTPS_PORT` (8443), and `DNS_PORT` (53) in dns modes.
+> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (65080), `HTTPS_PORT` (65443), and `DNS_PORT` (65053) in dns modes.
 
 ## https mode
 

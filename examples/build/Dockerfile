@@ -15,16 +15,20 @@ COPY . .
 ENV CGO_ENABLED=0 GOOS=linux
 RUN go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
-    -o /build/g0efilter ./cmd/g0efilter
+    -o /build/g0efilter ./agent
 
 # Stage 2: Runtime
 FROM alpine:3.24.1
 
-RUN apk add --no-cache nftables ca-certificates \
+RUN apk add --no-cache nftables ca-certificates setpriv \
     && update-ca-certificates
 
 WORKDIR /app
 
 COPY --from=builder /build/g0efilter /app/g0efilter
+COPY scripts/docker/agent-entrypoint.sh /app/entrypoint.sh
 
-ENTRYPOINT ["/app/g0efilter"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/g0efilter", "healthcheck"]
+
+ENTRYPOINT ["/app/entrypoint.sh"]
