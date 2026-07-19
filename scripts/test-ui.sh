@@ -18,5 +18,8 @@ pnpm check
 echo ">>> lint (eslint)"
 pnpm lint
 
+echo ">>> unit tests"
+pnpm test:unit
+
 echo ">>> build (embedded dist/)"
 pnpm build

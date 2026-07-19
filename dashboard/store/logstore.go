@@ -136,6 +136,11 @@ func (s *LogStore) Aggregate(
 		qb = qb.Where(logevent.TsLTE(to.UnixNano()))
 	}
 
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q != "" {
+		qb = qb.Where(searchLike(q))
+	}
+
 	rows, err := qb.Order(logevent.ByTs()).All(ctx)
 	if err != nil {
 		return model.AggregateResult{}, fmt.Errorf("query aggregate logs: %w", err)

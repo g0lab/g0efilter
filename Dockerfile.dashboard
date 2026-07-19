@@ -1,6 +1,7 @@
 FROM gcr.io/distroless/static:nonroot
 
 USER nonroot
+# Pre-create /app/data as nonroot; distroless has no mkdir utility.
 WORKDIR /app/data
 WORKDIR /app
 

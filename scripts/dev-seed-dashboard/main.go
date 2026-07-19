@@ -119,7 +119,7 @@ func buildEntries(count int, now time.Time) []model.LogEntry {
 		age := band.minAge + time.Duration(float64(band.maxAge-band.minAge)*fraction)
 		action := seedAction(i)
 		component := components[i%len(components)]
-		domain := domains[(i*7)%len(domains)]
+		domain := domains[(i*11)%len(domains)]
 		client := clients[(i*3)%len(clients)]
 		destinationPort := 443
 		if component == "dns" {

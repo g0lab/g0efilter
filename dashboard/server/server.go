@@ -90,6 +90,7 @@ type Server struct {
 	sseRetry     time.Duration
 	rateLimiter  RateLimiter
 	loginLimiter RateLimiter
+	bootstrapOut io.Writer
 
 	authMode          string
 	cookieSecure      bool
@@ -145,7 +146,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer closeStores()
 
-	err = ensureAdminUser(ctx, cfg, srv.users, lg)
+	err = ensureAdminUser(ctx, cfg, srv.users, lg, srv.bootstrapOut)
 	if err != nil {
 		lg.Error("config.admin_seed_failed", "error", err.Error())
 
@@ -257,6 +258,7 @@ func newServer(lg *slog.Logger, cfg Config) *Server {
 		sseRetry:     time.Duration(cfg.SERetryMs) * time.Millisecond,
 		rateLimiter:  newRateLimiter(cfg.RateRPS, cfg.RateBurst),
 		loginLimiter: newRateLimiter(loginRateRPS, loginRateBurst),
+		bootstrapOut: os.Stderr,
 
 		authMode:          cfg.AuthMode,
 		cookieSecure:      cfg.CookieSecure,

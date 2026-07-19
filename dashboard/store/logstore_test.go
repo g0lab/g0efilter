@@ -180,3 +180,35 @@ func TestLogStore_AggregateRejectsCorruptRows(t *testing.T) {
 		t.Fatalf("Aggregate error = %v, want corrupt-row error", err)
 	}
 }
+
+func TestLogStore_AggregateFiltersSearchBeforeDecode(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+	logStore := store.NewLogStore(client, 1000)
+	entry := model.LogEntry{Time: time.Now(), Action: "ALLOWED", HTTPHost: "match.example"}
+
+	_, err := logStore.Insert(ctx, &entry)
+	if err != nil {
+		t.Fatalf("insert matching row: %v", err)
+	}
+
+	_, err = client.LogEvent.Create().
+		SetTs(time.Now().UnixNano()).
+		SetData(`{"incomplete"`).
+		SetSearch("unrelated.example").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("insert unrelated corrupt row: %v", err)
+	}
+
+	result, err := logStore.Aggregate(ctx, time.Time{}, time.Time{}, " MATCH.EXAMPLE ", 24)
+	if err != nil {
+		t.Fatalf("aggregate matching rows: %v", err)
+	}
+
+	if result.Events != 1 || len(result.Rows) != 1 || result.Rows[0].Key != "match.example" {
+		t.Fatalf("filtered aggregate = %+v", result)
+	}
+}

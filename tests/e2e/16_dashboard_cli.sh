@@ -133,7 +133,7 @@ echo "$ADMIN_HASH" | grep -Eq '^\$2[aby]\$[0-9]{2}\$' \
 start_dashboard "$CLI_VOLUME" "$ADMIN_HASH"
 wait_dashboard
 [ "$(login_code "$KNOWN_PASSWORD")" = "200" ] || fail "hash-password output did not configure login"
-HASH_BOOTSTRAP_KEY=$(event_field dashboard.api_key_generated key)
+HASH_BOOTSTRAP_KEY=$(event_field dashboard.bootstrap_api_key key)
 echo "$HASH_BOOTSTRAP_KEY" | grep -Eq '^g0e_[0-9a-f]{64}$' \
   || fail "fresh dashboard did not log a generated API key"
 [ "$(ingest_code "$HASH_BOOTSTRAP_KEY")" = "201" ] \
@@ -151,8 +151,8 @@ log "OK: hash-password, default database path, and named-volume persistence"
 log "[first startup] Generated admin password and API key are usable and logged once"
 start_dashboard "$BOOTSTRAP_DATA"
 wait_dashboard
-ADMIN_PASSWORD=$(event_field dashboard.admin_password_generated password)
-BOOTSTRAP_KEY=$(event_field dashboard.api_key_generated key)
+ADMIN_PASSWORD=$(event_field dashboard.bootstrap_admin password)
+BOOTSTRAP_KEY=$(event_field dashboard.bootstrap_api_key key)
 echo "$ADMIN_PASSWORD" | grep -Eq '^[A-Za-z0-9_-]{27,}$' \
   || fail "generated admin password missing from first-start log"
 echo "$BOOTSTRAP_KEY" | grep -Eq '^g0e_[0-9a-f]{64}$' \
@@ -218,13 +218,13 @@ log "OK: no-active-key startup and UI recovery"
 log "[ephemeral] Explicit in-memory mode resets credentials on restart"
 start_dashboard "" "$ADMIN_HASH"
 wait_dashboard
-EPHEMERAL_KEY=$(event_field dashboard.api_key_generated key)
+EPHEMERAL_KEY=$(event_field dashboard.bootstrap_api_key key)
 echo "$EPHEMERAL_KEY" | grep -Eq '^g0e_[0-9a-f]{64}$' \
   || fail "ephemeral dashboard did not generate an API key"
 
 docker restart "$CLI_CONTAINER" >/dev/null
 wait_dashboard
-EPHEMERAL_REPLACEMENT=$(event_field dashboard.api_key_generated key)
+EPHEMERAL_REPLACEMENT=$(event_field dashboard.bootstrap_api_key key)
 [ "$EPHEMERAL_REPLACEMENT" != "$EPHEMERAL_KEY" ] \
   || fail "ephemeral API key survived restart"
 [ "$(ingest_code "$EPHEMERAL_KEY")" = "401" ] \

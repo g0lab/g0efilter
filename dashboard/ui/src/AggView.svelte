@@ -98,8 +98,7 @@
   }
 
   async function refresh(): Promise<void> {
-    await reload();
-    await loadAggregates();
+    await Promise.all([reload(), loadAggregates()]);
   }
 
   $effect(() => {
@@ -121,7 +120,7 @@
 
   function sortIndicator(key: SortKey): string {
     if (sortKey !== key) return '';
-    return sortDirection === 'asc' ? '↑' : '↓';
+    return sortDirection === 'asc' ? '^' : 'v';
   }
 
   function ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
@@ -134,7 +133,7 @@
   <div class="aggregate-toolbar">
     <div>
       <h1>Traffic aggregates</h1>
-      <div class="faint">{totals.total} verdict events · {ranges.find((item) => item.value === range)?.label}</div>
+      <div class="faint">{totals.total} verdict events - {ranges.find((item) => item.value === range)?.label}</div>
       {#if loadError}<div class="aggregate-error">Could not load aggregates: {loadError}</div>{/if}
     </div>
     <div class="controls">
@@ -145,7 +144,7 @@
           {/each}
         </select>
       </label>
-      <input type="search" class="input aggregate-search" placeholder="Filter host or IP…"
+      <input type="search" class="input aggregate-search" placeholder="Filter host or IP..."
         aria-label="Filter aggregates by host or IP"
         value={query} oninput={(event) => query = sanitizeInput(event.currentTarget.value).toLowerCase()}/>
       <button type="button" class="btn btn-sm btn-ghost" onclick={refresh} disabled={app.loading}>Refresh</button>

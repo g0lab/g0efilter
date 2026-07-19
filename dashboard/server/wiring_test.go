@@ -109,10 +109,12 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 
 	ctx := context.Background()
 	var logs bytes.Buffer
+	var bootstrapOutput bytes.Buffer
 	lg := slog.New(slog.NewTextHandler(&logs, nil))
 	cfg := Config{DBPath: filepath.Join(t.TempDir(), "dashboard.db")}
 
 	srv := newServer(lg, cfg)
+	srv.bootstrapOut = &bootstrapOutput
 	closeStores, err := srv.wireStores(ctx, cfg)
 	if err != nil {
 		t.Fatalf("wire stores: %v", err)
@@ -122,16 +124,17 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 		t.Fatalf("generate key: %v", err)
 	}
 
-	generated := generatedAPIKeyPattern.FindString(logs.String())
+	generated := generatedAPIKeyPattern.FindString(bootstrapOutput.String())
 	if generated == "" {
-		t.Fatalf("generated API key missing from bootstrap log:\n%s", logs.String())
+		t.Fatalf("generated API key missing from bootstrap output:\n%s", bootstrapOutput.String())
 	}
 	if _, ok := srv.apiKeys.Validate(ctx, generated); !ok {
-		t.Fatal("logged generated API key does not validate")
+		t.Fatal("printed generated API key does not validate")
 	}
 	closeStores()
 
 	srv = newServer(lg, cfg)
+	srv.bootstrapOut = &bootstrapOutput
 	closeStores, err = srv.wireStores(ctx, cfg)
 	if err != nil {
 		t.Fatalf("rewire stores: %v", err)
@@ -142,6 +145,12 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 	}
 	if got := strings.Count(logs.String(), "dashboard.api_key_generated"); got != 1 {
 		t.Fatalf("generated key logs = %d, want 1\n%s", got, logs.String())
+	}
+	if strings.Contains(logs.String(), generated) {
+		t.Fatal("structured API key bootstrap log contains the generated key")
+	}
+	if got := strings.Count(bootstrapOutput.String(), "dashboard.bootstrap_api_key"); got != 1 {
+		t.Fatalf("generated API key bootstrap notices = %d, want 1", got)
 	}
 
 	keys, err := srv.apiKeys.List(ctx)
@@ -155,6 +164,7 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 	closeStores()
 
 	srv = newServer(lg, cfg)
+	srv.bootstrapOut = &bootstrapOutput
 	closeStores, err = srv.wireStores(ctx, cfg)
 	if err != nil {
 		t.Fatalf("wire after revocation: %v", err)
@@ -186,9 +196,11 @@ func TestEphemeralDashboardGeneratesAPIKey(t *testing.T) {
 
 	ctx := context.Background()
 	var logs bytes.Buffer
+	var bootstrapOutput bytes.Buffer
 	lg := slog.New(slog.NewTextHandler(&logs, nil))
 	cfg := Config{}
 	srv := newServer(lg, cfg)
+	srv.bootstrapOut = &bootstrapOutput
 
 	closeStores, err := srv.wireStores(ctx, cfg)
 	if err != nil {
@@ -200,12 +212,15 @@ func TestEphemeralDashboardGeneratesAPIKey(t *testing.T) {
 		t.Fatalf("generate ephemeral key: %v", err)
 	}
 
-	generated := generatedAPIKeyPattern.FindString(logs.String())
+	generated := generatedAPIKeyPattern.FindString(bootstrapOutput.String())
 	if generated == "" {
-		t.Fatalf("generated API key missing from log:\n%s", logs.String())
+		t.Fatalf("generated API key missing from bootstrap output:\n%s", bootstrapOutput.String())
 	}
 	if _, ok := srv.apiKeys.Validate(ctx, generated); !ok {
-		t.Fatal("logged ephemeral key does not validate")
+		t.Fatal("printed ephemeral key does not validate")
+	}
+	if strings.Contains(logs.String(), generated) {
+		t.Fatal("structured API key bootstrap log contains the generated key")
 	}
 }
 

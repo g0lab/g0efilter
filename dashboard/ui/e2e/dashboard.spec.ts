@@ -87,7 +87,7 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   await expect(page.getByRole('heading', { name: 'Traffic over time' })).toBeVisible();
   await page.getByLabel('Filter aggregates by host or IP').fill(aggregateHost);
   await expect(page.getByLabel('Range')).toHaveValue('24h');
-  await expect(page.getByText('3 verdict events · Last 24 hours')).toBeVisible();
+  await expect(page.getByText('3 verdict events - Last 24 hours')).toBeVisible();
 
   const aggregateStats = page.locator('.aggregate-stats .stat .n');
   await expect(aggregateStats).toHaveText(['3', '1', '1', '1', '50.0%']);

@@ -20,6 +20,14 @@ func TestBuildEntriesCoversEveryDashboardRange(t *testing.T) {
 		t.Fatalf("entries = %d, want %d", len(entries), defaultSeedCount)
 	}
 
+	domains := make(map[string]struct{})
+	for _, entry := range entries {
+		domains[entry.HTTPHost] = struct{}{}
+	}
+	if len(domains) != 14 {
+		t.Fatalf("seeded domains = %d, want 14", len(domains))
+	}
+
 	windows := []time.Duration{
 		15 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour,
 		7 * 24 * time.Hour, 30 * 24 * time.Hour, 90 * 24 * time.Hour,

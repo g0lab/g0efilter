@@ -108,8 +108,8 @@ The admin login is bootstrapped one of three ways:
   ```
 
 - Leave `ADMIN_PASSWORD_HASH` unset: on first startup with no existing admin
-  user, a strong random password is generated and logged **once** (look for
-  `dashboard.admin_password_generated` in the container output). Log in and
+  user, a strong random password is generated and printed **once** (look for
+  `dashboard.bootstrap_admin` in the container output). Log in and
   set your own hash, or rotate it with `reset-password`.
 - Rotate a lost password, which prints a new one:
 
@@ -128,8 +128,9 @@ generated on every restart unless `ADMIN_PASSWORD_HASH` is set.
 
 Machine endpoints authenticate with `X-Api-Key`. A supplied `API_KEY` is stored
 as the initial key. If it is unset and the key store is empty, the dashboard
-generates one and logs it once as `dashboard.api_key_generated`. Copy that key
-to each agent's `DASHBOARD_API_KEY`.
+generates one and prints it once as `dashboard.bootstrap_api_key`. Copy that key
+to each agent's `DASHBOARD_API_KEY`. The accompanying structured event contains
+no secret.
 
 Create and revoke keys in the dashboard or through `/api/v1/apikeys`. The
 dashboard still starts with no active keys, but ingestion is unavailable until

@@ -67,10 +67,14 @@ function inferLookupKind(value: string): LookupKind | null {
 
 function isLookupValue(value: string, kind: LookupKind): boolean {
   if (kind === 'ip') return isIPv4(value) || isIPv6(value);
-  return value.length <= 253
-    && value.includes('.')
-    && !value.includes('..')
-    && /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.?$/i.test(value);
+
+  const domain = value.endsWith('.') ? value.slice(0, -1) : value;
+  if (!domain || domain.length > 253 || /^\d+(?:\.\d+){3}$/.test(domain)) return false;
+
+  const labels = domain.split('.');
+  return labels.length > 1 && labels.every((label) => label.length > 0
+    && label.length <= 63
+    && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label));
 }
 
 function isIPv4(value: string): boolean {
@@ -79,5 +83,11 @@ function isIPv4(value: string): boolean {
 }
 
 function isIPv6(value: string): boolean {
-  return value.includes(':') && /^[0-9a-f:.]+$/i.test(value);
+  if (!value.includes(':') || !/^[0-9a-f:.]+$/i.test(value)) return false;
+  try {
+    new URL(`http://[${value}]/`);
+    return true;
+  } catch {
+    return false;
+  }
 }

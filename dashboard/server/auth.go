@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -310,10 +311,12 @@ func validateAuthConfig(cfg Config) error {
 
 // ensureAdminUser seeds/updates the admin login. In session mode with no
 // ADMIN_PASSWORD_HASH and no existing user, it auto-generates a strong random
-// password and logs it once (bootstrap) rather than failing startup - so a
+// password and prints it once (bootstrap) rather than failing startup - so a
 // fresh dashboard is reachable. Recover a lost password with the
 // reset-password subcommand.
-func ensureAdminUser(ctx context.Context, cfg Config, users UserStore, lg *slog.Logger) error {
+func ensureAdminUser(
+	ctx context.Context, cfg Config, users UserStore, lg *slog.Logger, bootstrapOut io.Writer,
+) error {
 	if cfg.AuthMode != AuthModeSession {
 		return nil
 	}
@@ -336,11 +339,13 @@ func ensureAdminUser(ctx context.Context, cfg Config, users UserStore, lg *slog.
 		return nil
 	}
 
-	return generateAdminUser(ctx, cfg.AdminUsername, users, lg)
+	return generateAdminUser(ctx, cfg.AdminUsername, users, lg, bootstrapOut)
 }
 
-// generateAdminUser mints and persists a random admin password, logging it once.
-func generateAdminUser(ctx context.Context, username string, users UserStore, lg *slog.Logger) error {
+// generateAdminUser mints and persists a random admin password, printing it once.
+func generateAdminUser(
+	ctx context.Context, username string, users UserStore, lg *slog.Logger, bootstrapOut io.Writer,
+) error {
 	password := generatePassword()
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -353,9 +358,10 @@ func generateAdminUser(ctx context.Context, username string, users UserStore, lg
 		return fmt.Errorf("seed admin user: %w", err)
 	}
 
+	_, _ = fmt.Fprintf(bootstrapOut, "dashboard.bootstrap_admin username=%s password=%s\n", username, password)
 	lg.Warn("dashboard.admin_password_generated",
 		"username", username,
-		"password", password,
+		"credential_output", "stderr",
 		"msg", "auto-generated admin password on first startup; set ADMIN_PASSWORD_HASH or use reset-password to rotate")
 
 	return nil

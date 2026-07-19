@@ -112,9 +112,10 @@ func (s *Server) ensureAPIKeys(ctx context.Context) error {
 		return fmt.Errorf("generate bootstrap api key: %w", err)
 	}
 
+	_, _ = fmt.Fprintf(s.bootstrapOut, "dashboard.bootstrap_api_key label=%s key=%s\n", rec.Label, key)
 	s.logger.Warn("dashboard.api_key_generated",
-		"key", key,
 		"label", rec.Label,
+		"credential_output", "stderr",
 		"msg", "auto-generated API key on first startup; configure agents, then rotate it in the dashboard")
 
 	return nil
