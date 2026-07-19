@@ -123,6 +123,44 @@ func (s *LogStore) Query(ctx context.Context, q string, sinceID int64, limit int
 	return out, nil
 }
 
+// Aggregate summarizes every retained row in the requested time window.
+func (s *LogStore) Aggregate(
+	ctx context.Context, from, to time.Time, q string, buckets int,
+) (model.AggregateResult, error) {
+	qb := s.client.LogEvent.Query()
+	if !from.IsZero() {
+		qb = qb.Where(logevent.TsGTE(from.UnixNano()))
+	}
+
+	if !to.IsZero() {
+		qb = qb.Where(logevent.TsLTE(to.UnixNano()))
+	}
+
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q != "" {
+		qb = qb.Where(searchLike(q))
+	}
+
+	rows, err := qb.Order(logevent.ByTs()).All(ctx)
+	if err != nil {
+		return model.AggregateResult{}, fmt.Errorf("query aggregate logs: %w", err)
+	}
+
+	entries := make([]model.LogEntry, 0, len(rows))
+	for _, row := range rows {
+		var entry model.LogEntry
+
+		err = json.Unmarshal([]byte(row.Data), &entry)
+		if err != nil {
+			return model.AggregateResult{}, fmt.Errorf("unmarshal aggregate log: %w", err)
+		}
+
+		entries = append(entries, entry)
+	}
+
+	return model.AggregateLogs(entries, from, to, q, buckets), nil
+}
+
 // Clear removes all stored logs.
 func (s *LogStore) Clear(ctx context.Context) error {
 	_, err := s.client.LogEvent.Delete().Exec(ctx)

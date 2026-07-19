@@ -3,6 +3,7 @@
   import { app, pendingUnblocks, completedUnblocks, isUnblocked } from './lib/state.svelte';
   import { toast } from './lib/toast.svelte';
   import { prompt } from './lib/dialog.svelte';
+  import LookupActions from './LookupActions.svelte';
   import {
     getAction, getComp, hostOf, srcOf, dstOf, hostnameOf, flowIdOf, versionOf,
     whenOf, matches, unblockIPOf,
@@ -92,6 +93,8 @@
           {#each filtered as it (it.id ?? it)}
             {@const u = unblockState(it)}
             {@const when = whenOf(it)}
+            {@const src = srcOf(it)}
+            {@const dst = dstOf(it)}
             <tr>
               <td><span class="badge badge-{getAction(it)}">{getAction(it)}</span></td>
               <td>
@@ -106,9 +109,9 @@
                 {/if}
               </td>
               <td>{getComp(it)}</td>
-              <td>{hostOf(it)}</td>
-              <td class="mono">{srcOf(it)}</td>
-              <td class="mono">{dstOf(it)}</td>
+              <td><LookupActions value={hostOf(it)}/></td>
+              <td class="mono">{src}</td>
+              <td class="mono"><LookupActions value={dst} target={it.destination_ip || dst} kind="ip"/></td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
               <td class="mono">{versionOf(it)}</td>

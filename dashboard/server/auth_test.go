@@ -2,11 +2,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -276,6 +278,7 @@ func TestValidateAuthConfig(t *testing.T) {
 	}
 }
 
+//nolint:cyclop,funlen // sequential bootstrap modes and one-time credential assertions
 func TestEnsureAdminUser(t *testing.T) {
 	t.Parallel()
 
@@ -285,7 +288,15 @@ func TestEnsureAdminUser(t *testing.T) {
 	// No hash, no users → auto-generate a bootstrap admin (does not fail).
 	gen := newMemUserStore()
 
-	err := ensureAdminUser(ctx, Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen, lg)
+	var (
+		bootstrapLogs   bytes.Buffer
+		bootstrapOutput bytes.Buffer
+	)
+
+	bootstrapLogger := slog.New(slog.NewTextHandler(&bootstrapLogs, nil))
+
+	err := ensureAdminUser(ctx, Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen,
+		bootstrapLogger, &bootstrapOutput)
 	if err != nil {
 		t.Fatalf("auto-generate admin: %v", err)
 	}
@@ -294,11 +305,38 @@ func TestEnsureAdminUser(t *testing.T) {
 		t.Fatalf("auto-generated users = %d, want 1", n)
 	}
 
+	match := regexp.MustCompile(`password=([A-Za-z0-9_-]+)`).FindStringSubmatch(bootstrapOutput.String())
+	if len(match) != 2 {
+		t.Fatalf("generated password missing from bootstrap output:\n%s", bootstrapOutput.String())
+	}
+
+	if _, ok := gen.VerifyPassword(ctx, "admin", match[1]); !ok {
+		t.Fatal("logged generated admin password does not authenticate")
+	}
+
+	err = ensureAdminUser(ctx,
+		Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen, bootstrapLogger, &bootstrapOutput)
+	if err != nil {
+		t.Fatalf("ensure existing admin: %v", err)
+	}
+
+	if got := strings.Count(bootstrapLogs.String(), "dashboard.admin_password_generated"); got != 1 {
+		t.Fatalf("generated admin password logs = %d, want 1", got)
+	}
+
+	if strings.Contains(bootstrapLogs.String(), match[1]) {
+		t.Fatal("structured admin bootstrap log contains the generated password")
+	}
+
+	if got := strings.Count(bootstrapOutput.String(), "dashboard.bootstrap_admin"); got != 1 {
+		t.Fatalf("generated admin bootstrap notices = %d, want 1", got)
+	}
+
 	// Hash provided → seeded.
 	users := newMemUserStore()
 	cfg := Config{AuthMode: AuthModeSession, AdminUsername: "admin", AdminPasswordHash: "x"}
 
-	err = ensureAdminUser(ctx, cfg, users, lg)
+	err = ensureAdminUser(ctx, cfg, users, lg, &bootstrapOutput)
 	if err != nil {
 		t.Fatalf("ensureAdminUser: %v", err)
 	}
@@ -309,7 +347,7 @@ func TestEnsureAdminUser(t *testing.T) {
 	}
 
 	// None mode never requires credentials.
-	err = ensureAdminUser(ctx, Config{AuthMode: AuthModeNone}, newMemUserStore(), lg)
+	err = ensureAdminUser(ctx, Config{AuthMode: AuthModeNone}, newMemUserStore(), lg, &bootstrapOutput)
 	if err != nil {
 		t.Fatalf("none mode: %v", err)
 	}

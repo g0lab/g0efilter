@@ -90,6 +90,7 @@ type Server struct {
 	sseRetry     time.Duration
 	rateLimiter  RateLimiter
 	loginLimiter RateLimiter
+	bootstrapOut io.Writer
 
 	authMode          string
 	cookieSecure      bool
@@ -145,16 +146,16 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer closeStores()
 
-	err = ensureAdminUser(ctx, cfg, srv.users, lg)
+	err = ensureAdminUser(ctx, cfg, srv.users, lg, srv.bootstrapOut)
 	if err != nil {
 		lg.Error("config.admin_seed_failed", "error", err.Error())
 
 		return err
 	}
 
-	err = srv.ensureAPIKeys(ctx, cfg)
+	err = srv.ensureAPIKeys(ctx)
 	if err != nil {
-		lg.Error("config.missing_api_key", "error", err.Error())
+		lg.Error("dashboard.api_key_init_failed", "error", err.Error())
 
 		return err
 	}
@@ -257,6 +258,7 @@ func newServer(lg *slog.Logger, cfg Config) *Server {
 		sseRetry:     time.Duration(cfg.SERetryMs) * time.Millisecond,
 		rateLimiter:  newRateLimiter(cfg.RateRPS, cfg.RateBurst),
 		loginLimiter: newRateLimiter(loginRateRPS, loginRateBurst),
+		bootstrapOut: os.Stderr,
 
 		authMode:          cfg.AuthMode,
 		cookieSecure:      cfg.CookieSecure,
@@ -338,10 +340,11 @@ func (s *Server) routes() http.Handler {
 	// Human realm (AUTH_MODE session/none/forward + CSRF).
 	admin := api.Group("", s.uiAuthMiddleware(), s.csrfMiddleware())
 	admin.GET("/config", httpHandler(s.configHandler))
-	admin.GET("/logs", httpHandler(s.listLogsHandler))           // sensitive: exposes traffic logs
-	admin.GET("/events", httpHandler(s.sseHandler))              // sensitive: streams live traffic data
-	admin.DELETE("/logs", httpHandler(s.clearLogsHandler))       // sensitive: destructive - clears all logs
-	admin.POST("/unblocks", httpHandler(s.createUnblockHandler)) // sensitive: queues firewall policy changes
+	admin.GET("/logs", httpHandler(s.listLogsHandler))            // sensitive: exposes traffic logs
+	admin.GET("/aggregates", httpHandler(s.aggregateLogsHandler)) // sensitive: summarizes traffic logs
+	admin.GET("/events", httpHandler(s.sseHandler))               // sensitive: streams live traffic data
+	admin.DELETE("/logs", httpHandler(s.clearLogsHandler))        // sensitive: destructive - clears all logs
+	admin.POST("/unblocks", httpHandler(s.createUnblockHandler))  // sensitive: queues firewall policy changes
 	admin.GET("/unblocks/status", httpHandler(s.unblockStatusHandler))
 
 	// API key management.

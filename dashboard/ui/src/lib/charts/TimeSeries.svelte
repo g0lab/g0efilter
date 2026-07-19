@@ -1,8 +1,8 @@
 <script lang="ts">
-  /* Two-line time series: allowed vs blocked over time buckets.
+  /* Verdict time series over fixed time buckets.
      Pure SVG, responsive via measured width, crosshair + tooltip on hover.
-     Two series => legend present; allowed/blocked also carry status color +
-     label, so identity is never color-alone. */
+     Each series carries a status color and a label, so identity is never
+     color-alone. */
   import type { Bucket } from '../types';
 
   let { buckets = [] }: { buckets: Bucket[] } = $props();
@@ -18,13 +18,13 @@
 
   const plotW = $derived(Math.max(10, w - padL - padR));
   const plotH = h - padT - padB;
-  const maxY = $derived(Math.max(1, ...buckets.map((b) => Math.max(b.allowed, b.blocked))));
+  const maxY = $derived(Math.max(1, ...buckets.map((b) => Math.max(b.allowed, b.blocked, b.audit))));
 
   const n = $derived(buckets.length);
   const x = (i: number) => padL + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const y = (v: number) => padT + plotH - (v / maxY) * plotH;
 
-  function path(key: 'allowed' | 'blocked') {
+  function path(key: 'allowed' | 'blocked' | 'audit') {
     return buckets.map((b, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(b[key]).toFixed(1)).join(' ');
   }
 
@@ -53,7 +53,7 @@
   {#if n === 0}
     <div class="empty" style:padding="32px">No data in range yet.</div>
   {:else}
-    <svg viewBox="0 0 {w} {h}" role="img" aria-label="Traffic over time, allowed versus blocked"
+    <svg viewBox="0 0 {w} {h}" role="img" aria-label="Traffic over time by allowed, blocked, and audit verdict"
          onmousemove={onMove} onmouseleave={() => hover = -1}>
       <!-- gridlines + y ticks -->
       {#each ticks as t (t)}
@@ -69,11 +69,13 @@
       {/each}
       <path class="series-line" d={path('allowed')} stroke="var(--c-allow)"/>
       <path class="series-line" d={path('blocked')} stroke="var(--c-block)"/>
+      <path class="series-line series-audit" d={path('audit')} stroke="var(--c-audit)"/>
       <!-- hover crosshair + markers -->
       {#if hover >= 0 && buckets[hover]}
         <line class="crosshair" x1={x(hover)} x2={x(hover)} y1={padT} y2={padT + plotH}/>
         <circle class="marker" cx={x(hover)} cy={y(buckets[hover].allowed)} fill="var(--c-allow)"/>
         <circle class="marker" cx={x(hover)} cy={y(buckets[hover].blocked)} fill="var(--c-block)"/>
+        <circle class="marker" cx={x(hover)} cy={y(buckets[hover].audit)} fill="var(--c-audit)"/>
       {/if}
     </svg>
 
@@ -82,6 +84,7 @@
         <div class="faint" style:margin-bottom="3px">{buckets[hover].label}</div>
         <div class="t-row"><span class="swatch" style:background="var(--c-allow)"></span>Allowed <b>{buckets[hover].allowed}</b></div>
         <div class="t-row"><span class="swatch" style:background="var(--c-block)"></span>Blocked <b>{buckets[hover].blocked}</b></div>
+        <div class="t-row"><span class="swatch" style:background="var(--c-audit)"></span>Audit <b>{buckets[hover].audit}</b></div>
       </div>
     {/if}
   {/if}

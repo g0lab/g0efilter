@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/shared/logging"
 )
 
@@ -101,6 +103,25 @@ func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) 
 	}
 
 	return out, nil
+}
+
+func (s *memStore) Aggregate(
+	_ context.Context, from, to time.Time, q string, buckets int,
+) (model.AggregateResult, error) {
+	s.mu.RLock()
+
+	entries := make([]LogEntry, 0, s.count)
+	if s.count > 0 {
+		idx := (s.head - s.count + s.size) % s.size
+		for range s.count {
+			entries = append(entries, s.buf[idx])
+			idx = (idx + 1) % s.size
+		}
+	}
+
+	s.mu.RUnlock()
+
+	return model.AggregateLogs(entries, from, to, q, buckets), nil
 }
 
 func (s *memStore) shouldSkipEntry(entry LogEntry, q string, sinceID int64) bool {

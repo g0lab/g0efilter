@@ -70,7 +70,7 @@ it once via an init container).
 | Variable | Description | Default |
 | --- | --- | --- |
 | `PORT` | Listen address/port for UI and API | `:8081` |
-| `API_KEY` | Authenticates log ingestion from g0efilter | unset |
+| `API_KEY` | Machine API key. Generated and logged when the key store is empty | unset |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `BUFFER_SIZE` | In-memory event buffer; oldest dropped when full | `5000` |
 | `READ_LIMIT` | Max events per API request | `5000` |
@@ -88,9 +88,10 @@ it once via an init container).
 | `JWT_USERNAME_CLAIM` | Claim used as the principal in `jwt` mode | `sub` |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | Optional `iss` / `aud` values required in `jwt` mode | unset |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API (credentials enabled; `*` not allowed). Empty = same-origin only | unset |
-| `DB_PATH` | SQLite file persisting sessions, API keys, unblock state, traffic logs (and fleet if enabled). Needs a writable volume (container is read-only). Unset = in-memory, reset on restart | unset |
-| `LOG_RETENTION` | Max persisted log rows before oldest are pruned (only when `DB_PATH` is set) | `100000` |
-| `FLEET_ENABLED` | Enable fleet management (instances/groups/policy sync; requires `DB_PATH`) | `false` |
+| `DB_PATH` | SQLite file for dashboard state. Mount `/app/data` as a writable volume | `/app/data/dashboard.db` |
+| `EPHEMERAL` | Keep all dashboard state in memory and reset it on restart | `false` |
+| `LOG_RETENTION` | Max persisted log rows before oldest are pruned | `100000` |
+| `FLEET_ENABLED` | Enable fleet management (requires persistent storage) | `false` |
 
 #### Dashboard authentication
 
@@ -107,30 +108,33 @@ The admin login is bootstrapped one of three ways:
   ```
 
 - Leave `ADMIN_PASSWORD_HASH` unset: on first startup with no existing admin
-  user, a strong random password is generated and logged **once** (look for
-  `dashboard.admin_password_generated` in the container output). Log in and
+  user, a strong random password is generated and printed **once** (look for
+  `dashboard.bootstrap_admin` in the container output). Log in and
   set your own hash, or rotate it with `reset-password`.
-- Rotate a lost password (requires `DB_PATH`), which prints a new one:
+- Rotate a lost password, which prints a new one:
 
   ```sh
   # reset-password [username]; defaults to ADMIN_USERNAME (else "admin")
-  docker run --rm -e DB_PATH=/app/data/dashboard.db -v g0efilter-data:/app/data \
+  docker run --rm -v g0efilter-dashboard-data:/app/data \
     docker.io/g0lab/g0efilter-dashboard:latest reset-password
   ```
 
-Without `DB_PATH`, users live in memory, so a fresh random password is
-generated on every restart.
+  An existing `ADMIN_PASSWORD_HASH` overrides the reset on the next startup.
 
-Machine endpoints used by g0efilter instances (`POST /api/v1/logs`, unblock
-poll/ack) always authenticate with `X-Api-Key` and are unaffected by
-`AUTH_MODE`. In `session` mode a valid API key is also accepted on UI
-endpoints, so operators can script against them.
+With `EPHEMERAL=true`, users live in memory, so a fresh random password is
+generated on every restart unless `ADMIN_PASSWORD_HASH` is set.
 
-API keys can be managed at runtime (create/revoke) via
-`GET/POST /api/v1/apikeys` and `DELETE /api/v1/apikeys/{id}`; keys are stored
-hashed, and the `API_KEY` env value is seeded as a revocable `env-bootstrap`
-key on startup. With `DB_PATH` set, keys, sessions and unblock state survive
-restarts.
+### API key management
+
+Machine endpoints authenticate with `X-Api-Key`. A supplied `API_KEY` is stored
+as the initial key. If it is unset and the key store is empty, the dashboard
+generates one and prints it once as `dashboard.bootstrap_api_key`. Copy that key
+to each agent's `DASHBOARD_API_KEY`. The accompanying structured event contains
+no secret.
+
+Create and revoke keys in the dashboard or through `/api/v1/apikeys`. The
+dashboard still starts with no active keys, but ingestion is unavailable until
+an administrator creates one. With `EPHEMERAL=true`, keys reset on every restart.
 
 Use `AUTH_MODE=none` to keep the pre-auth behavior behind Traefik/nginx, or
 `AUTH_MODE=forward` behind an authenticating proxy (oauth2-proxy, Authelia)
@@ -153,7 +157,7 @@ explicitly - the `*` wildcard is rejected.
 
 #### Fleet management (optional)
 
-Set `FLEET_ENABLED=true` (requires `DB_PATH`) to manage g0efilter instances
+Set `FLEET_ENABLED=true` to manage g0efilter instances
 from the dashboard. The dashboard-side API accepts bounded long-poll
 reconciliation at `POST /api/v1/sync?wait=30s`, reporting instance state and
 returning desired policy + filter mode. The planned managed instance client will
@@ -166,9 +170,10 @@ control of an egress filter is sensitive, so it is opt-in on both ends. See the
 [dashboard control-plane plan](dashboard-control-plane.md) for transport choices
 and migration status.
 
-#### Persistent logs (optional)
+#### Persistent logs
 
-Without `DB_PATH`, traffic logs live in an in-memory ring buffer (`BUFFER_SIZE`)
-and reset on restart. Set `DB_PATH` and they are stored in SQLite with
-`LOG_RETENTION` row retention (oldest pruned beyond it), so history survives
-restarts alongside the other persistent state.
+Traffic logs and dashboard state are stored in SQLite by default. `LOG_RETENTION`
+limits stored rows. Set `EPHEMERAL=true` to use an in-memory ring buffer instead;
+all dashboard state then resets on restart and fleet management is unavailable.
+The Aggregates page queries retained SQLite history directly, using the last 24
+hours by default; operators can select shorter windows or all retained history.

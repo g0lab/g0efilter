@@ -136,23 +136,14 @@ func (s *APIKeyStore) Validate(_ context.Context, presented string) (string, boo
 
 // Create mints a new key, returning the plaintext exactly once.
 func (s *APIKeyStore) Create(ctx context.Context, label string) (string, model.APIKey, error) {
-	key := apiKeyPrefix + randomHex(apiKeyRandBytes)
-	hash := s.keyHash(key)
-	now := time.Now().UTC()
-
-	rec := model.APIKey{
-		ID:        randomHex(8),
-		Label:     label,
-		Prefix:    key[:apiKeyDisplayPrefixLen],
-		CreatedAt: now,
-	}
+	key, hash, rec := s.newKey(label)
 
 	err := s.client.APIKey.Create().
 		SetID(rec.ID).
 		SetLabel(rec.Label).
 		SetKeyHash(hash).
 		SetKeyPrefix(rec.Prefix).
-		SetCreatedAt(now.Unix()).
+		SetCreatedAt(rec.CreatedAt.Unix()).
 		Exec(ctx)
 	if err != nil {
 		return "", model.APIKey{}, fmt.Errorf("insert api key: %w", err)
@@ -167,13 +158,15 @@ func (s *APIKeyStore) Create(ctx context.Context, label string) (string, model.A
 }
 
 // Seed idempotently inserts an externally supplied key (the API_KEY env
-// bootstrap). If the key already exists - including revoked - it is left
-// untouched, so a revocation in the database sticks across restarts.
-func (s *APIKeyStore) Seed(ctx context.Context, label, key string) error {
+// bootstrap). The bool reports whether this call inserted it. If the key
+// already exists - including revoked - it is left untouched, so a revocation
+// in the database sticks across restarts.
+func (s *APIKeyStore) Seed(ctx context.Context, label, key string) (bool, error) {
 	hash := s.keyHash(key)
+	id := randomHex(8)
 
 	err := s.client.APIKey.Create().
-		SetID(randomHex(8)).
+		SetID(id).
 		SetLabel(label).
 		SetKeyHash(hash).
 		SetKeyPrefix(envKeyDisplayPrefix).
@@ -182,10 +175,20 @@ func (s *APIKeyStore) Seed(ctx context.Context, label, key string) error {
 		Ignore().
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("seed api key: %w", err)
+		return false, fmt.Errorf("seed api key: %w", err)
 	}
 
-	return s.reload(ctx)
+	inserted, err := s.client.APIKey.Query().Where(apikey.ID(id)).Exist(ctx)
+	if err != nil {
+		return false, fmt.Errorf("check seeded api key: %w", err)
+	}
+
+	err = s.reload(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return inserted, nil
 }
 
 // List returns all keys, active and revoked.
@@ -227,6 +230,18 @@ func (s *APIKeyStore) Revoke(ctx context.Context, id string) error {
 	}
 
 	return s.reload(ctx)
+}
+
+func (s *APIKeyStore) newKey(label string) (string, []byte, model.APIKey) {
+	key := apiKeyPrefix + randomHex(apiKeyRandBytes)
+	now := time.Now().UTC()
+
+	return key, s.keyHash(key), model.APIKey{
+		ID:        randomHex(8),
+		Label:     label,
+		Prefix:    key[:apiKeyDisplayPrefixLen],
+		CreatedAt: now,
+	}
 }
 
 // keyHash returns HMAC-SHA256 of the key under the server pepper. Keys are

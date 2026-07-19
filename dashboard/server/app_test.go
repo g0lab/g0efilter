@@ -2,9 +2,6 @@
 package server
 
 import (
-	"bytes"
-	"errors"
-	"os"
 	"testing"
 )
 
@@ -73,6 +70,7 @@ func TestGetenvFloat(t *testing.T) {
 	runEnvCases(t, cases, getenvFloat)
 }
 
+//nolint:cyclop // field-by-field config comparison
 func compareDashboardConfig(t *testing.T, got, want Config) {
 	t.Helper()
 
@@ -82,6 +80,10 @@ func compareDashboardConfig(t *testing.T, got, want Config) {
 
 	if got.APIKey != want.APIKey {
 		t.Errorf("APIKey = %v, want %v", got.APIKey, want.APIKey)
+	}
+
+	if got.DBPath != want.DBPath {
+		t.Errorf("DBPath = %v, want %v", got.DBPath, want.DBPath)
 	}
 
 	if got.LogLevel != want.LogLevel {
@@ -123,6 +125,8 @@ func TestBuildConfigDefaults(t *testing.T) {
 	t.Setenv("RATE_RPS", "")
 	t.Setenv("RATE_BURST", "")
 	t.Setenv("WRITE_TIMEOUT", "")
+	t.Setenv("DB_PATH", "")
+	t.Setenv("EPHEMERAL", "")
 
 	want := Config{
 		Addr:         ":8081",
@@ -134,6 +138,7 @@ func TestBuildConfigDefaults(t *testing.T) {
 		RateRPS:      defaultRateRPS,
 		RateBurst:    defaultRateBurst,
 		WriteTimeout: 0,
+		DBPath:       defaultDBPath,
 	}
 
 	got := buildConfig("1.2.3")
@@ -149,6 +154,8 @@ func TestBuildConfigCustomValues(t *testing.T) {
 	t.Setenv("SSE_RETRY_MS", "5000")
 	t.Setenv("RATE_RPS", "100.5")
 	t.Setenv("RATE_BURST", "200.5")
+	t.Setenv("DB_PATH", "/tmp/custom-dashboard.db")
+	t.Setenv("EPHEMERAL", "false")
 
 	want := Config{
 		Addr:         "9000",
@@ -160,10 +167,21 @@ func TestBuildConfigCustomValues(t *testing.T) {
 		RateRPS:      100.5,
 		RateBurst:    200.5,
 		WriteTimeout: 0,
+		DBPath:       "/tmp/custom-dashboard.db",
 	}
 
 	got := buildConfig("1.2.3")
 	compareDashboardConfig(t, got, want)
+}
+
+func TestBuildConfigEphemeral(t *testing.T) {
+	t.Setenv("DB_PATH", "/tmp/ignored.db")
+	t.Setenv("EPHEMERAL", "true")
+
+	cfg := buildConfig("1.2.3")
+	if cfg.DBPath != "" {
+		t.Fatalf("DBPath = %q, want in-memory storage", cfg.DBPath)
+	}
 }
 
 func TestNormalizeAddr(t *testing.T) {
@@ -195,8 +213,8 @@ func TestNormalizeAddr(t *testing.T) {
 	}
 }
 
-//nolint:paralleltest // Touches os.Stderr and creates loggers
-func TestSetupLoggingMissingAPIKey(t *testing.T) {
+//nolint:paralleltest // Creates a process-global logger
+func TestSetupLoggingAllowsMissingAPIKey(t *testing.T) {
 	cfg := Config{
 		Addr:         ":8081",
 		APIKey:       "",
@@ -210,24 +228,9 @@ func TestSetupLoggingMissingAPIKey(t *testing.T) {
 		Version:      "dev",
 	}
 
-	oldStderr := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
+	lg := setupLogging(cfg, "1.2.3", "2026-01-01", "abc1234")
 
-	lg, err := setupLogging(cfg, "1.2.3", "2026-01-01", "abc1234")
-
-	_ = w.Close()
-	os.Stderr = oldStderr
-
-	buf := new(bytes.Buffer)
-	_, _ = buf.ReadFrom(r)
-	_ = buf.String()
-
-	if lg != nil {
-		t.Fatal("expected nil logger when API_KEY missing")
-	}
-
-	if !errors.Is(err, errMissingAPIKey) {
-		t.Fatalf("expected errMissingAPIKey, got %v", err)
+	if lg == nil {
+		t.Fatal("expected logger when API_KEY is missing")
 	}
 }

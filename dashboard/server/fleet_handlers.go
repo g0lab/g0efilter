@@ -18,7 +18,7 @@ const maxSyncWait = 30 * time.Second
 // fleetReady guards handlers when fleet is enabled but has no store (no DB).
 func (s *Server) fleetReady(w http.ResponseWriter) bool {
 	if s.fleet == nil {
-		http.Error(w, `{"error":"fleet management requires DB_PATH"}`, http.StatusServiceUnavailable)
+		http.Error(w, `{"error":"fleet management requires persistent storage"}`, http.StatusServiceUnavailable)
 
 		return false
 	}

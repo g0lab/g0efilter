@@ -3,8 +3,9 @@
 # server (:5000, /api proxied to the backend) together, with a single ctrl-c
 # tearing both down.
 #
-#   scripts/dev.sh              # API + UI
+#   scripts/dev.sh              # API + UI, seeded with 10,000 historical events
 #   scripts/dev.sh --traffic    # also stream synthetic log/traffic data
+#   DEV_SEED_COUNT=0 scripts/dev.sh  # skip seeding
 #
 # UI:  http://localhost:5000   (HMR)
 # API: http://localhost:8081   (embedded UI also served here)

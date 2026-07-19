@@ -9,6 +9,7 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   const browserGroup = 'browser-group-' + runID;
   const seedHost = 'browser-seed-' + runID;
   const browserHost = 'browser-agent-' + runID;
+  const aggregateHost = 'aggregate-' + runID + '.example';
 
   const seedResponse = await request.post('/api/v1/logs', {
     headers: {
@@ -18,6 +19,25 @@ test('session dashboard renders and updates without browser errors', async ({ pa
     data: { msg: 'browser-seed', action: 'ALLOWED', hostname: seedHost },
   });
   expect(seedResponse.status()).toBe(201);
+
+  for (const action of ['ALLOWED', 'BLOCKED', 'AUDIT']) {
+    const aggregateResponse = await request.post('/api/v1/logs', {
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Api-Key': machineKey,
+      },
+      data: {
+        msg: 'browser-aggregate',
+        action,
+        http_host: aggregateHost,
+        source_ip: '10.10.10.10',
+        source_port: 51234,
+        destination_ip: '7.7.7.7',
+        destination_port: 443,
+      },
+    });
+    expect(aggregateResponse.status()).toBe(201);
+  }
 
   page.on('pageerror', (error) => browserErrors.push('pageerror: ' + error.message));
   page.on('console', (message) => {
@@ -42,16 +62,55 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('row').filter({ hasText: seedHost })).toBeVisible();
 
+  const rowsSelect = page.getByLabel('Rows');
+  await expect(rowsSelect).toHaveValue('500');
+  const limitedReload = page.waitForRequest((incoming) => {
+    const url = new URL(incoming.url());
+    return url.pathname === '/api/v1/logs' && url.searchParams.get('limit') === '1000';
+  });
+  await rowsSelect.selectOption('1000');
+  await limitedReload;
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('streamRows'))).toBe('1000');
+
+  const streamAggregateRow = page.getByRole('row').filter({ hasText: aggregateHost }).first();
+  await expect(streamAggregateRow.getByRole('link', {
+    name: 'Search ' + aggregateHost + ' on VirusTotal',
+  })).toHaveAttribute('href', 'https://www.virustotal.com/gui/search?query=' + aggregateHost);
+  await expect(streamAggregateRow.getByRole('link', {
+    name: 'Search 7.7.7.7 on VirusTotal',
+  })).toHaveAttribute('href', 'https://www.virustotal.com/gui/search?query=7.7.7.7');
+  await expect(streamAggregateRow.getByRole('link', {
+    name: 'Search 10.10.10.10 on VirusTotal',
+  })).toHaveCount(0);
+
   await page.getByRole('button', { name: 'Aggregates' }).click();
   await expect(page.getByRole('heading', { name: 'Traffic over time' })).toBeVisible();
+  await page.getByLabel('Filter aggregates by host or IP').fill(aggregateHost);
+  await expect(page.getByLabel('Range')).toHaveValue('24h');
+  await expect(page.getByText('3 verdict events - Last 24 hours')).toBeVisible();
+
+  const aggregateStats = page.locator('.aggregate-stats .stat .n');
+  await expect(aggregateStats).toHaveText(['3', '1', '1', '1', '50.0%']);
+
+  const aggregateRow = page.getByRole('row').filter({ hasText: aggregateHost });
+  await expect(aggregateRow.getByRole('link', {
+    name: 'Search ' + aggregateHost + ' on VirusTotal',
+  })).toHaveAttribute('href', 'https://www.virustotal.com/gui/search?query=' + aggregateHost);
+  await expect(page.getByRole('link', {
+    name: 'Search ' + aggregateHost + ' on VirusTotal',
+  })).toHaveCount(4);
+  await expect(aggregateRow.locator('td').nth(1)).toHaveText('3');
+  await expect(aggregateRow.locator('td').nth(2)).toHaveText('1');
+  await expect(aggregateRow.locator('td').nth(3)).toHaveText('1');
+  await expect(aggregateRow.locator('td').nth(4)).toHaveText('1');
+  await expect(aggregateRow.locator('td').nth(5)).toHaveText('50.0%');
 
   await page.getByRole('button', { name: 'API Keys' }).click();
   await expect(page.getByRole('heading', { name: 'API Keys' })).toBeVisible();
-  await expect(page.getByRole('row').filter({ hasText: 'e2e-agent' })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: 'env-bootstrap' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Fleet' }).click();
   await expect(page.getByRole('heading', { name: 'Fleet' })).toBeVisible();
-  await expect(page.locator('td').filter({ hasText: /^e2e-group$/ })).toBeVisible();
 
   await page.getByPlaceholder('New group name').fill(browserGroup);
   await page.getByRole('button', { name: 'Add' }).click();

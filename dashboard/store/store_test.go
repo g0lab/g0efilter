@@ -156,9 +156,13 @@ func TestAPIKeyStore_SQLite(t *testing.T) {
 	}
 
 	// Seeding an already-revoked key must not resurrect it.
-	err = s.Seed(ctx, "env-bootstrap", key)
+	inserted, err := s.Seed(ctx, "env-bootstrap", key)
 	if err != nil {
 		t.Fatalf("seed: %v", err)
+	}
+
+	if inserted {
+		t.Fatal("revoked key was reported as newly seeded")
 	}
 
 	if _, ok := s.Validate(ctx, key); ok {
@@ -166,14 +170,22 @@ func TestAPIKeyStore_SQLite(t *testing.T) {
 	}
 
 	// Fresh seed works and is idempotent.
-	err = s.Seed(ctx, "env-bootstrap", "env-secret")
+	inserted, err = s.Seed(ctx, "env-bootstrap", "env-secret")
 	if err != nil {
 		t.Fatalf("seed2: %v", err)
 	}
 
-	err = s.Seed(ctx, "env-bootstrap", "env-secret")
+	if !inserted {
+		t.Fatal("fresh env key was not reported as newly seeded")
+	}
+
+	inserted, err = s.Seed(ctx, "env-bootstrap", "env-secret")
 	if err != nil {
 		t.Fatalf("seed3: %v", err)
+	}
+
+	if inserted {
+		t.Fatal("duplicate env key was reported as newly seeded")
 	}
 
 	if _, ok := s.Validate(ctx, "env-secret"); !ok {

@@ -28,7 +28,7 @@ cat <<'MSG'
 
 g0efilter dev container ready.
 
-  Dev (API + UI)     : scripts/dev.sh            (add --traffic for demo data)
+  Dev (seeded API/UI): scripts/dev.sh            (add --traffic for live data)
   Go tests           : scripts/test-go.sh        (or: go test ./...)
   UI tests/lint      : scripts/test-ui.sh
   e2e (docker)       : scripts/e2e.sh            (FILTER_MODE=https)

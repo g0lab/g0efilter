@@ -512,6 +512,8 @@ func TestProcessPayload(t *testing.T) {
 		entry := srv.processPayload(context.Background(), payload, "10.0.0.1")
 		if entry == nil {
 			t.Fatal("processPayload returned nil")
+
+			return
 		}
 
 		// http_host should be first priority
@@ -939,6 +941,7 @@ func TestRoutes(t *testing.T) {
 
 		// Public endpoints (protected by Traefik in production)
 		{http.MethodGet, "/api/v1/logs", http.StatusOK},
+		{http.MethodGet, "/api/v1/aggregates", http.StatusOK},
 		{http.MethodDelete, "/api/v1/logs", http.StatusOK},
 		// Note: /api/v1/events is SSE and runs indefinitely, tested separately
 	}

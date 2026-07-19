@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,5 +120,95 @@ func TestLogStore_Retention(t *testing.T) {
 	// 600 inserts the table must be bounded well under the total.
 	if len(rows) > 300 {
 		t.Fatalf("retention not enforced: %d rows retained", len(rows))
+	}
+}
+
+//nolint:cyclop,wsl_v5 // sequential persistent aggregate scenario
+func TestLogStore_AggregateUsesFullTimeWindow(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+	s := store.NewLogStore(client, 1000)
+	now := time.Now().UTC()
+	entries := []model.LogEntry{
+		{Time: now.Add(-40 * 24 * time.Hour), Action: "BLOCKED", HTTPHost: "old.example"},
+		{Time: now.Add(-time.Hour), Action: "ALLOWED", HTTPHost: "recent.example"},
+		{Time: now.Add(-30 * time.Minute), Action: "BLOCKED", HTTPHost: "recent.example"},
+	}
+	for i := range entries {
+		_, err := s.Insert(ctx, &entries[i])
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	result, err := s.Aggregate(ctx, now.Add(-30*24*time.Hour), now, "", 24)
+	if err != nil {
+		t.Fatalf("aggregate: %v", err)
+	}
+	if result.Events != 2 || len(result.Rows) != 1 || result.Rows[0].Key != "recent.example" {
+		t.Fatalf("30-day aggregate = %+v", result)
+	}
+
+	all, err := s.Aggregate(ctx, time.Time{}, now, "old.example", 24)
+	if err != nil {
+		t.Fatalf("aggregate all: %v", err)
+	}
+	if all.Events != 1 || len(all.Rows) != 1 || all.Rows[0].Key != "old.example" {
+		t.Fatalf("all-history filtered aggregate = %+v", all)
+	}
+}
+
+func TestLogStore_AggregateRejectsCorruptRows(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+
+	_, err := client.LogEvent.Create().
+		SetTs(time.Now().UnixNano()).
+		SetData(`{"incomplete"`).
+		SetSearch("corrupt").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("insert corrupt row: %v", err)
+	}
+
+	_, err = store.NewLogStore(client, 1000).Aggregate(ctx, time.Time{}, time.Time{}, "", 24)
+	if err == nil || !strings.Contains(err.Error(), "unmarshal aggregate log") {
+		t.Fatalf("Aggregate error = %v, want corrupt-row error", err)
+	}
+}
+
+func TestLogStore_AggregateFiltersSearchBeforeDecode(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+	logStore := store.NewLogStore(client, 1000)
+	entry := model.LogEntry{Time: time.Now(), Action: "ALLOWED", HTTPHost: "match.example"}
+
+	_, err := logStore.Insert(ctx, &entry)
+	if err != nil {
+		t.Fatalf("insert matching row: %v", err)
+	}
+
+	_, err = client.LogEvent.Create().
+		SetTs(time.Now().UnixNano()).
+		SetData(`{"incomplete"`).
+		SetSearch("unrelated.example").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("insert unrelated corrupt row: %v", err)
+	}
+
+	result, err := logStore.Aggregate(ctx, time.Time{}, time.Time{}, " MATCH.EXAMPLE ", 24)
+	if err != nil {
+		t.Fatalf("aggregate matching rows: %v", err)
+	}
+
+	if result.Events != 1 || len(result.Rows) != 1 || result.Rows[0].Key != "match.example" {
+		t.Fatalf("filtered aggregate = %+v", result)
 	}
 }

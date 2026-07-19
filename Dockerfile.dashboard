@@ -1,5 +1,8 @@
 FROM gcr.io/distroless/static:nonroot
 
+USER nonroot
+# Pre-create /app/data as nonroot; distroless has no mkdir utility.
+WORKDIR /app/data
 WORKDIR /app
 
 ARG TARGETPLATFORM
@@ -7,8 +10,6 @@ ARG TARGETPLATFORM
 COPY ${TARGETPLATFORM}/g0efilter-dashboard /app/g0efilter-dashboard
 
 EXPOSE 8081
-
-USER nonroot
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["/app/g0efilter-dashboard", "healthcheck"]

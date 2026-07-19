@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,12 +18,15 @@ import (
 const (
 	unblockTypeDomain = "domain"
 	unblockTypeIP     = "ip"
+	aggregateBuckets  = 24
 
 	keyStatus   = "status"
 	keyPending  = "pending"
 	keyHTTPS    = "https"
 	keyAuthMode = "auth_mode"
 )
+
+var errUnsupportedAggregateRange = errors.New("unsupported aggregate range")
 
 // configHandler returns buffer/read-limit config plus feature flags the UI
 // uses to gate navigation (fleet page, logout button).
@@ -189,6 +193,62 @@ func (s *Server) listLogsHandler(w http.ResponseWriter, r *http.Request) {
 	err = json.NewEncoder(w).Encode(rows)
 	if err != nil {
 		s.logger.Error("failed to encode query response", "error", err)
+	}
+}
+
+// aggregateLogsHandler summarizes retained logs without returning raw events.
+func (s *Server) aggregateLogsHandler(w http.ResponseWriter, r *http.Request) {
+	duration, all, err := parseAggregateRange(r.URL.Query().Get("range"))
+	if err != nil {
+		http.Error(w, `{"error":"invalid range"}`, http.StatusBadRequest)
+
+		return
+	}
+
+	query := SanitizeSearchQuery(strings.TrimSpace(r.URL.Query().Get("q")))
+	to := time.Now().UTC()
+
+	from := time.Time{}
+	if !all {
+		from = to.Add(-duration)
+	}
+
+	result, err := s.store.Aggregate(r.Context(), from, to, query, aggregateBuckets)
+	if err != nil {
+		s.logger.Error("logs.aggregate_failed", "error", err.Error(), "range", duration, "query", query)
+		http.Error(w, "store error", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	err = json.NewEncoder(w).Encode(result)
+	if err != nil {
+		s.logger.Error("failed to encode aggregate response", "error", err)
+	}
+}
+
+func parseAggregateRange(raw string) (time.Duration, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "24h", "1d":
+		return 24 * time.Hour, false, nil
+	case "15m":
+		return 15 * time.Minute, false, nil
+	case "1h":
+		return time.Hour, false, nil
+	case "6h":
+		return 6 * time.Hour, false, nil
+	case "7d":
+		return 7 * 24 * time.Hour, false, nil
+	case "30d":
+		return 30 * 24 * time.Hour, false, nil
+	case "90d":
+		return 90 * 24 * time.Hour, false, nil
+	case "all":
+		return 0, true, nil
+	default:
+		return 0, false, errUnsupportedAggregateRange
 	}
 }
 

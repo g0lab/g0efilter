@@ -33,6 +33,7 @@ const (
 	defaultRateRPS    = 50.0
 	defaultRateBurst  = 100.0
 	defaultSessionTTL = 24 * time.Hour
+	defaultDBPath     = "/app/data/dashboard.db"
 
 	shutdownGracePeriod = 3 * time.Second
 	resetTimeout        = 10 * time.Second
@@ -40,10 +41,9 @@ const (
 )
 
 var (
-	errMissingAPIKey   = errors.New("API_KEY is required but not set")
-	errEmptyPassword   = errors.New("empty password on stdin")
-	errResetNeedsDB    = errors.New("reset-password requires DB_PATH (persistence must be enabled)")
-	errHealthUnhealthy = errors.New("healthcheck: unhealthy status")
+	errEmptyPassword        = errors.New("empty password on stdin")
+	errResetPasswordNeedsDB = errors.New("reset-password requires persistent storage (EPHEMERAL must be false)")
+	errHealthUnhealthy      = errors.New("healthcheck: unhealthy status")
 )
 
 // RunDashboard is the dashboard entrypoint used by dashboard/main.go.
@@ -55,10 +55,7 @@ func RunDashboard(args []string, version, date, commit string) error {
 	cfg := buildConfig(version)
 	normalizeAddr(&cfg)
 
-	lg, err := setupLogging(cfg, version, date, commit)
-	if err != nil {
-		return err
-	}
+	lg := setupLogging(cfg, version, date, commit)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -75,7 +72,7 @@ func RunDashboard(args []string, version, date, commit string) error {
 	}()
 
 	select {
-	case err = <-errCh:
+	case err := <-errCh:
 		cancel()
 
 		if err != nil {
@@ -181,38 +178,51 @@ func handleHashPassword(args []string) (bool, error) {
 		return false, nil
 	}
 
-	pw, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	hash, err := hashPassword(os.Stdin)
+	if err != nil {
+		return true, err
+	}
+
+	_, _ = fmt.Fprintln(os.Stdout, hash)
+
+	return true, nil
+}
+
+func hashPassword(r io.Reader) (string, error) {
+	pw, err := bufio.NewReader(r).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return true, fmt.Errorf("read password: %w", err)
+		return "", fmt.Errorf("read password: %w", err)
 	}
 
 	pw = strings.TrimRight(pw, "\r\n")
 	if pw == "" {
-		return true, errEmptyPassword
+		return "", errEmptyPassword
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
 	if err != nil {
-		return true, fmt.Errorf("hash password: %w", err)
+		return "", fmt.Errorf("hash password: %w", err)
 	}
 
-	_, _ = fmt.Fprintln(os.Stdout, string(hash))
-
-	return true, nil
+	return string(hash), nil
 }
 
 // handleResetPassword implements the reset-password subcommand: sets a new
 // random password for a user (default ADMIN_USERNAME, else "admin") in the
 // persistent DB and prints it once. Recovers a locked-out dashboard without
-// dashboard access. Requires DB_PATH.
+// dashboard access. Requires persistent storage.
 func handleResetPassword(args []string) (bool, error) {
+	return handleResetPasswordWithWriter(args, os.Stdout)
+}
+
+func handleResetPasswordWithWriter(args []string, out io.Writer) (bool, error) {
 	if len(args) < 2 || args[1] != "reset-password" {
 		return false, nil
 	}
 
-	dbPath := getenv("DB_PATH", "")
+	dbPath := configuredDBPath()
 	if dbPath == "" {
-		return true, errResetNeedsDB
+		return true, errResetPasswordNeedsDB
 	}
 
 	username := getenv("ADMIN_USERNAME", "admin")
@@ -249,7 +259,7 @@ func handleResetPassword(args []string) (bool, error) {
 		return true, fmt.Errorf("reset password: %w", err)
 	}
 
-	_, _ = fmt.Fprintf(os.Stdout, "reset password for %q:\n%s\n", username, password)
+	_, _ = fmt.Fprintf(out, "reset password for %q:\n%s\n", username, password)
 
 	return true, nil
 }
@@ -324,7 +334,7 @@ func buildConfig(version string) Config {
 		Version:      version,
 
 		AuthMode:          strings.ToLower(getenv("AUTH_MODE", AuthModeSession)),
-		DBPath:            getenv("DB_PATH", ""),
+		DBPath:            configuredDBPath(),
 		CookieSecure:      getenvBool("COOKIE_SECURE", true),
 		SessionTTL:        getenvDuration("SESSION_TTL", defaultSessionTTL),
 		ForwardAuthHeader: getenv("FORWARD_AUTH_HEADER", "X-Forwarded-User"),
@@ -344,6 +354,14 @@ func buildConfig(version string) Config {
 
 		FleetEnabled: getenvBool("FLEET_ENABLED", false),
 	}
+}
+
+func configuredDBPath() string {
+	if getenvBool("EPHEMERAL", false) {
+		return ""
+	}
+
+	return getenv("DB_PATH", defaultDBPath)
 }
 
 // getenvList parses a comma-separated env var into a trimmed, non-empty slice.
@@ -401,21 +419,9 @@ func normalizeAddr(cfg *Config) {
 	}
 }
 
-func setupLogging(cfg Config, version, date, commit string) (*slog.Logger, error) {
+func setupLogging(cfg Config, version, date, commit string) *slog.Logger {
 	lg := logging.New(cfg.LogLevel, os.Stdout)
 	slog.SetDefault(lg)
-
-	// API_KEY is validated in Run once stores are wired: with a database the
-	// key set can live in the api_keys table instead of the environment.
-	if cfg.APIKey == "" && cfg.DBPath == "" {
-		fmt.Fprintln(os.Stderr, "ERROR: API_KEY environment variable is required but not set")
-		fmt.Fprintln(os.Stderr, "The dashboard requires an API key for secure log ingestion")
-		fmt.Fprintln(os.Stderr, "Please set API_KEY to a secure random string")
-
-		lg.Error("config.missing_api_key", "msg", "API_KEY is required")
-
-		return nil, errMissingAPIKey
-	}
 
 	shortCommit := commit
 	if len(shortCommit) > 7 {
@@ -437,5 +443,5 @@ func setupLogging(cfg Config, version, date, commit string) (*slog.Logger, error
 		"write_timeout", cfg.WriteTimeout,
 	)
 
-	return lg, nil
+	return lg
 }

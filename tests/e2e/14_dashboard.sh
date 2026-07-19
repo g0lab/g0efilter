@@ -21,7 +21,6 @@ stack_up \
   DASHBOARD_AUTH_MODE=session \
   DASHBOARD_ADMIN_PASSWORD_HASH="$ADMIN_HASH" \
   DASHBOARD_COOKIE_SECURE=false \
-  DASHBOARD_DB_PATH=/app/data/dashboard.db \
   DASHBOARD_FLEET_ENABLED=true \
   DASHBOARD_CORS_ALLOWED_ORIGINS=https://ui.example
 wait_ready
@@ -92,10 +91,13 @@ CODE=$(run_curl "curl -s -o /dev/null -w '%{http_code}' -X POST $API/logs \
 [ "$CODE" = "415" ] || fail "wrong content type returned $CODE, want 415"
 INGEST=$(run_curl "curl -sf -X POST $API/logs \
   -H 'X-Api-Key: $MACHINE_KEY' -H 'Content-Type: application/json' \
-  -d '{\"msg\":\"dashboard-e2e\",\"action\":\"BLOCKED\",\"hostname\":\"e2e-agent\"}'")
+  -d '{\"msg\":\"dashboard-e2e\",\"action\":\"BLOCKED\",\"hostname\":\"e2e-agent\",\"http_host\":\"e2e.example\"}'")
 echo "$INGEST" | grep -q '"created":1' || fail "log ingestion failed: $INGEST"
 LOGS=$(run_curl "curl -sf -b $COOKIE_JAR '$API/logs?q=dashboard-e2e'")
 echo "$LOGS" | grep -q 'dashboard-e2e' || fail "persisted log not queryable: $LOGS"
+AGGREGATES=$(run_curl "curl -sf -b $COOKIE_JAR '$API/aggregates?range=30d&q=e2e.example'")
+echo "$AGGREGATES" | grep -q '"events":1' || fail "database aggregate missing event: $AGGREGATES"
+echo "$AGGREGATES" | grep -q '"blocked":1' || fail "database aggregate missing verdict: $AGGREGATES"
 log "OK: API key and persistent log ingestion"
 
 log "[SSE] Authenticated stream connects and emits its initial frame"
@@ -153,13 +155,19 @@ log "OK: SQLite migration and restart persistence"
 
 if [ "${E2E_BROWSER:-0}" = "1" ]; then
   log "[Browser] Run the Chromium dashboard smoke test"
+  BROWSER_RESULTS=$(mktemp -d)
   (
     cd "$REPO_ROOT/dashboard/ui"
-    DASHBOARD_E2E_BASE_URL=http://127.0.0.1:8081 \
+    PLAYWRIGHT_OUTPUT_DIR="$BROWSER_RESULTS" \
+      DASHBOARD_E2E_BASE_URL=http://127.0.0.1:8081 \
       DASHBOARD_E2E_API_KEY="$API_KEY" \
       DASHBOARD_E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
       pnpm test:e2e
-  ) || fail "dashboard browser E2E failed"
+  ) || {
+    rm -rf "$BROWSER_RESULTS"
+    fail "dashboard browser E2E failed"
+  }
+  rm -rf "$BROWSER_RESULTS"
   log "OK: browser rendered Stream, Aggregates, API Keys, Fleet, SSE, and logout without errors"
 else
   log "Skipping browser smoke (set E2E_BROWSER=1; CI/nightly enables it)"
