@@ -57,6 +57,11 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      - name: Build dashboard UI
+        run: |
+          pnpm --dir dashboard/ui install --frozen-lockfile
+          pnpm --dir dashboard/ui build
+
       - name: Run tests
         run: go test -race -covermode=atomic -coverprofile=coverage.txt ./...
 
