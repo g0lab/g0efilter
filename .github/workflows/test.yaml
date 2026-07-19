@@ -69,6 +69,7 @@ jobs:
           - {mode: https, scenario: audit, phases: "10", skip_up: "1"}
           - {mode: https, scenario: resources, phases: "11", skip_up: "1"}
           - {mode: https, scenario: dashboard, phases: "14", skip_up: "1"}
+          - {mode: https, scenario: entrypoint, phases: "15", skip_up: "1"}
           - {mode: dns, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
           - {mode: dns, scenario: load, phases: "12", skip_up: "0"}
           - {mode: dns, scenario: learning, phases: "08", skip_up: "1"}
