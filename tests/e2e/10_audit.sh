@@ -33,7 +33,7 @@ log "[Audit] Non-allowlisted IP PASSES in audit mode"
 assert_allowed https://1.0.0.1
 
 log "[Audit] Would-be-blocked traffic is logged with the AUDIT action"
-sleep 6 # allow log shipping
+wait_for_log "google.com" 15 || fail "no google.com entries shipped within 15s"
 AUDITS=$(run_curl "curl -sf '$API/logs?q=google.com&limit=100'")
 echo "$AUDITS" | grep -q '"AUDIT"' \
   || { echo "$AUDITS" | head -c 500; fail "no AUDIT entries for google.com in dashboard"; }

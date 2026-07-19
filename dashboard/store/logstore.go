@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -83,6 +84,10 @@ func (s *LogStore) Query(ctx context.Context, q string, sinceID int64, limit int
 	}
 
 	qb := s.client.LogEvent.Query()
+
+	if sinceID > math.MaxInt {
+		return []model.LogEntry{}, nil // no row id can exceed MaxInt
+	}
 
 	if sinceID > 0 {
 		qb = qb.Where(logevent.IDGT(int(sinceID)))

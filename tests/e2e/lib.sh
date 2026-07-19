@@ -165,3 +165,17 @@ wait_for_policy_reload() {
   dump_logs
   fail "policy reload did not apply within 30s"
 }
+
+# wait_for_log <query> [timeout]: poll the dashboard logs API until an entry
+# matching <query> appears. Log shipping is async, so this replaces a fixed
+# post-traffic sleep - it returns as soon as the entry lands.
+wait_for_log() {
+  local query="$1" timeout="${2:-15}"
+  for _ in $(seq 1 "$timeout"); do
+    if run_curl "curl -sf '$API/logs?q=$query&limit=100'" 2>/dev/null | grep -q "\"$query\""; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}

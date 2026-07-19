@@ -5,7 +5,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 log "=== Phase 3: dashboard log verification ==="
 
 log "Waiting for log shipping to complete..."
-sleep 5
+wait_for_log "google.com" 15 || fail "log shipping did not complete (no google.com entry within 15s)"
 
 log "[Logs] Retrieve all entries"
 LOGS=$(run_curl "curl -sf $API/logs?limit=500")
