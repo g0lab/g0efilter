@@ -338,10 +338,11 @@ func (s *Server) routes() http.Handler {
 	// Human realm (AUTH_MODE session/none/forward + CSRF).
 	admin := api.Group("", s.uiAuthMiddleware(), s.csrfMiddleware())
 	admin.GET("/config", httpHandler(s.configHandler))
-	admin.GET("/logs", httpHandler(s.listLogsHandler))           // sensitive: exposes traffic logs
-	admin.GET("/events", httpHandler(s.sseHandler))              // sensitive: streams live traffic data
-	admin.DELETE("/logs", httpHandler(s.clearLogsHandler))       // sensitive: destructive - clears all logs
-	admin.POST("/unblocks", httpHandler(s.createUnblockHandler)) // sensitive: queues firewall policy changes
+	admin.GET("/logs", httpHandler(s.listLogsHandler))            // sensitive: exposes traffic logs
+	admin.GET("/aggregates", httpHandler(s.aggregateLogsHandler)) // sensitive: summarizes traffic logs
+	admin.GET("/events", httpHandler(s.sseHandler))               // sensitive: streams live traffic data
+	admin.DELETE("/logs", httpHandler(s.clearLogsHandler))        // sensitive: destructive - clears all logs
+	admin.POST("/unblocks", httpHandler(s.createUnblockHandler))  // sensitive: queues firewall policy changes
 	admin.GET("/unblocks/status", httpHandler(s.unblockStatusHandler))
 
 	// API key management.

@@ -75,6 +75,32 @@ export interface Bucket {
   label: string;
   allowed: number;
   blocked: number;
+  audit: number;
+}
+
+export interface AggregateBucket {
+  start: string;
+  allowed: number;
+  blocked: number;
+  audit: number;
+}
+
+export interface AggregateRow {
+  key: string;
+  last_seen: string;
+  total: number;
+  allowed: number;
+  blocked: number;
+  audit: number;
+}
+
+export interface AggregateResponse {
+  from: string;
+  to: string;
+  events: number;
+  totals: Pick<AggregateRow, 'allowed' | 'blocked' | 'audit'>;
+  buckets: AggregateBucket[];
+  rows: AggregateRow[];
 }
 
 export interface BarItem {

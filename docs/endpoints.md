@@ -35,7 +35,7 @@ cross-site requests are rejected. CORS is off unless `CORS_ALLOWED_ORIGINS` is s
 Bootstrap: in `session` mode with no `ADMIN_PASSWORD_HASH` and no existing user,
 the server auto-generates a random admin password and logs it **once** at startup.
 Recover a lost password with `g0efilter-dashboard reset-password [username]`
-(requires `DB_PATH`).
+(requires persistent storage).
 
 ## Machine realm (`X-Api-Key`)
 
@@ -52,6 +52,7 @@ Recover a lost password with `g0efilter-dashboard reset-password [username]`
 | --- | --- | --- |
 | `GET` | `/api/v1/config` | UI config (feature flags such as `fleet_enabled`) |
 | `GET` | `/api/v1/logs` | recent traffic logs (query: `q`, `since`, `limit`) - **sensitive** |
+| `GET` | `/api/v1/aggregates` | server-side traffic totals (query: `range`, default `24h`; `q` filters host/IP) - **sensitive** |
 | `GET` | `/api/v1/events` | SSE live traffic stream (cookie-authenticated) - **sensitive** |
 | `DELETE` | `/api/v1/logs` | clears all logs - **sensitive, destructive** |
 | `POST` | `/api/v1/unblocks` | queue an unblock (firewall policy change) - **sensitive** |
@@ -60,7 +61,7 @@ Recover a lost password with `g0efilter-dashboard reset-password [username]`
 | `POST` | `/api/v1/apikeys` | mint a key; plaintext returned **once** |
 | `DELETE` | `/api/v1/apikeys/:id` | revoke a key |
 
-## Fleet (only when `FLEET_ENABLED=true`, requires `DB_PATH`)
+## Fleet (only when `FLEET_ENABLED=true`, requires persistent storage)
 
 Admin (UI realm):
 

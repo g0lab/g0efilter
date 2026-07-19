@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch, apiKeyHeaders } from './lib/api';
-  import { app, setLive, clearItems, pushItem, reload, loadUnblockStatus } from './lib/state.svelte';
+  import { app, setLive, setStreamLimit, clearItems, pushItem, reload, loadUnblockStatus } from './lib/state.svelte';
   import { sanitizeInput } from './lib/format';
   import { toast } from './lib/toast.svelte';
   import { confirm } from './lib/dialog.svelte';
@@ -17,6 +17,7 @@
   let es: EventSource | null = null;
 
   const isTraffic = $derived(app.page === 'stream' || app.page === 'agg');
+  const rowLimitOptions = [100, 500, 1000, 2500, 5000];
 
   function connectSSE() {
     disconnectSSE();
@@ -43,13 +44,18 @@
 
   function setLiveState(v: boolean) {
     setLive(v);
-    if (app.live) connectSSE(); else disconnectSSE();
+    if (v) connectSSE(); else { disconnectSSE(); app.connected = false; }
   }
 
   function go(page: string) {
     app.page = page;
     localStorage.setItem('view', page);
     if (isTraffic) reload();
+  }
+
+  async function changeStreamLimit(value: number) {
+    setStreamLimit(value);
+    await reload();
   }
 
   async function clearLogs() {
@@ -79,7 +85,6 @@
       try {
         const res = await apiFetch('/api/v1/config');
         const cfg = res.ok ? await res.json() : {};
-        if (cfg.buffer_size > 0) app.maxRows = cfg.buffer_size;
         app.authMode = cfg.auth_mode || '';
         app.fleetEnabled = !!cfg.fleet_enabled;
       } catch { /* keep defaults */ }
@@ -157,6 +162,14 @@
       </label>
       <input type="search" class="input" placeholder="Search host, IP, client…"
         oninput={(e) => app.filterQuery = sanitizeInput(e.currentTarget.value).toLowerCase()}/>
+      <label class="inline">Rows
+        <select class="select" value={app.streamLimit}
+          onchange={(e) => changeStreamLimit(Number(e.currentTarget.value))}>
+          {#each rowLimitOptions as limit (limit)}
+            <option value={limit}>{limit.toLocaleString()}</option>
+          {/each}
+        </select>
+      </label>
       <span class="grow"></span>
       <button type="button" class="btn btn-sm btn-danger" onclick={clearLogs}>Clear Logs</button>
     </div>

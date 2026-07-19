@@ -8,7 +8,7 @@ interface AppState {
   live: boolean;
   view: string;
   page: string; // stream | agg | keys | fleet
-  maxRows: number;
+  streamLimit: number;
   connected: boolean;
   loading: boolean;
   authMode: string;
@@ -19,11 +19,16 @@ interface AppState {
   filterQuery: string;
 }
 
+function initialStreamLimit(): number {
+  const stored = Number(localStorage.getItem('streamRows'));
+  return Number.isInteger(stored) && stored > 0 && stored <= 5000 ? stored : 500;
+}
+
 export const app: AppState = $state({
   live: JSON.parse(localStorage.getItem('autoRefresh') || 'true'),
   view: localStorage.getItem('view') || 'stream',
   page: 'stream',
-  maxRows: 5000, // fallback - overwritten by /api/v1/config (mirrors BUFFER_SIZE)
+  streamLimit: initialStreamLimit(),
   connected: true,
   loading: false,
   authMode: '',
@@ -48,6 +53,12 @@ export function setView(v: string): void {
   localStorage.setItem('view', v);
 }
 
+export function setStreamLimit(value: number): void {
+  app.streamLimit = Math.max(1, Math.min(value, 5000));
+  app.items = app.items.slice(0, app.streamLimit);
+  localStorage.setItem('streamRows', String(app.streamLimit));
+}
+
 /* Matches exact (value, hostname) pair OR (value, "") meaning all hosts. */
 export function isUnblocked(set: SvelteSet<string>, value: string, hostname: string): boolean {
   const v = value.toLowerCase();
@@ -61,14 +72,14 @@ export function clearItems(): void {
 
 export function pushItem(it: LogEntry): void {
   app.items.unshift(norm(it));
-  if (app.items.length > app.maxRows) app.items.pop();
+  if (app.items.length > app.streamLimit) app.items.pop();
 }
 
-/* Backfill from the server's in-memory buffer. */
+/* Backfill with the newest retained events. */
 export async function reload(): Promise<void> {
   app.loading = true;
   try {
-    const res = await apiFetch('/api/v1/logs?limit=' + app.maxRows);
+    const res = await apiFetch('/api/v1/logs?limit=' + app.streamLimit);
     if (!res.ok) { console.error('reload failed:', res.status); return; }
     const raw: LogEntry[] = await res.json();
     const snapshot = raw.map(norm);
@@ -77,7 +88,7 @@ export async function reload(): Promise<void> {
     // replace drop them.
     const newest = snapshot.length ? (snapshot[0].id ?? 0) : 0;
     const pending = app.items.filter((it) => (it.id ?? 0) > newest);
-    app.items = [...pending, ...snapshot].slice(0, app.maxRows);
+    app.items = [...pending, ...snapshot].slice(0, app.streamLimit);
   } catch (e) {
     console.error('reload error:', e);
   } finally {

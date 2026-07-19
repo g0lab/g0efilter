@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/g0lab/g0efilter/dashboard/model"
 )
 
 var errStoreFailure = errors.New("store failure")
@@ -25,6 +27,12 @@ func (failingStore) Insert(_ context.Context, _ *LogEntry) (int64, error) {
 
 func (failingStore) Query(_ context.Context, _ string, _ int64, _ int) ([]LogEntry, error) {
 	return nil, errStoreFailure
+}
+
+func (failingStore) Aggregate(
+	_ context.Context, _, _ time.Time, _ string, _ int,
+) (model.AggregateResult, error) {
+	return model.AggregateResult{}, errStoreFailure
 }
 
 func (failingStore) Clear(_ context.Context) error {
@@ -443,6 +451,75 @@ func TestListLogsHandler_ParamValidation(t *testing.T) {
 				t.Errorf("got %d logs, want %d", len(logs), tt.wantCount)
 			}
 		})
+	}
+}
+
+//nolint:cyclop,wsl_v5 // sequential handler contract scenario
+func TestAggregateLogsHandler_DefaultRangeAndFilter(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+	now := time.Now().UTC()
+	entries := []LogEntry{
+		{Time: now.Add(-31 * 24 * time.Hour), Action: testActionBlocked, HTTPHost: "old.example"},
+		{Time: now.Add(-25 * time.Hour), Action: testActionBlocked, HTTPHost: "outside-default.example"},
+		{Time: now.Add(-time.Hour), Action: "ALLOWED", HTTPHost: testExampleDomain},
+		{Time: now.Add(-30 * time.Minute), Action: testActionBlocked, HTTPHost: testExampleDomain},
+		{Time: now.Add(-time.Minute), Action: "AUDIT", HTTPHost: "audit.example"},
+	}
+	for i := range entries {
+		_, _ = srv.store.Insert(context.Background(), &entries[i])
+	}
+
+	request := func(target string) (int, model.AggregateResult) {
+		t.Helper()
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
+		w := httptest.NewRecorder()
+		srv.aggregateLogsHandler(w, req)
+
+		var result model.AggregateResult
+		if w.Code == http.StatusOK {
+			err := json.NewDecoder(w.Body).Decode(&result)
+			if err != nil {
+				t.Fatalf("decode aggregate: %v", err)
+			}
+		}
+
+		return w.Code, result
+	}
+
+	code, result := request("/api/v1/aggregates")
+	if code != http.StatusOK || result.Events != 3 || len(result.Buckets) != aggregateBuckets {
+		t.Fatalf("default aggregate: status=%d result=%+v", code, result)
+	}
+
+	code, result = request("/api/v1/aggregates?range=30d")
+	if code != http.StatusOK || result.Events != 4 {
+		t.Fatalf("30-day aggregate: status=%d result=%+v", code, result)
+	}
+
+	code, result = request("/api/v1/aggregates?range=all&q=example.com")
+	if code != http.StatusOK || result.Events != 2 || len(result.Rows) != 1 {
+		t.Fatalf("filtered aggregate: status=%d result=%+v", code, result)
+	}
+
+	code, _ = request("/api/v1/aggregates?range=forever")
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid range status = %d, want 400", code)
+	}
+}
+
+func TestAggregateLogsHandler_StoreError(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+	srv.store = failingStore{}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/aggregates", nil)
+	w := httptest.NewRecorder()
+	srv.aggregateLogsHandler(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("Status = %d, want 500", w.Code)
 	}
 }
 
