@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-// listGroups fetches GET /api/v1/fleet/groups and returns the decoded array.
 func listGroups(t *testing.T, router http.Handler) []map[string]any {
 	t.Helper()
 
@@ -24,7 +23,9 @@ func listGroups(t *testing.T, router http.Handler) []map[string]any {
 	}
 
 	var out []map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+
+	err := json.Unmarshal(w.Body.Bytes(), &out)
+	if err != nil {
 		t.Fatalf("decode groups: %v", err)
 	}
 
@@ -50,6 +51,7 @@ func TestFleet_GroupListAndDelete(t *testing.T) {
 	}
 
 	names := map[string]bool{}
+
 	for _, g := range groups {
 		name, _ := g["name"].(string)
 		names[name] = true
@@ -59,14 +61,12 @@ func TestFleet_GroupListAndDelete(t *testing.T) {
 		t.Fatalf("group names = %v, want alpha+beta", names)
 	}
 
-	// Delete an existing group, then confirm it is gone.
 	delJSON(t, router, "/api/v1/fleet/groups/"+betaID, http.StatusOK)
 
 	if got := listGroups(t, router); len(got) != 1 {
 		t.Fatalf("groups after delete = %d, want 1", len(got))
 	}
 
-	// Deleting an unknown id is a 404, not a silent success.
 	delJSON(t, router, "/api/v1/fleet/groups/does-not-exist", http.StatusNotFound)
 }
 
@@ -76,7 +76,6 @@ func TestFleet_InstancePolicyOverride(t *testing.T) {
 	srv := newFleetServer(t)
 	router := srv.routes()
 
-	// Register an ungrouped instance.
 	code, resp := syncCall(t, router,
 		`{"hostname":"host-o","filter_mode":"https","version":"1.0","config_hash":""}`)
 	if code != http.StatusOK || resp["managed"] != false {
@@ -85,7 +84,7 @@ func TestFleet_InstancePolicyOverride(t *testing.T) {
 
 	instID, _ := listFleet(t, router)[0]["id"].(string)
 
-	// A per-instance override makes the instance managed with no group involved.
+	// An override with no group still makes the instance managed.
 	putJSON(t, router, "/api/v1/fleet/instances/"+instID+"/policy",
 		`{"policy":"ALLOW example.com"}`)
 
@@ -99,7 +98,6 @@ func TestFleet_InstancePolicyOverride(t *testing.T) {
 		t.Fatalf("override policy = %v, want ALLOW example.com", resp["policy"])
 	}
 
-	// Clearing the override (policy:null) reverts the instance to unmanaged.
 	putJSON(t, router, "/api/v1/fleet/instances/"+instID+"/policy", `{"policy":null}`)
 
 	code, resp = syncCall(t, router,

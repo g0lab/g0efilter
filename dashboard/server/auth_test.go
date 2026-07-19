@@ -402,19 +402,19 @@ func TestListAPIKeys(t *testing.T) {
 		}
 
 		var out []map[string]any
-		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+
+		err := json.Unmarshal(w.Body.Bytes(), &out)
+		if err != nil {
 			t.Fatalf("decode apikeys: %v", err)
 		}
 
 		return out
 	}
 
-	// The config API key seeds one env-bootstrap record.
 	if got := len(listKeys()); got != 1 {
 		t.Fatalf("initial apikeys = %d, want 1 (env bootstrap)", got)
 	}
 
-	// Creating a key makes the list grow; the plaintext is never re-listed.
 	req := httptest.NewRequestWithContext(context.Background(),
 		http.MethodPost, "/api/v1/apikeys", strings.NewReader(`{"label":"ci"}`))
 	req.AddCookie(cookie)
@@ -442,7 +442,6 @@ func TestListAPIKeys(t *testing.T) {
 func TestMeHandler(t *testing.T) {
 	t.Parallel()
 
-	// None mode: authenticated as the anonymous principal.
 	none := newServer(slog.New(slog.DiscardHandler), Config{
 		APIKey: "test-api-key", BufferSize: 10, ReadLimit: 10, AuthMode: AuthModeNone,
 	})
@@ -457,7 +456,9 @@ func TestMeHandler(t *testing.T) {
 	}
 
 	var body map[string]any
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+
+	err := json.Unmarshal(w.Body.Bytes(), &body)
+	if err != nil {
 		t.Fatalf("decode me: %v", err)
 	}
 
@@ -465,8 +466,7 @@ func TestMeHandler(t *testing.T) {
 		t.Errorf("me username = %v, want anonymous", body["username"])
 	}
 
-	// Session mode without a cookie: 401, but still reports the auth_mode so the
-	// UI knows which login flow to present.
+	// 401 must still report auth_mode so the UI knows which login flow to present.
 	sess := newSessionTestServer(t)
 
 	req = httptest.NewRequestWithContext(context.Background(),
@@ -479,7 +479,9 @@ func TestMeHandler(t *testing.T) {
 	}
 
 	body = nil
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+
+	err = json.Unmarshal(w.Body.Bytes(), &body)
+	if err != nil {
 		t.Fatalf("decode me: %v", err)
 	}
 
