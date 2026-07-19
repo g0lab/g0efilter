@@ -57,3 +57,34 @@ func TestAggregateLogs_QueryAndDestinationFallback(t *testing.T) {
 		t.Fatalf("filtered aggregate = %+v", result)
 	}
 }
+
+//nolint:cyclop,wsl_v5 // validates related aggregation edge cases together
+func TestAggregateLogs_DefaultBucketsAndDestinationEdges(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
+	entries := []model.LogEntry{
+		{Time: now, Action: "ALLOWED", DestinationIP: "198.51.100.10"},
+		{Time: now, Action: "BLOCKED", Dst: "proxy.example:443", DestinationIP: "198.51.100.20"},
+		{Time: now, Action: "AUDIT"},
+	}
+
+	result := model.AggregateLogs(entries, time.Time{}, time.Time{}, "", 0)
+	if result.Events != 3 || len(result.Buckets) != 24 {
+		t.Fatalf("aggregate events/buckets = %d/%d, want 3/24", result.Events, len(result.Buckets))
+	}
+	if len(result.Rows) != 2 {
+		t.Fatalf("Rows = %+v, want two destination rows", result.Rows)
+	}
+	if result.Rows[0].Key != "198.51.100.10" || result.Rows[1].Key != "proxy.example:443" {
+		t.Fatalf("Rows = %+v, want deterministic destination ordering", result.Rows)
+	}
+	if !result.From.Equal(now) || result.To.Sub(result.From) != time.Minute {
+		t.Fatalf("bounds = %s..%s, want a one-minute window from event time", result.From, result.To)
+	}
+
+	empty := model.AggregateLogs(entries, time.Time{}, time.Time{}, "not-present", 0)
+	if empty.Events != 0 || len(empty.Rows) != 0 || len(empty.Buckets) != 0 {
+		t.Fatalf("empty filtered aggregate = %+v", empty)
+	}
+}

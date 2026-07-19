@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,5 +157,26 @@ func TestLogStore_AggregateUsesFullTimeWindow(t *testing.T) {
 	}
 	if all.Events != 1 || len(all.Rows) != 1 || all.Rows[0].Key != "old.example" {
 		t.Fatalf("all-history filtered aggregate = %+v", all)
+	}
+}
+
+func TestLogStore_AggregateRejectsCorruptRows(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+
+	_, err := client.LogEvent.Create().
+		SetTs(time.Now().UnixNano()).
+		SetData(`{"incomplete"`).
+		SetSearch("corrupt").
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("insert corrupt row: %v", err)
+	}
+
+	_, err = store.NewLogStore(client, 1000).Aggregate(ctx, time.Time{}, time.Time{}, "", 24)
+	if err == nil || !strings.Contains(err.Error(), "unmarshal aggregate log") {
+		t.Fatalf("Aggregate error = %v, want corrupt-row error", err)
 	}
 }

@@ -4,6 +4,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,33 @@ import (
 )
 
 var generatedAPIKeyPattern = regexp.MustCompile(`g0e_[0-9a-f]{64}`)
+
+var errTestAPIKeyStore = errors.New("test API key store failure")
+
+type failingAPIKeyStore struct {
+	failList   bool
+	failCreate bool
+}
+
+func (s failingAPIKeyStore) Validate(context.Context, string) (string, bool) { return "", false }
+
+func (s failingAPIKeyStore) List(context.Context) ([]APIKey, error) {
+	if s.failList {
+		return nil, errTestAPIKeyStore
+	}
+
+	return []APIKey{}, nil
+}
+
+func (s failingAPIKeyStore) Create(context.Context, string) (string, APIKey, error) {
+	if s.failCreate {
+		return "", APIKey{}, errTestAPIKeyStore
+	}
+
+	return "unused", APIKey{}, nil
+}
+
+func (failingAPIKeyStore) Revoke(context.Context, string) error { return nil }
 
 //nolint:cyclop,wsl_v5 // sequential restart and persistence scenario
 func TestPersistentAPIKeyWiringAndEnvSeedLogOnce(t *testing.T) {
@@ -178,5 +206,31 @@ func TestEphemeralDashboardGeneratesAPIKey(t *testing.T) {
 	}
 	if _, ok := srv.apiKeys.Validate(ctx, generated); !ok {
 		t.Fatal("logged ephemeral key does not validate")
+	}
+}
+
+func TestEnsureAPIKeysPropagatesStoreFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		store APIKeyStore
+	}{
+		{name: "list", store: failingAPIKeyStore{failList: true}},
+		{name: "create", store: failingAPIKeyStore{failCreate: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := newServer(slog.New(slog.DiscardHandler), Config{})
+			srv.apiKeys = tt.store
+
+			err := srv.ensureAPIKeys(context.Background())
+			if !errors.Is(err, errTestAPIKeyStore) {
+				t.Fatalf("ensureAPIKeys error = %v, want store failure", err)
+			}
+		})
 	}
 }

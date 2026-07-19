@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,6 +58,33 @@ func TestSeedDatabaseReplacesLogFixture(t *testing.T) {
 		t.Fatalf("reseed database: %v", err)
 	}
 	assertSeedCount(ctx, t, dbPath, now, 75)
+}
+
+func TestSeedDatabaseRejectsUnsafeConfiguration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		path  string
+		count int
+	}{
+		{name: "empty path", count: 1},
+		{name: "blank path", path: "  ", count: 1},
+		{name: "zero count", path: "unused.db"},
+		{name: "negative count", path: "unused.db", count: -1},
+		{name: "over maximum", path: "unused.db", count: maxSeedCount + 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := seedDatabase(context.Background(), tt.path, tt.count, time.Now())
+			if !errors.Is(err, errInvalidSeedConfig) {
+				t.Fatalf("seedDatabase error = %v, want errInvalidSeedConfig", err)
+			}
+		})
+	}
 }
 
 //nolint:wsl_v5 // compact test helper

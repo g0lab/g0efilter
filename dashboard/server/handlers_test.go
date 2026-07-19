@@ -523,6 +523,46 @@ func TestAggregateLogsHandler_StoreError(t *testing.T) {
 	}
 }
 
+func TestParseAggregateRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		raw      string
+		duration time.Duration
+		all      bool
+		wantErr  bool
+	}{
+		{name: "default", duration: 24 * time.Hour},
+		{name: "day", raw: "24h", duration: 24 * time.Hour},
+		{name: "day alias", raw: " 1D ", duration: 24 * time.Hour},
+		{name: "15 minutes", raw: "15m", duration: 15 * time.Minute},
+		{name: "hour", raw: "1h", duration: time.Hour},
+		{name: "6 hours", raw: "6h", duration: 6 * time.Hour},
+		{name: "7 days", raw: "7d", duration: 7 * 24 * time.Hour},
+		{name: "30 days", raw: "30d", duration: 30 * 24 * time.Hour},
+		{name: "90 days", raw: "90d", duration: 90 * 24 * time.Hour},
+		{name: "all", raw: "all", all: true},
+		{name: "invalid", raw: "forever", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			duration, all, err := parseAggregateRange(tt.raw)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseAggregateRange(%q) error = %v, wantErr %v", tt.raw, err, tt.wantErr)
+			}
+
+			if duration != tt.duration || all != tt.all {
+				t.Fatalf("parseAggregateRange(%q) = %s/%v, want %s/%v",
+					tt.raw, duration, all, tt.duration, tt.all)
+			}
+		})
+	}
+}
+
 func TestListLogsHandler_StoreError(t *testing.T) {
 	t.Parallel()
 
