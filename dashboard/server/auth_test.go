@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -377,6 +378,113 @@ func TestAPIKeyAdminEndpoints(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked key = %d, want 401", w.Code)
+	}
+}
+
+func TestListAPIKeys(t *testing.T) {
+	t.Parallel()
+
+	srv := newSessionTestServer(t)
+	router := srv.routes()
+
+	cookie := sessionCookie(t, doLogin(t, router, testAdminPass))
+
+	listKeys := func() []map[string]any {
+		req := httptest.NewRequestWithContext(context.Background(),
+			http.MethodGet, "/api/v1/apikeys", nil)
+		req.AddCookie(cookie)
+
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("list apikeys = %d (%s)", w.Code, w.Body.String())
+		}
+
+		var out []map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode apikeys: %v", err)
+		}
+
+		return out
+	}
+
+	// The config API key seeds one env-bootstrap record.
+	if got := len(listKeys()); got != 1 {
+		t.Fatalf("initial apikeys = %d, want 1 (env bootstrap)", got)
+	}
+
+	// Creating a key makes the list grow; the plaintext is never re-listed.
+	req := httptest.NewRequestWithContext(context.Background(),
+		http.MethodPost, "/api/v1/apikeys", strings.NewReader(`{"label":"ci"}`))
+	req.AddCookie(cookie)
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create apikey = %d (%s)", w.Code, w.Body.String())
+	}
+
+	keys := listKeys()
+	if len(keys) != 2 {
+		t.Fatalf("apikeys after create = %d, want 2", len(keys))
+	}
+
+	for _, k := range keys {
+		if _, leaked := k["key"]; leaked {
+			t.Error("apikey list leaked plaintext key material")
+		}
+	}
+}
+
+func TestMeHandler(t *testing.T) {
+	t.Parallel()
+
+	// None mode: authenticated as the anonymous principal.
+	none := newServer(slog.New(slog.DiscardHandler), Config{
+		APIKey: "test-api-key", BufferSize: 10, ReadLimit: 10, AuthMode: AuthModeNone,
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(),
+		http.MethodGet, "/api/v1/auth/me", nil)
+	w := httptest.NewRecorder()
+	none.routes().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("me (none) = %d, want 200", w.Code)
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode me: %v", err)
+	}
+
+	if body["username"] != "anonymous" {
+		t.Errorf("me username = %v, want anonymous", body["username"])
+	}
+
+	// Session mode without a cookie: 401, but still reports the auth_mode so the
+	// UI knows which login flow to present.
+	sess := newSessionTestServer(t)
+
+	req = httptest.NewRequestWithContext(context.Background(),
+		http.MethodGet, "/api/v1/auth/me", nil)
+	w = httptest.NewRecorder()
+	sess.routes().ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("me (session, no cookie) = %d, want 401", w.Code)
+	}
+
+	body = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode me: %v", err)
+	}
+
+	if body[keyAuthMode] != AuthModeSession {
+		t.Errorf("me auth_mode = %v, want %q", body[keyAuthMode], AuthModeSession)
 	}
 }
 

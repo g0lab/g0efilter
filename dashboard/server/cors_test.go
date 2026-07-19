@@ -67,3 +67,19 @@ func TestCORS_DisabledByDefault(t *testing.T) {
 		t.Fatalf("CORS headers present with no configured origins: %q", got)
 	}
 }
+
+func TestValidateCORSOrigins(t *testing.T) {
+	t.Parallel()
+
+	// Explicit origins (or none) are accepted.
+	for _, origins := range [][]string{nil, {"https://ui.example"}, {"https://a", "https://b"}} {
+		if err := validateCORSOrigins(origins); err != nil {
+			t.Errorf("validateCORSOrigins(%v) = %v, want nil", origins, err)
+		}
+	}
+
+	// A wildcard must fail closed: it cannot be combined with credentials.
+	if err := validateCORSOrigins([]string{"https://ok", "*"}); err == nil {
+		t.Error("validateCORSOrigins with wildcard = nil, want error")
+	}
+}
