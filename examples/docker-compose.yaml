@@ -11,14 +11,12 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN  # nftables
-      - NET_RAW    # SO_MARK dialer
-      # The entrypoint drops to a non-root user (nobody by default); these let it
-      # switch user (retained at runtime: only NET_ADMIN/NET_RAW). Without them it
-      # falls back to running as root.
+      - NET_ADMIN  # nftables + SO_MARK dialer
+      # The entrypoint drops to a non-root user (nobody by default): SETUID/SETGID
+      # switch user, CHOWN hands it the writable dirs. Without them it falls back
+      # to running as root. Only NET_ADMIN is retained at runtime.
       - SETUID
       - SETGID
-      - SETPCAP
       - CHOWN
     security_opt:
       - no-new-privileges

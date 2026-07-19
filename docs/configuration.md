@@ -47,17 +47,17 @@
 
 The g0efilter container runs as a non-root user (`nobody`, uid 65534) by default.
 Its entrypoint starts as root, hands the writable dirs (`/app/policy`, `/app/data`)
-to the runtime user, then drops privileges - keeping `NET_ADMIN`/`NET_RAW` as
-*ambient* capabilities so nftables and the SO_MARK dialer keep working. The binary
+to the runtime user, then drops privileges - keeping `NET_ADMIN` as an
+*ambient* capability so nftables and the SO_MARK dialer keep working. The binary
 stays root-owned and read-only.
 
 - Override the uid/gid with `PUID`/`PGID` (e.g. to match a host user that edits the
   policy file). Set `PUID=0` to run as root.
-- The privilege drop needs a few capabilities *at startup*, in addition to the
-  runtime `NET_ADMIN`/`NET_RAW`: `SETUID`, `SETGID`, `SETPCAP` (switch user) and
-  `CHOWN` (hand over the writable dirs). They are not retained by the running
-  process. Without them the entrypoint logs a warning and stays root, so existing
-  `NET_ADMIN`-only setups keep working.
+- The privilege drop needs a couple of capabilities *at startup*, in addition to the
+  runtime `NET_ADMIN`: `SETUID`, `SETGID` (switch user) and `CHOWN` (hand over the
+  writable dirs). They are not retained by the running process. Without them the
+  entrypoint logs a warning and stays root, so existing `NET_ADMIN`-only setups
+  keep working.
 - Compatible with `read_only: true` and `no-new-privileges` (the numeric uid needs
   no `/etc/passwd` entry, and ambient caps survive `no-new-privileges`).
 
