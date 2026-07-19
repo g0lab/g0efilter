@@ -9,19 +9,20 @@ set -euo pipefail
 echo ">>> Go tooling"
 GOBIN="$(go env GOPATH)/bin"
 export PATH="$GOBIN:$PATH"
-go install entgo.io/ent/cmd/ent@latest
+# ent CLI version tracks the module pinned in go.mod
+go install "entgo.io/ent/cmd/ent@$(go list -m -f '{{.Version}}' entgo.io/ent)"
 
-# golangci-lint (pinned to the major the repo lints with)
+# golangci-lint latest release
 curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
-  | sh -s -- -b "$GOBIN" v2.12.2
+  | sh -s -- -b "$GOBIN"
 
 echo ">>> Go modules"
 go mod download
 
 echo ">>> pnpm (via corepack) + UI deps"
 corepack enable
-corepack prepare pnpm@11.12.0 --activate
-(cd dashboard/ui && pnpm install --frozen-lockfile)
+# pnpm version tracks the packageManager field in dashboard/ui/package.json
+(cd dashboard/ui && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack install && pnpm install --frozen-lockfile)
 
 cat <<'MSG'
 
