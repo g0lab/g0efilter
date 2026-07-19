@@ -23,9 +23,16 @@ log "[Strict] Allowed domain resolves and connects"
 assert_allowed https://github.com
 
 log "[Strict] Resolved IPs were pushed into the kernel set with a timeout"
-$COMPOSE exec g0efilter nft list set ip g0efilter_v4 resolved_allow_v4 | grep -q "timeout" \
-  || fail "resolved_allow_v4 has no timeout entries after an allowed resolution"
-log "OK: resolved_allow_v4 populated"
+# The set is defined with `flags timeout`, so "timeout" and the set header both
+# print even when empty; only the `elements =` line proves a real entry landed.
+for _ in $(seq 1 5); do
+  $COMPOSE exec g0efilter nft list set ip g0efilter_v4 resolved_allow_v4 \
+    | grep "elements =" | grep -q "timeout" && { populated=1; break; }
+  sleep 1
+done
+[ "${populated:-0}" = 1 ] \
+  || fail "resolved_allow_v4 has no timeout-bearing elements after an allowed resolution"
+log "OK: resolved_allow_v4 populated with timeout-enabled entries"
 
 log "[Strict] Blocked domain is sinkholed at DNS"
 assert_blocked https://google.com
