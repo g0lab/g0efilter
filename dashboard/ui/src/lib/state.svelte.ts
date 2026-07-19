@@ -70,8 +70,14 @@ export async function reload(): Promise<void> {
   try {
     const res = await apiFetch('/api/v1/logs?limit=' + app.maxRows);
     if (!res.ok) { console.error('reload failed:', res.status); return; }
-    const items: LogEntry[] = await res.json();
-    app.items = items.map(norm);
+    const raw: LogEntry[] = await res.json();
+    const snapshot = raw.map(norm);
+    // A live SSE event can land while this fetch is in flight; the snapshot is
+    // newest-first, so keep items newer than its head rather than let the
+    // replace drop them.
+    const newest = snapshot.length ? (snapshot[0].id ?? 0) : 0;
+    const pending = app.items.filter((it) => (it.id ?? 0) > newest);
+    app.items = [...pending, ...snapshot].slice(0, app.maxRows);
   } catch (e) {
     console.error('reload error:', e);
   } finally {
