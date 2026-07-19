@@ -1,6 +1,8 @@
-[![docker pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=docker%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
-[![g0efilter CI](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci.yaml)
-[![g0efilter Tests](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml)
+[![agent pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=agent%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
+[![dashboard pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-dashboard.svg?label=dashboard%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-dashboard)
+[![CI (Go)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml)
+[![CI (UI)](https://github.com/g0lab/g0efilter/actions/workflows/ci-ui.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci-ui.yaml)
+[![Tests](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml)
 [![codecov](https://codecov.io/gh/g0lab/g0efilter/graph/badge.svg?token=owO27TfE79)](https://codecov.io/gh/g0lab/g0efilter)
 
 > [!NOTE]
