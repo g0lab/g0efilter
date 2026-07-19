@@ -7,3 +7,6 @@ coverage:
         threshold: null
     patch: false
     changes: false
+
+ignore:
+  - "dashboard/store/ent"  # generated ent client + schema/migrate scaffolding
