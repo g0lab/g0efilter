@@ -84,7 +84,6 @@ func TestFleet_InstancePolicyOverride(t *testing.T) {
 
 	instID, _ := listFleet(t, router)[0]["id"].(string)
 
-	// An override with no group still makes the instance managed.
 	putJSON(t, router, "/api/v1/fleet/instances/"+instID+"/policy",
 		`{"policy":"ALLOW example.com"}`)
 
