@@ -3,7 +3,7 @@ import globals from 'globals';
 import svelte from 'eslint-plugin-svelte';
 import tseslint from 'typescript-eslint';
 
-import svelteConfig from './svelte.config.js';
+import svelteConfig from './svelte.config.ts';
 
 export default tseslint.config(
   // Generated / build output and tooling configs are not linted.
