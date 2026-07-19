@@ -13,12 +13,14 @@ git diff --exit-code -- go.mod go.sum
 
 echo ">>> ent client is up to date"
 go generate ./dashboard/store/ent/...
-git diff --exit-code -- dashboard/store/ent
+go mod tidy
+git diff --exit-code -- dashboard/store/ent go.mod go.sum
 
 echo ">>> migrations match the ent schema"
 # No-op when in sync; a drift rewrites atlas.sum (tracked), tripping the diff.
 go run -mod=mod dashboard/store/ent/migrate/main.go ci-check
-git diff --exit-code -- dashboard/store/migrations
+go mod tidy
+git diff --exit-code -- dashboard/store/migrations go.mod go.sum
 
 echo ">>> go vet"
 go vet ./...

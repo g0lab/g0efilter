@@ -153,6 +153,8 @@ func TestProcessPayloadActionNormalization(t *testing.T) {
 
 			if entry == nil {
 				t.Fatalf("payload with action %v should be kept", tt.action)
+
+				return
 			}
 
 			if entry.Action != tt.wantAction {
@@ -179,6 +181,8 @@ func TestProcessPayloadTimestampParsing(t *testing.T) {
 		}, "10.0.0.1")
 		if entry == nil {
 			t.Fatal("entry rejected")
+
+			return
 		}
 
 		if !entry.Time.Equal(want) {
@@ -202,6 +206,8 @@ func TestProcessPayloadTimestampParsing(t *testing.T) {
 			}, "10.0.0.1")
 			if entry == nil {
 				t.Fatal("entry rejected")
+
+				return
 			}
 
 			after := time.Now().UTC().Add(time.Minute)
@@ -267,6 +273,8 @@ func TestProcessPayloadProcessMetadataInFields(t *testing.T) {
 	}, "10.0.0.1")
 	if entry == nil {
 		t.Fatal("entry rejected")
+
+		return
 	}
 
 	var fields map[string]any
