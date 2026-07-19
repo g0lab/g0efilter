@@ -152,9 +152,9 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	err = srv.ensureAPIKeys(ctx, cfg)
+	err = srv.ensureAPIKeys(ctx)
 	if err != nil {
-		lg.Error("config.missing_api_key", "error", err.Error())
+		lg.Error("dashboard.api_key_init_failed", "error", err.Error())
 
 		return err
 	}

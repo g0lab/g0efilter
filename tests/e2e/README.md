@@ -33,8 +33,8 @@ FILTER_MODE=dns E2E_SKIP_INITIAL_UP=1 scripts/e2e.sh 09   # skip the baseline br
                                                           # (phase recreates the stack itself)
 ```
 
-`E2E_SKIP_INITIAL_UP=1` is for the phases that recreate the stack themselves (08-11, 13-14);
-it avoids bringing up a baseline stack that the phase immediately replaces. CI uses these
+`E2E_SKIP_INITIAL_UP=1` is for phases that recreate the stack or test images
+directly (08-11, 13-16); it avoids bringing up an unused baseline stack. CI uses these
 knobs to fan the suite out across parallel runners (see the matrix in `test.yaml`); locally
 the phases share fixed container names and ports, so run them one stack at a time rather
 than in parallel.
@@ -57,6 +57,8 @@ than in parallel.
 | `12_load.sh` | concurrent allowed/blocked traffic, leak checks, latency, and stability under load |
 | `13_dns_ip_allowlist.sh` | dns mode: a non-domain-allowlisted host pointing at an allowlisted IP resolves; the behaviour is off when the policy has no IPs (dns lane only) |
 | `14_dashboard.sh` | production dashboard container with session auth, CORS/CSRF, static assets, SSE, API-key lifecycle, SQLite migrations/restart persistence, persistent logs, and fleet reconciliation (https lane only) |
+| `15_entrypoint_caps.sh` | production agent container capability dropping and fail-closed startup behavior |
+| `16_dashboard_cli.sh` | default-volume persistence, ephemeral mode, credential bootstrap, recovery commands, and UI API-key recovery |
 
 Individual phase scripts assume the stack is already up, though mode-specific
 phases may recreate the g0efilter container with different environment flags.

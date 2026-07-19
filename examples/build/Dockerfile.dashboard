@@ -38,13 +38,13 @@ RUN go build -trimpath \
 # Stage 3: runtime
 FROM gcr.io/distroless/static:nonroot
 
+USER nonroot
+WORKDIR /app/data
 WORKDIR /app
 
 COPY --from=builder /build/g0efilter-dashboard /app/g0efilter-dashboard
 
 EXPOSE 8081
-
-USER nonroot
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["/app/g0efilter-dashboard", "healthcheck"]

@@ -16,8 +16,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// In-memory implementations used when no DB_PATH is configured (explicitly
-// non-persistent mode) and in tests. Semantics mirror the SQLite stores.
+// In-memory implementations used in ephemeral mode and tests. Semantics mirror
+// the SQLite stores.
 
 type memAPIKey struct {
 	rec  APIKey

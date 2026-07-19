@@ -355,8 +355,8 @@ func generateAdminUser(ctx context.Context, username string, users UserStore, lg
 
 	lg.Warn("dashboard.admin_password_generated",
 		"username", username,
-		"msg", "auto-generated admin password created; cleartext is not logged. "+
-			"set ADMIN_PASSWORD_HASH, or run 'reset-password' to rotate")
+		"password", password,
+		"msg", "auto-generated admin password on first startup; set ADMIN_PASSWORD_HASH or use reset-password to rotate")
 
 	return nil
 }

@@ -146,7 +146,7 @@ See [docs/github-actions.md](docs/github-actions.md) for inputs, baseline allow 
 
 The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set `DASHBOARD_HOST` and `DASHBOARD_API_KEY` on g0efilter to ship logs to it.
 
-The web UI is protected by a built-in login by default (`AUTH_MODE=session`). If you don't set `ADMIN_PASSWORD_HASH` (a bcrypt hash from `g0efilter-dashboard hash-password`), a random admin password is generated and logged once on first startup; recover it later with the `reset-password` subcommand. Set `AUTH_MODE=none` to instead rely on a reverse proxy, or `forward` to trust an authenticating proxy header. Set `DB_PATH` (with a writable volume) to persist sessions, API keys and unblock state. See [docs/configuration.md](docs/configuration.md) for details.
+The dashboard uses built-in session login and persists its state to `/app/data/dashboard.db` by default. On first startup it generates and logs any missing admin password or machine API key. Mount `/app/data` for persistence, or set `EPHEMERAL=true` to run entirely in memory. Other authentication modes and recovery commands are documented in [docs/configuration.md](docs/configuration.md).
 
 ![g0efilter-dashboard-example](https://raw.githubusercontent.com/g0lab/g0efilter/main/examples/images/g0efilter-dashboard-example.png)
 

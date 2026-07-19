@@ -2,11 +2,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -285,13 +287,36 @@ func TestEnsureAdminUser(t *testing.T) {
 	// No hash, no users → auto-generate a bootstrap admin (does not fail).
 	gen := newMemUserStore()
 
-	err := ensureAdminUser(ctx, Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen, lg)
+	var bootstrapLogs bytes.Buffer
+
+	bootstrapLogger := slog.New(slog.NewTextHandler(&bootstrapLogs, nil))
+
+	err := ensureAdminUser(ctx, Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen, bootstrapLogger)
 	if err != nil {
 		t.Fatalf("auto-generate admin: %v", err)
 	}
 
 	if n, _ := gen.Count(ctx); n != 1 {
 		t.Fatalf("auto-generated users = %d, want 1", n)
+	}
+
+	match := regexp.MustCompile(`password=([A-Za-z0-9_-]+)`).FindStringSubmatch(bootstrapLogs.String())
+	if len(match) != 2 {
+		t.Fatalf("generated password missing from bootstrap log:\n%s", bootstrapLogs.String())
+	}
+
+	if _, ok := gen.VerifyPassword(ctx, "admin", match[1]); !ok {
+		t.Fatal("logged generated admin password does not authenticate")
+	}
+
+	err = ensureAdminUser(ctx,
+		Config{AuthMode: AuthModeSession, AdminUsername: "admin"}, gen, bootstrapLogger)
+	if err != nil {
+		t.Fatalf("ensure existing admin: %v", err)
+	}
+
+	if got := strings.Count(bootstrapLogs.String(), "dashboard.admin_password_generated"); got != 1 {
+		t.Fatalf("generated admin password logs = %d, want 1", got)
 	}
 
 	// Hash provided → seeded.
