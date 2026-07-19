@@ -2,7 +2,8 @@
 # Local dashboard dev backend:
 #   scripts/dev-dashboard.sh
 # Runs g0efilter-dashboard on :8081 with session auth, a persistent dev
-# database under .dev/, and a known dev login + API key. Pair with the
+# database under .dev/, 10,000 historical log fixtures, and a known dev login
+# + API key. Pair with the
 # frontend dev server (cd dashboard/ui && pnpm dev) for HMR, or hit
 # :8081 directly to use the embedded build.
 set -euo pipefail
@@ -15,6 +16,12 @@ mkdir -p "$DEV_DIR"
 DEV_USER="${DEV_USER:-admin}"
 DEV_PASSWORD="${DEV_PASSWORD:-devpassword}"
 DEV_API_KEY="${DEV_API_KEY:-dev-api-key}"
+DEV_SEED_COUNT="${DEV_SEED_COUNT:-10000}"
+
+if [ "$DEV_SEED_COUNT" != "0" ]; then
+  echo ">>> replacing dev traffic logs with $DEV_SEED_COUNT seeded events"
+  go run ./scripts/dev-seed-dashboard -db "$DEV_DIR/dashboard.db" -count "$DEV_SEED_COUNT"
+fi
 
 HASH=$(printf '%s\n' "$DEV_PASSWORD" | go run ./dashboard hash-password)
 
