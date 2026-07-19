@@ -53,11 +53,11 @@ stays root-owned and read-only.
 
 - Override the uid/gid with `PUID`/`PGID` (e.g. to match a host user that edits the
   policy file). Set `PUID=0` to run as root.
-- The privilege drop needs a couple of capabilities *at startup*, in addition to the
-  runtime `NET_ADMIN`: `SETUID`, `SETGID` (switch user) and `CHOWN` (hand over the
-  writable dirs). They are not retained by the running process. Without them the
-  entrypoint logs a warning and stays root, so existing `NET_ADMIN`-only setups
-  keep working.
+- `NET_ADMIN` is required at runtime (nftables + the SO_MARK dialer). Without it the
+  container exits on startup rather than run with filtering disabled.
+- The privilege drop additionally needs `SETUID`, `SETGID` (switch user) and `CHOWN`
+  (hand over the writable dirs) *at startup*. These are not retained by the running
+  process; if they are missing the entrypoint warns and stays root.
 - Compatible with `read_only: true` and `no-new-privileges` (the numeric uid needs
   no `/etc/passwd` entry, and ambient caps survive `no-new-privileges`).
 
