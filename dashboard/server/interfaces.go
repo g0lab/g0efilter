@@ -58,7 +58,7 @@ type Authenticator interface {
 	Authenticate(r *http.Request) (principal string, ok bool)
 }
 
-// FleetStore manages the instance/group control plane (Phase 7).
+// FleetStore manages the instance/group control plane.
 type FleetStore interface {
 	// Reconcile records an instance's report and returns its desired config.
 	Reconcile(ctx context.Context, rep model.SyncReport) (model.DesiredConfig, error)

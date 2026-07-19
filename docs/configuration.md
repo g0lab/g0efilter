@@ -26,8 +26,9 @@
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
 | `HOSTNAME` | Identifies this instance in shipped logs | unset |
+| `TENANT_ID` | Optional tenant identifier added to netfilter log events | unset |
 | `DASHBOARD_HOST` | Dashboard URL for log shipping | unset |
-| `DASHBOARD_API_KEY` | Must match `API_KEY` on the dashboard | unset |
+| `DASHBOARD_API_KEY` | Active dashboard machine API key used for log shipping and remote unblock | unset |
 | `DASHBOARD_QUEUE_SIZE` | Log buffer before shipping; drops when full | `1024` |
 | `DASHBOARD_START_DELAY` | Delay before log shipping starts (`5s`, `1m`, ...) | `5s` |
 | `ENABLE_REMOTE_UNBLOCK` | Poll dashboard for remote unblock requests | `false` |
@@ -55,22 +56,23 @@ stays root-owned and read-only.
   policy file). Set `PUID=0` to run as root.
 - `NET_ADMIN` is required at runtime (nftables + the SO_MARK dialer). Without it the
   container exits on startup rather than run with filtering disabled.
-- The privilege drop additionally needs `SETUID`, `SETGID` (switch user) and `CHOWN`
-  (hand over the writable dirs) *at startup*. These are not retained by the running
-  process; if they are missing the entrypoint warns and stays root.
+- The privilege drop needs `SETUID` and `SETGID` at startup. If either is
+  unavailable, the entrypoint warns and stays root. `CHOWN` hands writable
+  directories to the runtime user; without it the process still drops privileges,
+  but writes may fail. These startup-only capabilities are not retained.
 - Compatible with `read_only: true` and `no-new-privileges` (the numeric uid needs
   no `/etc/passwd` entry, and ambient caps survive `no-new-privileges`).
 
 The g0efilter-dashboard image already runs non-root (`distroless` nonroot, uid
-65532); its data volume just needs matching ownership (the compose examples chown
-it once via an init container).
+65532). Its `/app/data` volume must be writable by that user; the supplied
+Compose examples handle this for their named volumes.
 
 ### g0efilter-dashboard
 
 | Variable | Description | Default |
 | --- | --- | --- |
 | `PORT` | Listen address/port for UI and API | `:8081` |
-| `API_KEY` | Machine API key. Generated and logged when the key store is empty | unset |
+| `API_KEY` | Machine API key. Generated and printed once when the key store is empty | unset |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `BUFFER_SIZE` | In-memory event buffer; oldest dropped when full | `5000` |
 | `READ_LIMIT` | Max events per API request | `5000` |
@@ -80,7 +82,7 @@ it once via an init container).
 | `RATE_BURST` | Rate limit burst | `100` |
 | `AUTH_MODE` | Web UI auth: `session` (built-in login), `none` (reverse proxy only), `forward` (trust proxy header), `jwt` (validate bearer token) | `session` |
 | `ADMIN_USERNAME` | Login user for `session` mode | `admin` |
-| `ADMIN_PASSWORD_HASH` | bcrypt hash for the admin login; generate with `g0efilter-dashboard hash-password`. Optional in `session` mode - if unset and no admin user exists yet, a random password is auto-generated and logged once at startup | unset |
+| `ADMIN_PASSWORD_HASH` | bcrypt hash for the admin login; generate with `g0efilter-dashboard hash-password`. Optional in `session` mode - if unset and no admin user exists yet, a random password is generated and printed once at startup | unset |
 | `SESSION_TTL` | Session lifetime (Go duration, e.g. `24h`) | `24h` |
 | `COOKIE_SECURE` | Mark the session cookie `Secure` (HTTPS-only; localhost exempt). Set `false` only for plain-HTTP trials | `true` |
 | `FORWARD_AUTH_HEADER` | Identity header trusted in `forward` mode | `X-Forwarded-User` |
@@ -140,13 +142,14 @@ Use `AUTH_MODE=none` to keep the pre-auth behavior behind Traefik/nginx, or
 `AUTH_MODE=forward` behind an authenticating proxy (oauth2-proxy, Authelia)
 that sets `FORWARD_AUTH_HEADER`.
 
-`AUTH_MODE=jwt` validates a bearer token (`Authorization: Bearer …` or a `jwt`
-cookie) for SSO/OIDC. Configure exactly one key source - `JWT_SECRET` (HS256),
-`JWT_PUBLIC_KEY` (RS256/ES256 PEM, inline or `@/path/to/key.pem`), or `JWKS_URL`
-(fetched and cached from your IdP). Signature and expiry are always checked; set
-`JWT_ISSUER`/`JWT_AUDIENCE` to also require `iss`/`aud`, and `JWT_USERNAME_CLAIM`
-to pick the principal claim (default `sub`). Startup fails closed on a missing,
-ambiguous, or unreachable key source.
+`AUTH_MODE=jwt` validates a bearer token (`Authorization: Bearer <token>` or a
+`jwt` cookie) for SSO/OIDC. Configure exactly one key source - `JWT_SECRET`
+(HS256), `JWT_PUBLIC_KEY` (RSA, ECDSA, or Ed25519 PEM, inline or
+`@/path/to/key.pem`), or `JWKS_URL` (fetched and cached from your IdP). Signatures
+and token time claims are validated. Set `JWT_ISSUER`/`JWT_AUDIENCE` to also
+require `iss`/`aud`, and `JWT_USERNAME_CLAIM` to select the principal claim
+(default `sub`). Startup fails closed on a missing, ambiguous, or unreachable key
+source.
 
 #### CORS
 
@@ -157,18 +160,16 @@ explicitly - the `*` wildcard is rejected.
 
 #### Fleet management (optional)
 
-Set `FLEET_ENABLED=true` to manage g0efilter instances
-from the dashboard. The dashboard-side API accepts bounded long-poll
-reconciliation at `POST /api/v1/sync?wait=30s`, reporting instance state and
-returning desired policy + filter mode. The planned managed instance client will
-opt in with `MANAGED=true` + `DASHBOARD_URL`; it has not landed yet. The dashboard
-resolves desired config per instance as
-**instance override → group → unmanaged**; the `config_hash` makes steady-state
-responses a tiny no-op, shipping policy only on change. Manage groups, policies
-and instance assignments from the **Fleet** tab in the UI. Default off - remote
-control of an egress filter is sensitive, so it is opt-in on both ends. See the
-[dashboard control-plane plan](dashboard-control-plane.md) for transport choices
-and migration status.
+Set `FLEET_ENABLED=true` to enable the dashboard fleet API and UI. It requires
+persistent storage. Clients register and reconcile through
+`POST /api/v1/sync`; g0efilter does not currently include a managed sync client,
+so enabling this option alone does not register instances. The dashboard
+resolves desired config from an instance override, its group, or leaves it
+unmanaged. The `config_hash` keeps steady-state responses small and ships policy
+only on change. Manage groups, policies and instance assignments from the
+**Fleet** tab in the UI. It is disabled by default because remote control of an
+egress filter is sensitive. The request and response format is documented in
+[endpoints.md](endpoints.md#fleet).
 
 #### Persistent logs
 

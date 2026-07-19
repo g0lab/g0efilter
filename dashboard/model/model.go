@@ -86,7 +86,7 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 }
 
-// Group is a named set of instances sharing a policy and settings (Phase 7).
+// Group is a named set of instances sharing a policy and settings.
 type Group struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
@@ -95,7 +95,7 @@ type Group struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// Instance is a g0efilter node known to the fleet control plane (Phase 7).
+// Instance is a g0efilter node known to the fleet control plane.
 type Instance struct {
 	ID              string    `json:"id"`
 	Hostname        string    `json:"hostname"`
