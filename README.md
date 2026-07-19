@@ -52,11 +52,9 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN       # nftables
-      - NET_RAW         # SO_MARK dialer
+      - NET_ADMIN       # nftables + SO_MARK dialer
       - SETUID          # entrypoint drops to a non-root user (nobody) at startup;
       - SETGID          # these are used only then, not by the running process
-      - SETPCAP
       - CHOWN
     security_opt:
       - no-new-privileges
@@ -171,11 +169,9 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN                # nftables
-      - NET_RAW                  # SO_MARK dialer
+      - NET_ADMIN                # nftables + SO_MARK dialer
       - SETUID                   # drop to a non-root user (nobody) at startup;
       - SETGID                   # override with PUID/PGID, or PUID=0 to stay root
-      - SETPCAP
       - CHOWN
     security_opt:
       - no-new-privileges
