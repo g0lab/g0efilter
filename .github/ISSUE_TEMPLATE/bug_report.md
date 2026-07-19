@@ -11,7 +11,7 @@ assignees: g0lab
 A clear and concise description of what the bug is.
 
 **Environment**
-- g0efilter version: [e.g., v0.4.1]
+- g0efilter version: [e.g., v0.x.y or commit SHA]
 - Container runtime: [e.g., Docker 29.1.4, Podman 4.5.0]
 - Host OS: [e.g., Ubuntu 22.04, Debian 12]
 - Architecture: [e.g., amd64, arm64]

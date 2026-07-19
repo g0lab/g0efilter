@@ -321,7 +321,7 @@ func TestEnsureAdminUser(t *testing.T) {
 	}
 
 	if got := strings.Count(bootstrapLogs.String(), "dashboard.admin_password_generated"); got != 1 {
-		t.Fatalf("generated admin password logs = %d, want 1", got)
+		t.Fatalf("generated admin password events = %d, want 1", got)
 	}
 
 	if strings.Contains(bootstrapLogs.String(), match[1]) {

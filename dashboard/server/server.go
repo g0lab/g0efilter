@@ -70,7 +70,7 @@ type Config struct {
 	// are pruned beyond it (default 100000).
 	LogRetention int
 
-	// Fleet management (Phase 7): opt-in instance/group/policy control plane.
+	// Fleet management is an opt-in instance/group/policy control plane.
 	FleetEnabled bool
 }
 

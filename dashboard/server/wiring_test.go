@@ -104,7 +104,7 @@ func TestPersistentAPIKeyWiringAndEnvSeedLogOnce(t *testing.T) {
 }
 
 //nolint:cyclop,funlen,wsl_v5 // sequential restart and revocation scenario
-func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) {
+func TestGeneratedAPIKeyIsEmittedOnceAndRevocationAllowsUIRecovery(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -144,7 +144,7 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 		t.Fatalf("ensure after restart: %v", err)
 	}
 	if got := strings.Count(logs.String(), "dashboard.api_key_generated"); got != 1 {
-		t.Fatalf("generated key logs = %d, want 1\n%s", got, logs.String())
+		t.Fatalf("generated key events = %d, want 1\n%s", got, logs.String())
 	}
 	if strings.Contains(logs.String(), generated) {
 		t.Fatal("structured API key bootstrap log contains the generated key")
@@ -175,7 +175,7 @@ func TestGeneratedAPIKeyIsLoggedOnceAndRevocationAllowsUIRecovery(t *testing.T) 
 		t.Fatalf("ensure after revocation: %v", err)
 	}
 	if got := strings.Count(logs.String(), "dashboard.api_key_generated"); got != 1 {
-		t.Fatalf("revocation caused regeneration; log count = %d", got)
+		t.Fatalf("revocation caused regeneration; event count = %d", got)
 	}
 	if got := strings.Count(logs.String(), "dashboard.no_active_api_keys"); got != 1 {
 		t.Fatalf("no-active-key warnings = %d, want 1", got)

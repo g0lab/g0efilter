@@ -53,7 +53,10 @@ g0efilter blocks arbitrary egress to destinations that are not allowlisted. It d
   - releases, if the token can write them
 - Anything you add to `allowed-domains` / `allowed-ips`. Keep the allowlist as small as the job needs.
 
-g0efilter controls network egress; it does not constrain what the GitHub token itself can do. To narrow the control-plane side channel, set restrictive [`permissions:`](https://docs.github.com/actions/using-jobs/assigning-permissions-to-jobs) on the job and avoid write scopes it does not need.
+g0efilter controls network egress; it does not constrain what the GitHub token
+itself can do. To narrow the control-plane side channel, set restrictive
+[`permissions:`](https://docs.github.com/actions/tutorials/authenticate-with-github_token#modifying-the-permissions-for-the-github_token)
+on the job and avoid write scopes it does not need.
 
 ## Lockdown mode
 

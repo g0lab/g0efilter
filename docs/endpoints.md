@@ -12,9 +12,13 @@ realm of the route it hits.
 | **machine** | `X-Api-Key: <key>` (see [configuration.md](configuration.md)) | g0efilter instances |
 | **session/UI** | session cookie (`AUTH_MODE=session`), proxy header (`forward`), bearer JWT (`jwt`), or open (`none`) - plus CSRF (Origin / `Sec-Fetch-Site`) on mutations | the browser dashboard |
 
-All JSON responses are `application/json`. Mutating UI requests are CSRF-checked;
-cross-site requests are rejected. CORS is off unless `CORS_ALLOWED_ORIGINS` is set
-(and a wildcard `*` is rejected at startup).
+Successful API responses are JSON. Errors use standard HTTP status codes and may
+be plain text. Mutating UI requests are CSRF-checked; cross-site requests are
+rejected. CORS is off unless `CORS_ALLOWED_ORIGINS` is set (and a wildcard `*`
+is rejected at startup).
+
+For scripting compatibility, `AUTH_MODE=session` also accepts a valid
+`X-Api-Key` on session/UI routes.
 
 ## Public
 
@@ -33,7 +37,8 @@ cross-site requests are rejected. CORS is off unless `CORS_ALLOWED_ORIGINS` is s
 | `GET` | `/api/v1/auth/me` | current principal, or 401 |
 
 Bootstrap: in `session` mode with no `ADMIN_PASSWORD_HASH` and no existing user,
-the server auto-generates a random admin password and logs it **once** at startup.
+the server generates a random admin password and prints it **once** at startup as
+`dashboard.bootstrap_admin`.
 Recover a lost password with `g0efilter-dashboard reset-password [username]`
 (requires persistent storage).
 
@@ -53,7 +58,7 @@ Recover a lost password with `g0efilter-dashboard reset-password [username]`
 | `GET` | `/api/v1/config` | UI config (feature flags such as `fleet_enabled`) |
 | `GET` | `/api/v1/logs` | recent traffic logs (query: `q`, `since`, `limit`) - **sensitive** |
 | `GET` | `/api/v1/aggregates` | server-side traffic totals (query: `range`, default `24h`; `q` filters host/IP) - **sensitive** |
-| `GET` | `/api/v1/events` | SSE live traffic stream (cookie-authenticated) - **sensitive** |
+| `GET` | `/api/v1/events` | UI-authenticated SSE live traffic stream - **sensitive** |
 | `DELETE` | `/api/v1/logs` | clears all logs - **sensitive, destructive** |
 | `POST` | `/api/v1/unblocks` | queue an unblock (firewall policy change) - **sensitive** |
 | `GET` | `/api/v1/unblocks/status` | pending + completed unblocks |
@@ -61,7 +66,10 @@ Recover a lost password with `g0efilter-dashboard reset-password [username]`
 | `POST` | `/api/v1/apikeys` | mint a key; plaintext returned **once** |
 | `DELETE` | `/api/v1/apikeys/:id` | revoke a key |
 
-## Fleet (only when `FLEET_ENABLED=true`, requires persistent storage)
+## Fleet
+
+These endpoints are available only when `FLEET_ENABLED=true` and require
+persistent storage.
 
 Admin (UI realm):
 

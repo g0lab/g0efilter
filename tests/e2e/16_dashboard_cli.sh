@@ -142,30 +142,30 @@ echo "$HASH_BOOTSTRAP_KEY" | grep -Eq '^g0e_[0-9a-f]{64}$' \
 docker restart "$CLI_CONTAINER" >/dev/null
 wait_dashboard
 [ "$(clean_logs | grep -c dashboard.api_key_generated || true)" = "1" ] \
-  || fail "generated API key was logged more than once across restart"
+  || fail "generated API key event was emitted more than once across restart"
 [ "$(ingest_code "$HASH_BOOTSTRAP_KEY")" = "201" ] \
   || fail "generated API key did not survive restart"
 stop_dashboard
 log "OK: hash-password, default database path, and named-volume persistence"
 
-log "[first startup] Generated admin password and API key are usable and logged once"
+log "[first startup] Generated admin password and API key are usable and printed once"
 start_dashboard "$BOOTSTRAP_DATA"
 wait_dashboard
 ADMIN_PASSWORD=$(event_field dashboard.bootstrap_admin password)
 BOOTSTRAP_KEY=$(event_field dashboard.bootstrap_api_key key)
 echo "$ADMIN_PASSWORD" | grep -Eq '^[A-Za-z0-9_-]{27,}$' \
-  || fail "generated admin password missing from first-start log"
+  || fail "generated admin password missing from first-start output"
 echo "$BOOTSTRAP_KEY" | grep -Eq '^g0e_[0-9a-f]{64}$' \
-  || fail "generated API key missing from first-start log"
+  || fail "generated API key missing from first-start output"
 [ "$(login_code "$ADMIN_PASSWORD")" = "200" ] || fail "generated admin password did not authenticate"
 [ "$(ingest_code "$BOOTSTRAP_KEY")" = "201" ] || fail "generated API key did not authenticate"
 
 docker restart "$CLI_CONTAINER" >/dev/null
 wait_dashboard
 [ "$(clean_logs | grep -c dashboard.admin_password_generated || true)" = "1" ] \
-  || fail "generated admin password was logged more than once"
+  || fail "generated admin password event was emitted more than once"
 [ "$(clean_logs | grep -c dashboard.api_key_generated || true)" = "1" ] \
-  || fail "generated API key was logged more than once"
+  || fail "generated API key event was emitted more than once"
 stop_dashboard
 log "OK: first-start credentials and restart behavior"
 

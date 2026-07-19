@@ -144,7 +144,7 @@
               <tr>
                 <td>{g.name}</td>
                 <td>{g.filter_mode || '-'}</td>
-                <td class="mono faint">{g.policy ? g.policy.split('\n')[0].slice(0, 60) + (g.policy.length > 60 ? '…' : '') : 'empty'}</td>
+                <td class="mono faint">{g.policy ? g.policy.split('\n')[0].slice(0, 60) + (g.policy.length > 60 ? '...' : '') : 'empty'}</td>
                 <td>
                   <button class="btn btn-sm btn-ghost" onclick={() => edit(g)}>Edit policy</button>
                   <button class="btn btn-sm btn-danger" onclick={() => deleteGroup(g)}>Delete</button>
@@ -189,7 +189,7 @@
       {#if loading}
         <div style:padding="12px">{#each Array(3) as _, i (i)}<div class="skeleton sk-row"></div>{/each}</div>
       {:else if instances.length === 0}
-        <div class="empty"><div class="big">No instances yet</div>The managed g0efilter instance client is the next control-plane milestone.</div>
+        <div class="empty"><div class="big">No instances yet</div>Instances appear after a client reports to <span class="mono">/api/v1/sync</span>.</div>
       {/if}
     </div>
   </div>

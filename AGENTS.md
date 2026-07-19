@@ -50,7 +50,7 @@ scripts/test-action.sh                # node --check, unit tests, setup.sh check
 Dashboard frontend (only when `dashboard/ui/src` changes):
 
 ```sh
-scripts/test-ui.sh    # install, svelte-check, eslint, build (Node 24)
+scripts/test-ui.sh    # install, svelte-check, eslint, unit tests, build (Node 24)
 # or, individually, from dashboard/ui:
 pnpm check            # svelte-check (TypeScript); keep at 0 errors
 pnpm lint             # eslint (typescript-eslint + eslint-plugin-svelte)
