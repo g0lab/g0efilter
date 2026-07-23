@@ -16,7 +16,8 @@
     "paths": {
       "$lib": ["./src/lib"],
       "$lib/*": ["./src/lib/*"],
-      "$demo/*": ["../demo/*"]
+      "$demo-runtime": ["./src/lib/demo.ts"],
+      "$demo-fixtures/*": ["../demo/*"]
     },
     "types": ["svelte", "vite/client"]
   },

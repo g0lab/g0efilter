@@ -1,7 +1,7 @@
 <script lang="ts">
   import { apiFetch, apiKeyHeaders } from './lib/api';
   import { app, pendingUnblocks, completedUnblocks, isUnblocked, searchFor } from './lib/state.svelte';
-  import { DEMO } from './lib/demo';
+  import { DEMO } from '$demo-runtime';
   import { toast } from './lib/toast.svelte';
   import { prompt } from './lib/dialog.svelte';
   import LookupActions from './LookupActions.svelte';

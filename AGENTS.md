@@ -10,8 +10,8 @@ the component root (no `cmd/` dirs).
 - `agent/` is the g0efilter egress-filter binary (`agent/main.go`) and its packages
   (`filter`, `nftables`, `netutil`, `policy`, `procinfo`, `alerting`, `telemetry`).
 - `dashboard/` is the dashboard binary (`dashboard/main.go`); the server code is the
-  `server` package under `dashboard/server/`, with `store/`, `model/`, and the `ui/`
-  frontend as subpackages.
+  `server` package under `dashboard/server/`, with `store/`, `model/`, the shared
+  synthetic fixtures in `demo/`, and the `ui/` frontend as subpackages.
 - `shared/` holds packages both binaries use (`actions`, `logging`).
 - `action/` and `action.yml` contain the GitHub Action scripts and metadata.
 - `docs/` contains detailed user documentation split out from the README.

@@ -6,7 +6,7 @@
   import { toast } from './lib/toast.svelte';
   import { confirm } from './lib/dialog.svelte';
   import { initTheme, isDark, toggleTheme } from './lib/theme';
-  import { DEMO, demoLiveEvent } from './lib/demo';
+  import { DEMO, demoLiveEvent } from '$demo-runtime';
   import StreamView from './StreamView.svelte';
   import SearchView from './SearchView.svelte';
   import AggView from './AggView.svelte';

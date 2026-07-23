@@ -1,10 +1,10 @@
 /* Static demo data, shared with the Go development tools. */
-import scenariosData from '$demo/scenarios.json';
+import scenariosData from '$demo-fixtures/scenarios.json';
 import type {
   LogEntry, BrowseResponse, AggregateResponse, AggregateRow, AggregateBucket,
 } from './types';
 
-export const DEMO = import.meta.env.VITE_DEMO_MODE === 'true';
+export const DEMO = true;
 
 interface Destination {
   domain: string; category: string; verdict: string;
@@ -64,7 +64,10 @@ export function demoLiveEvent(): LogEntry {
   const dest = fixtures.destinations[liveSeq % fixtures.destinations.length];
   const client = fixtures.clients[(liveSeq * 3) % fixtures.clients.length];
   liveSeq += 1;
-  return makeEntry(liveSeq, Date.now(), dest, client, liveSeq);
+  const event = makeEntry(liveSeq, Date.now(), dest, client, liveSeq);
+  demoEvents.unshift(event);
+  if (demoEvents.length > DATASET_SIZE) demoEvents.pop();
+  return event;
 }
 
 export function demoConfig(): Record<string, unknown> {

@@ -13,14 +13,16 @@ const keepGitkeep = {
   },
 };
 
+const demoMode = process.env.VITE_DEMO_MODE === 'true';
+
 export default defineConfig({
   // Tailwind must precede the Svelte plugin.
   plugins: [tailwindcss(), svelte(), keepGitkeep],
   resolve: {
     alias: {
       $lib: resolve(import.meta.dirname, 'src/lib'),
-      // Canonical synthetic-traffic fixtures shared with the Go dev tools.
-      $demo: resolve(import.meta.dirname, '../demo'),
+      '$demo-runtime': resolve(import.meta.dirname, demoMode ? 'src/lib/demo.ts' : 'src/lib/demo-disabled.ts'),
+      '$demo-fixtures': resolve(import.meta.dirname, '../demo'),
     },
   },
   build: {
@@ -51,8 +53,9 @@ export default defineConfig({
     // the session cookie and same-origin requests just work.
     port: 5000,
     strictPort: true,
-    // Allow importing the shared fixtures from ../demo (outside the UI root).
-    fs: { allow: [resolve(import.meta.dirname, '..')] },
+    // An explicit allow-list disables Vite's automatic workspace-root entry,
+    // so retain the UI root while adding only the shared fixture directory.
+    fs: { allow: [import.meta.dirname, resolve(import.meta.dirname, '../demo')] },
     proxy: {
       '/api': { target: 'http://localhost:8081', changeOrigin: true },
     },
