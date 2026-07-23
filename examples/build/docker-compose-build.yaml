@@ -23,6 +23,7 @@ services:
       LEARNING_MODE: ${LEARNING_MODE:-false}
       ENFORCE: ${ENFORCE:-block}
       PROCESS_INFO: ${PROCESS_INFO:-false}
+      LOG_LEVEL: DEBUG
       # Required by remote-unblock e2e phases.
       HOSTNAME: host-01
       ENABLE_REMOTE_UNBLOCK: 'true'
