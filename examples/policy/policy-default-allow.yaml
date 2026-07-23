@@ -1,6 +1,6 @@
 ---
 # Allow everything except this denylist.
-default_action: allow
+default_action: 'allow'
 
 # Allowlist rules override denylist rules.
 allowlist:

@@ -7,7 +7,7 @@ services:
     image: g0efilter:e2e
     container_name: g0efilter
     ports:
-      - "127.0.0.1:8081:8081"
+      - '127.0.0.1:8081:8081'
     volumes:
       - ./policy/:/app/policy/
     cap_drop:
@@ -25,15 +25,15 @@ services:
       PROCESS_INFO: ${PROCESS_INFO:-false}
       # Required by remote-unblock e2e phases.
       HOSTNAME: host-01
-      ENABLE_REMOTE_UNBLOCK: "true"
+      ENABLE_REMOTE_UNBLOCK: 'true'
       UNBLOCK_POLL_INTERVAL: 2s
     cap_add:
       - NET_ADMIN
 
   dashboard-data-init:
     image: alpine:3.23
-    command: ["chown", "-R", "65532:65532", "/app/data"]
-    user: "0:0"
+    command: ['chown', '-R', '65532:65532', '/app/data']
+    user: '0:0'
     cap_drop:
       - ALL
     cap_add:
@@ -71,15 +71,15 @@ services:
       CORS_ALLOWED_ORIGINS: ${DASHBOARD_CORS_ALLOWED_ORIGINS:-}
     volumes:
       - dashboard-data:/app/data
-    network_mode: "service:g0efilter"
+    network_mode: 'service:g0efilter'
 
   tester:
     image: alpine/curl:latest
     container_name: tester
-    command: sh -c "sleep infinity"
+    command: 'sh -c "sleep infinity"'
     depends_on:
       - g0efilter
-    network_mode: "service:g0efilter"
+    network_mode: 'service:g0efilter'
 
 volumes:
   dashboard-data:

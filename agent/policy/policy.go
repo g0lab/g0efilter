@@ -629,7 +629,7 @@ func appendToAllowlist(file, field, value string) error {
 	}
 
 	// Write back to file
-	data, err := yaml.Marshal(cfg)
+	data, err := marshalConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal policy: %w", err)
 	}
@@ -643,4 +643,43 @@ func appendToAllowlist(file, field, value string) error {
 	}
 
 	return nil
+}
+
+func marshalConfig(cfg Config) ([]byte, error) {
+	var node yaml.Node
+
+	err := node.Encode(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("encode YAML node: %w", err)
+	}
+
+	quoteStringValues(&node)
+
+	data, err := yaml.Marshal(&node)
+	if err != nil {
+		return nil, fmt.Errorf("marshal YAML node: %w", err)
+	}
+
+	return data, nil
+}
+
+func quoteStringValues(node *yaml.Node) {
+	switch node.Kind {
+	case yaml.DocumentNode, yaml.SequenceNode:
+		for _, child := range node.Content {
+			quoteStringValues(child)
+		}
+	case yaml.MappingNode:
+		for i := 1; i < len(node.Content); i += 2 {
+			quoteStringValues(node.Content[i])
+		}
+	case yaml.ScalarNode:
+		if node.Tag == "!!str" {
+			node.Style = yaml.SingleQuotedStyle
+		}
+	case yaml.AliasNode:
+		if node.Alias != nil {
+			quoteStringValues(node.Alias)
+		}
+	}
 }

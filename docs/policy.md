@@ -7,18 +7,17 @@ The default policy blocks traffic unless an IP or domain matches the allowlist:
 ```yaml
 allowlist:
   ips:
-    - "1.1.1.1"
-    - "192.168.0.0/16"
+    - '1.1.1.1'
+    - '192.168.0.0/16'
   domains:
-    - "github.com"                    # exact
-    - "*.alpinelinux.org"             # wildcard
-    - "bucket.*.r2.example.com"       # mid-name wildcard
+    - 'github.com'                    # exact
+    - '*.alpinelinux.org'             # wildcard
+    - 'bucket.*.r2.example.com'       # mid-name wildcard
     - '/cache-[0-9]+\.example\.com/'  # regular expression
 ```
 
 `*` matches one or more characters, including dots. Regular expressions are
-case-insensitive and match the whole hostname. Use single quotes around them so
-YAML preserves backslashes.
+case-insensitive and match the whole hostname.
 
 The policy reloads when the file changes. Mount its directory so editors that
 replace files during save do not break reloads:
@@ -33,20 +32,20 @@ Environment variables can replace file-based lists. See
 
 ## Default-allow denylist
 
-Set `default_action: allow` to allow traffic unless it matches the denylist. An
+Set `default_action: 'allow'` to allow traffic unless it matches the denylist. An
 allowlist match always wins.
 
 ```yaml
-default_action: allow
+default_action: 'allow'
 allowlist:
   domains:
-    - "api.github.com"
+    - 'api.github.com'
 denylist:
   ips:
-    - "192.168.0.0/16"
+    - '192.168.0.0/16'
   domains:
-    - "*.github.com"
-    - "*.doubleclick.net"
+    - '*.github.com'
+    - '*.doubleclick.net'
 ```
 
 Changing `default_action` live-reloads with the rest of the policy. The denylist

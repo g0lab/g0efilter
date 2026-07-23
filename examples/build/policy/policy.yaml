@@ -1,6 +1,6 @@
 ---
 allowlist:
   ips:
-    - "1.1.1.1"
+    - '1.1.1.1'
   domains:
-    - "github.com"
+    - 'github.com'

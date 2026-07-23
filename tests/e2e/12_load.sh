@@ -24,13 +24,13 @@ log "=== Phase 12: load/stress [$FILTER_MODE mode] ==="
 log "total=$TOTAL http=$TOTAL_HTTP concurrency=$CONCURRENCY allowed=$ALLOWED_UNDER_LOAD"
 
 # Marker domain forces a fresh policy.applied event.
-seed_policy '---
+seed_policy "---
 allowlist:
   ips:
-    - "1.1.1.1"
+    - '1.1.1.1'
   domains:
-    - "github.com"
-    - "g0efilter-load-marker.invalid"'
+    - 'github.com'
+    - 'g0efilter-load-marker.invalid'"
 wait_for_policy_reload
 
 run_tester() {

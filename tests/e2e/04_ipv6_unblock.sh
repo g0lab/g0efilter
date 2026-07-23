@@ -34,7 +34,8 @@ for i in $(seq 1 15); do
 done
 
 log "[Unblock] Verify 2606:4700:4700::1111 added to policy.yaml"
-grep -q '2606:4700:4700::1111' "$POLICY_FILE" || { cat "$POLICY_FILE"; fail "IPv6 address not in policy.yaml"; }
+grep -Fq -- "- '2606:4700:4700::1111'" "$POLICY_FILE" \
+  || { cat "$POLICY_FILE"; fail "IPv6 address not in policy.yaml"; }
 log "OK: 2606:4700:4700::1111 found in policy.yaml"
 
 wait_for_policy_reload
