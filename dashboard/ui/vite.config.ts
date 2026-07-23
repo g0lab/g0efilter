@@ -17,7 +17,11 @@ export default defineConfig({
   // Tailwind must precede the Svelte plugin.
   plugins: [tailwindcss(), svelte(), keepGitkeep],
   resolve: {
-    alias: { $lib: resolve(import.meta.dirname, 'src/lib') },
+    alias: {
+      $lib: resolve(import.meta.dirname, 'src/lib'),
+      // Canonical synthetic-traffic fixtures shared with the Go dev tools.
+      $demo: resolve(import.meta.dirname, '../demo'),
+    },
   },
   build: {
     outDir: 'dist',
@@ -47,6 +51,8 @@ export default defineConfig({
     // the session cookie and same-origin requests just work.
     port: 5000,
     strictPort: true,
+    // Allow importing the shared fixtures from ../demo (outside the UI root).
+    fs: { allow: [resolve(import.meta.dirname, '..')] },
     proxy: {
       '/api': { target: 'http://localhost:8081', changeOrigin: true },
     },

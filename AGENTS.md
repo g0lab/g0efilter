@@ -55,6 +55,7 @@ scripts/test-ui.sh    # install, svelte-check, eslint, unit tests, build (Node 2
 pnpm check            # svelte-check (TypeScript); keep at 0 errors
 pnpm lint             # eslint (typescript-eslint + eslint-plugin-svelte)
 pnpm build            # regenerates dist/ (generated, not committed)
+pnpm build:demo       # static, backend-free demo build (VITE_DEMO_MODE=true)
 ```
 
 DB schema change: edit `dashboard/store/ent/schema/*.go`, then
@@ -63,6 +64,10 @@ DB schema change: edit `dashboard/store/ent/schema/*.go`, then
 Local dashboard dev: `scripts/dev.sh` (add `--traffic`) brings the backend and Vite UI up
 together - UI on :5000 proxying `/api` to :8081, dev login/API key. A `.devcontainer/` provides
 the full toolchain (Go + Node 24/pnpm + Ent codegen + docker-in-docker) for reproducible testing.
+
+Synthetic data: `dashboard/demo/scenarios.json` is shared by the database seed,
+live traffic generator, and static frontend demo. Keep destination verdicts and
+components canonical there rather than duplicating fixtures in each consumer.
 
 Docker/e2e:
 

@@ -6,6 +6,7 @@
   import { toast } from './lib/toast.svelte';
   import { confirm } from './lib/dialog.svelte';
   import { initTheme, isDark, toggleTheme } from './lib/theme';
+  import { DEMO, demoLiveEvent } from './lib/demo';
   import StreamView from './StreamView.svelte';
   import SearchView from './SearchView.svelte';
   import AggView from './AggView.svelte';
@@ -16,12 +17,18 @@
 
   let dark = $state(true);
   let es: EventSource | null = null;
+  let demoTimer: number | null = null;
 
   const isTraffic = $derived(app.page === 'stream' || app.page === 'agg');
   const rowLimitOptions = [100, 500, 1000, 2500, 5000];
 
   function connectSSE() {
     disconnectSSE();
+    if (DEMO) {
+      app.connected = true;
+      demoTimer = window.setInterval(() => pushItem(demoLiveEvent()), 3000);
+      return;
+    }
     es = new EventSource('/api/v1/events');
     es.onmessage = (ev) => {
       try {
@@ -42,6 +49,7 @@
   }
 
   function disconnectSSE() {
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
     if (es) { es.close(); es = null; }
   }
 
@@ -86,7 +94,7 @@
         app.fleetEnabled = !!cfg.fleet_enabled;
       } catch { /* keep defaults */ }
 
-      const allowed = ['stream', 'search', 'agg', 'keys', 'fleet'];
+      const allowed = DEMO ? ['stream', 'search', 'agg'] : ['stream', 'search', 'agg', 'keys', 'fleet'];
       if (allowed.includes(app.view)) app.page = app.view;
       await reload();
       loadUnblockStatus();
@@ -100,12 +108,15 @@
 <div class="topbar">
   <div class="brand">
     <span class="dot"></span> g0efilter
+    {#if DEMO}<span class="demo-badge" title="Synthetic data - no live backend">Demonstration data</span>{/if}
   </div>
   <nav class="nav">
     <button type="button" class:active={app.page === 'stream'} onclick={() => go('stream')}>Stream</button>
     <button type="button" class:active={app.page === 'search'} onclick={() => go('search')}>Search</button>
     <button type="button" class:active={app.page === 'agg'} onclick={() => go('agg')}>Aggregates</button>
-    <button type="button" class:active={app.page === 'keys'} onclick={() => go('keys')}>API Keys</button>
+    {#if !DEMO}
+      <button type="button" class:active={app.page === 'keys'} onclick={() => go('keys')}>API Keys</button>
+    {/if}
     {#if app.fleetEnabled}
       <button type="button" class:active={app.page === 'fleet'} onclick={() => go('fleet')}>Fleet</button>
     {/if}
@@ -172,7 +183,9 @@
         </select>
       </label>
       <span class="grow"></span>
-      <button type="button" class="btn btn-sm btn-danger" onclick={clearLogs}>Clear Logs</button>
+      {#if !DEMO}
+        <button type="button" class="btn btn-sm btn-danger" onclick={clearLogs}>Clear Logs</button>
+      {/if}
     </div>
     <StreamView/>
   {:else if app.page === 'search'}

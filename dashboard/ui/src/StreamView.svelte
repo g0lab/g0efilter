@@ -1,6 +1,7 @@
 <script lang="ts">
   import { apiFetch, apiKeyHeaders } from './lib/api';
   import { app, pendingUnblocks, completedUnblocks, isUnblocked, searchFor } from './lib/state.svelte';
+  import { DEMO } from './lib/demo';
   import { toast } from './lib/toast.svelte';
   import { prompt } from './lib/dialog.svelte';
   import LookupActions from './LookupActions.svelte';
@@ -19,6 +20,7 @@
 
   /* Unblock status per row: 'done' > 'pending' > offer, or null. */
   function unblockState(it: LogEntry): UnblockView {
+    if (DEMO) return null;
     const act = getAction(it);
     if (act !== 'BLOCKED' && act !== 'AUDIT') return null;
 
