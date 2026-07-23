@@ -65,7 +65,7 @@ done
 pids+=($!)
 
 if [ "$TRAFFIC" = true ]; then
-  scripts/dev-traffic.sh 2>&1 | sed 's/^/[gen] /' &
+  go run ./scripts/dev-traffic-gen 2>&1 | sed 's/^/[gen] /' &
   pids+=($!)
 fi
 

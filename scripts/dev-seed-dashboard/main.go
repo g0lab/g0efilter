@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/dashboard/demo"
 	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/dashboard/store"
 )
@@ -34,7 +35,13 @@ func main() {
 
 	flag.Parse()
 
-	err := seedDatabase(context.Background(), *dbPath, *count, time.Now().UTC())
+	fixtures, err := demo.Scenarios()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	err = seedDatabase(context.Background(), *dbPath, *count, time.Now().UTC(), fixtures)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -46,7 +53,7 @@ func main() {
 }
 
 //nolint:cyclop,wsl_v5 // linear setup and transaction lifecycle
-func seedDatabase(ctx context.Context, dbPath string, count int, now time.Time) error {
+func seedDatabase(ctx context.Context, dbPath string, count int, now time.Time, fixtures demo.Fixtures) error {
 	if strings.TrimSpace(dbPath) == "" || count < 1 || count > maxSeedCount {
 		return errInvalidSeedConfig
 	}
@@ -75,7 +82,7 @@ func seedDatabase(ctx context.Context, dbPath string, count int, now time.Time) 
 	defer func() { _ = tx.Rollback() }()
 
 	txLogs := store.NewLogStore(tx.Client(), maxSeedCount)
-	entries := buildEntries(count, now)
+	entries := buildEntries(count, now, fixtures)
 	for i := range entries {
 		_, err = txLogs.Insert(ctx, &entries[i])
 		if err != nil {
@@ -91,8 +98,7 @@ func seedDatabase(ctx context.Context, dbPath string, count int, now time.Time) 
 	return nil
 }
 
-//nolint:wsl_v5 // fixture fields stay together so generated traffic is easy to tune
-func buildEntries(count int, now time.Time) []model.LogEntry {
+func buildEntries(count int, now time.Time, fixtures demo.Fixtures) []model.LogEntry {
 	bands := []ageBand{
 		{minAge: 0, maxAge: 15 * time.Minute, percent: 10},
 		{minAge: 15 * time.Minute, maxAge: time.Hour, percent: 10},
@@ -103,41 +109,29 @@ func buildEntries(count int, now time.Time) []model.LogEntry {
 		{minAge: 30 * 24 * time.Hour, maxAge: 90 * 24 * time.Hour, percent: 13},
 		{minAge: 90 * 24 * time.Hour, maxAge: 180 * 24 * time.Hour, percent: 10},
 	}
-	domains := []string{
-		"github.com", "api.github.com", "registry.npmjs.org", "proxy.golang.org",
-		"storage.googleapis.com", "api.openai.com", "docker.io", "auth.example.com",
-		"payments.example.com", "telemetry.example.net", "updates.example.net",
-		"cdn.example.org", "blocked-malware.example", "unknown-egress.example",
-	}
-	clients := []string{"build-runner-1", "build-runner-2", "ci-agent-1", "ci-agent-2", "developer-laptop"}
-	components := []string{"https", "dns", "http", "nflog"}
+	subnet := fixtures.SourceSubnet
 
 	entries := make([]model.LogEntry, 0, count)
 	for i := range count {
 		band := bandForPosition(bands, i, count)
 		fraction := float64((i*7919)%10_000) / 10_000
 		age := band.minAge + time.Duration(float64(band.maxAge-band.minAge)*fraction)
-		action := seedAction(i)
-		component := components[i%len(components)]
-		domain := domains[(i*11)%len(domains)]
-		client := clients[(i*3)%len(clients)]
-		destinationPort := 443
-		if component == "dns" {
-			destinationPort = 53
-		}
+		// A fixed destination carries a fixed verdict/component, so the same
+		// domain never flips verdict across events or clients.
+		dest := fixtures.Destinations[(i*11)%len(fixtures.Destinations)]
+		client := fixtures.Clients[(i*3)%len(fixtures.Clients)]
 
-		fields := seedFields(action, component, domain, client)
 		entries = append(entries, model.LogEntry{
 			Time:            now.Add(-age),
 			Message:         "flow.decision",
-			Fields:          fields,
-			Action:          action,
-			HTTPHost:        domain,
-			HTTPS:           domain,
-			SourceIP:        fmt.Sprintf("172.20.%d.%d", (i/250)%250, i%250+2),
+			Fields:          seedFields(dest, client),
+			Action:          dest.Verdict,
+			HTTPHost:        dest.Domain,
+			HTTPS:           dest.Domain,
+			SourceIP:        fmt.Sprintf("%s.%d.%d", subnet, (i/250)%250, i%250+2),
 			SourcePort:      1024 + (i*37)%40_000,
-			DestinationIP:   fmt.Sprintf("203.0.%d.%d", (i/251)%250, i%251+1),
-			DestinationPort: destinationPort,
+			DestinationIP:   dest.IP,
+			DestinationPort: dest.Port,
 			Protocol:        "TCP",
 			FlowID:          fmt.Sprintf("dev-seed-%05d", i+1),
 			Hostname:        client,
@@ -162,33 +156,14 @@ func bandForPosition(bands []ageBand, index, count int) ageBand {
 	return bands[len(bands)-1]
 }
 
-func seedFields(action, component, domain, client string) json.RawMessage {
+func seedFields(dest demo.Destination, client string) json.RawMessage {
 	fields, err := json.Marshal(map[string]string{
-		"action": action, "component": component, "http_host": domain,
-		"hostname": client, "reason": seedReason(action),
+		"action": dest.Verdict, "component": dest.Component, "http_host": dest.Domain,
+		"hostname": client, "reason": dest.Reason,
 	})
 	if err != nil {
 		return json.RawMessage(`{}`)
 	}
 
 	return fields
-}
-
-func seedAction(index int) string {
-	switch index % 10 {
-	case 0, 1:
-		return "BLOCKED"
-	case 2:
-		return "AUDIT"
-	default:
-		return "ALLOWED"
-	}
-}
-
-func seedReason(action string) string {
-	if action == "ALLOWED" {
-		return "allowlisted"
-	}
-
-	return "not-allowlisted"
 }
