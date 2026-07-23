@@ -15,11 +15,10 @@
   <div class="barlist">
     {#each items as it (it.label)}
       <div class="barrow" title="{it.label}: {it.value}">
-        <span class="lbl clickable-key" role="button" tabindex="0"
-              title="Search events for {it.label}"
-              onclick={() => searchFor(it.label, { range: app.range })}
-              onkeydown={(e) => e.key === 'Enter' && searchFor(it.label, { range: app.range })}>
-          <LookupActions value={it.label}/>
+        <span class="lbl">
+          <LookupActions value={it.label}
+            activateLabel="Search events for {it.label}"
+            onactivate={() => searchFor(it.label, { range: app.range })}/>
         </span>
         <span class="val">{it.value}</span>
         <div class="bartrack">

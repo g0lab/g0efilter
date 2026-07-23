@@ -257,12 +257,9 @@
           {#each rows as row (row.key)}
             <tr>
               <td title={row.key}>
-                <span class="clickable-key" role="button" tabindex="0"
-                      title="Search events for {row.key}"
-                      onclick={() => searchFor(row.key, { range: app.range })}
-                      onkeydown={(e) => e.key === 'Enter' && searchFor(row.key, { range: app.range })}>
-                  <LookupActions value={row.key}/>
-                </span>
+                <LookupActions value={row.key}
+                  activateLabel="Search events for {row.key}"
+                  onactivate={() => searchFor(row.key, { range: app.range })}/>
               </td>
               <td>{row.total}</td>
               <td class="count-allowed">{row.allowed}</td>

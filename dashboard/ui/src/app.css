@@ -250,7 +250,11 @@ h1 { font-size: 18px; margin: 0 0 4px; }
 .count-blocked { color: var(--err); }
 .count-audit { color: var(--warn); }
 .lookup { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
-.lookup-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lookup-value {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  border: 0; background: transparent; color: inherit; font: inherit;
+  white-space: inherit; text-align: left;
+}
 .lookup-action {
   flex: 0 0 auto; padding: 1px 4px; border: 1px solid var(--border); border-radius: 4px;
   color: var(--muted-foreground); font-family: inherit; font-size: 9px; font-weight: 650;

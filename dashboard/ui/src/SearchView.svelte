@@ -146,18 +146,16 @@
             <tr>
               <td><span class="badge badge-{getAction(it)}">{getAction(it)}</span></td>
               <td>{getComp(it)}</td>
-              <td class="clickable-key" title="Aggregate {hostOf(it)}"
-                  role="button" tabindex="0"
-                  onclick={() => aggregateFor(hostOf(it), { range: app.range, dimension: 'domain' })}
-                  onkeydown={(e) => e.key === 'Enter' && aggregateFor(hostOf(it), { range: app.range, dimension: 'domain' })}>
-                <LookupActions value={hostOf(it)}/>
+              <td title="Aggregate {hostOf(it)}">
+                <LookupActions value={hostOf(it)}
+                  activateLabel="Aggregate {hostOf(it)}"
+                  onactivate={() => aggregateFor(hostOf(it), { range: app.range, dimension: 'domain' })}/>
               </td>
               <td class="mono">{srcOf(it)}</td>
-              <td class="mono clickable-key" title="Aggregate {dstKey(it)}"
-                  role="button" tabindex="0"
-                  onclick={() => aggregateFor(dstKey(it), { range: app.range, dimension: 'ip' })}
-                  onkeydown={(e) => e.key === 'Enter' && aggregateFor(dstKey(it), { range: app.range, dimension: 'ip' })}>
-                <LookupActions value={dstOf(it)} target={dstKey(it)} kind="ip"/>
+              <td class="mono" title="Aggregate {dstKey(it)}">
+                <LookupActions value={dstOf(it)} target={dstKey(it)} kind="ip"
+                  activateLabel="Aggregate {dstKey(it)}"
+                  onactivate={() => aggregateFor(dstKey(it), { range: app.range, dimension: 'ip' })}/>
               </td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>

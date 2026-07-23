@@ -111,18 +111,16 @@
                 {/if}
               </td>
               <td>{getComp(it)}</td>
-              <td class="clickable-key" title="Search {hostOf(it)}"
-                  role="button" tabindex="0"
-                  onclick={() => searchFor(hostOf(it), { range: app.range })}
-                  onkeydown={(e) => e.key === 'Enter' && searchFor(hostOf(it), { range: app.range })}>
-                <LookupActions value={hostOf(it)}/>
+              <td title="Search {hostOf(it)}">
+                <LookupActions value={hostOf(it)}
+                  activateLabel="Search {hostOf(it)}"
+                  onactivate={() => searchFor(hostOf(it), { range: app.range })}/>
               </td>
               <td class="mono">{src}</td>
-              <td class="mono clickable-key" title="Search {it.destination_ip || cleanIP(dst)}"
-                  role="button" tabindex="0"
-                  onclick={() => searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}
-                  onkeydown={(e) => e.key === 'Enter' && searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}>
-                <LookupActions value={dst} target={it.destination_ip || dst} kind="ip"/>
+              <td class="mono" title="Search {it.destination_ip || cleanIP(dst)}">
+                <LookupActions value={dst} target={it.destination_ip || dst} kind="ip"
+                  activateLabel="Search {it.destination_ip || cleanIP(dst)}"
+                  onactivate={() => searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}/>
               </td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
