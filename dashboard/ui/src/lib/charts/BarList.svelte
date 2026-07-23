@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { app, searchFor } from '../state.svelte';
   import LookupActions from '../../LookupActions.svelte';
+  import type { BarItem } from '../types';
 
-  let { items = [], color = 'var(--c-accent)', empty = 'No data', lookups = false } = $props();
+  let { items = [], color = 'var(--c-accent)', empty = 'No data' }:
+    { items?: BarItem[]; color?: string; empty?: string } = $props();
 
   const max = $derived(Math.max(1, ...items.map((i) => i.value)));
 </script>
@@ -13,7 +16,9 @@
     {#each items as it (it.label)}
       <div class="barrow" title="{it.label}: {it.value}">
         <span class="lbl">
-          {#if lookups}<LookupActions value={it.label}/>{:else}{it.label}{/if}
+          <LookupActions value={it.label}
+            activateLabel="Search events for {it.label}"
+            onactivate={() => searchFor(it.label, { range: app.range })}/>
         </span>
         <span class="val">{it.value}</span>
         <div class="bartrack">

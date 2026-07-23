@@ -15,9 +15,11 @@
     "noEmit": true,
     "paths": {
       "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
+      "$lib/*": ["./src/lib/*"],
+      "$demo-runtime": ["./src/lib/demo.ts"],
+      "$demo-fixtures/*": ["../demo/*"]
     },
     "types": ["svelte", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.js", "svelte.config.js"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.js", "svelte.config.js", "../demo/*.json"]
 }

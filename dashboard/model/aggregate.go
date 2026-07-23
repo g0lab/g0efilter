@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"net"
 	"slices"
 	"strconv"
@@ -13,6 +14,23 @@ const (
 	verdictBlocked = "BLOCKED"
 	verdictAudit   = "AUDIT"
 )
+
+// Aggregate dimensions accepted by AggregateParams.
+const (
+	DimensionDomain = "domain"
+	DimensionIP     = "ip"
+	DimensionClient = "client"
+)
+
+// AggregateParams controls how retained logs are summarized.
+type AggregateParams struct {
+	From      time.Time
+	To        time.Time
+	Query     string
+	Dimension string // domain, ip, client, or empty for the legacy destination key
+	Component string // "" keeps all; otherwise only nflog/http/dns/https events.
+	Buckets   int
+}
 
 // AggregateResult is a compact summary of retained traffic logs.
 type AggregateResult struct {
@@ -54,15 +72,19 @@ type aggregateEvent struct {
 	verdict string
 }
 
-// AggregateLogs reduces log entries to chart buckets and per-destination rows.
+// AggregateLogs reduces log entries to chart buckets and per-key rows keyed by
+// the requested dimension (destination by default, or client hostname).
 //
 //nolint:cyclop,funlen,wsl_v5 // single-pass filtering and reduction is easier to audit together
-func AggregateLogs(entries []LogEntry, from, to time.Time, query string, bucketCount int) AggregateResult {
+func AggregateLogs(entries []LogEntry, p AggregateParams) AggregateResult {
+	bucketCount := p.Buckets
 	if bucketCount < 1 {
 		bucketCount = 24
 	}
 
-	query = strings.ToLower(strings.TrimSpace(query))
+	from, to := p.From, p.To
+	query := strings.ToLower(strings.TrimSpace(p.Query))
+	component := strings.ToLower(strings.TrimSpace(p.Component))
 	rows := make(map[string]*AggregateRow)
 	events := make([]aggregateEvent, 0, len(entries))
 	result := AggregateResult{
@@ -83,7 +105,11 @@ func AggregateLogs(entries []LogEntry, from, to time.Time, query string, bucketC
 			continue
 		}
 
-		key := aggregateKey(entry)
+		if component != "" && ComponentOf(entry) != component {
+			continue
+		}
+
+		key := dimensionKey(entry, p.Dimension)
 		if query != "" && !strings.Contains(strings.ToLower(key), query) {
 			continue
 		}
@@ -166,6 +192,45 @@ func aggregateBounds(events []aggregateEvent, from, to time.Time) (time.Time, ti
 	}
 
 	return lo, hi
+}
+
+func dimensionKey(entry *LogEntry, dimension string) string {
+	switch strings.ToLower(strings.TrimSpace(dimension)) {
+	case DimensionClient:
+		return strings.TrimSpace(entry.Hostname)
+	case DimensionIP:
+		return strings.TrimSpace(entry.DestinationIP)
+	case DimensionDomain:
+		return domainOf(entry)
+	default:
+		return aggregateKey(entry)
+	}
+}
+
+func domainOf(entry *LogEntry) string {
+	for _, value := range []string{entry.HTTPHost, entry.HTTPS} {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+
+	return ""
+}
+
+// ComponentOf returns the lowercased filter component (nflog/http/dns/https) for
+// an entry, read from the Fields blob where the ingest path stores it.
+func ComponentOf(entry *LogEntry) string {
+	if len(entry.Fields) == 0 {
+		return ""
+	}
+
+	var f struct {
+		Component string `json:"component"`
+	}
+
+	_ = json.Unmarshal(entry.Fields, &f)
+
+	return strings.ToLower(strings.TrimSpace(f.Component))
 }
 
 func aggregateKey(entry *LogEntry) string {

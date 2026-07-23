@@ -41,6 +41,23 @@ type LogEntry struct {
 	Version         string `json:"version,omitempty"`
 }
 
+// BrowseParams filters a paginated query over the full retained log store.
+type BrowseParams struct {
+	Query     string
+	Action    string // "" or ALLOWED/BLOCKED/AUDIT
+	Component string // "" or nflog/http/dns/https
+	From      time.Time
+	To        time.Time
+	Limit     int
+	Offset    int
+}
+
+// BrowsePage is one page of browse results plus the total match count.
+type BrowsePage struct {
+	Rows  []LogEntry `json:"rows"`
+	Total int        `json:"total"`
+}
+
 // UnblockRequest represents a pending request to remove a block rule.
 type UnblockRequest struct {
 	ID             string    `json:"id"`

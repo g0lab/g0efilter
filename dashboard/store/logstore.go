@@ -48,12 +48,16 @@ func (s *LogStore) Insert(ctx context.Context, e *model.LogEntry) (int64, error)
 		return 0, fmt.Errorf("marshal log entry: %w", err)
 	}
 
-	// Cover the same fields the UI's client-side search does, so a host/IP
-	// query matches even when the raw Fields blob is empty.
-	search := strings.ToLower(strings.Join([]string{
+	searchParts := []string{
 		e.Message, string(e.Fields), e.Action, e.HTTPHost, e.HTTPS,
 		e.SourceIP, e.DestinationIP, e.Hostname, e.Protocol, e.Src, e.Dst,
-	}, "\n"))
+		`"action":"` + strings.ToLower(strings.TrimSpace(e.Action)) + `"`,
+	}
+	if component := model.ComponentOf(e); component != "" {
+		searchParts = append(searchParts, `"component":"`+component+`"`)
+	}
+
+	search := strings.ToLower(strings.Join(searchParts, "\n"))
 
 	ts := e.Time
 	if ts.IsZero() {
@@ -125,18 +129,18 @@ func (s *LogStore) Query(ctx context.Context, q string, sinceID int64, limit int
 
 // Aggregate summarizes every retained row in the requested time window.
 func (s *LogStore) Aggregate(
-	ctx context.Context, from, to time.Time, q string, buckets int,
+	ctx context.Context, p model.AggregateParams,
 ) (model.AggregateResult, error) {
 	qb := s.client.LogEvent.Query()
-	if !from.IsZero() {
-		qb = qb.Where(logevent.TsGTE(from.UnixNano()))
+	if !p.From.IsZero() {
+		qb = qb.Where(logevent.TsGTE(p.From.UnixNano()))
 	}
 
-	if !to.IsZero() {
-		qb = qb.Where(logevent.TsLTE(to.UnixNano()))
+	if !p.To.IsZero() {
+		qb = qb.Where(logevent.TsLTE(p.To.UnixNano()))
 	}
 
-	q = strings.ToLower(strings.TrimSpace(q))
+	q := strings.ToLower(strings.TrimSpace(p.Query))
 	if q != "" {
 		qb = qb.Where(searchLike(q))
 	}
@@ -158,7 +162,50 @@ func (s *LogStore) Aggregate(
 		entries = append(entries, entry)
 	}
 
-	return model.AggregateLogs(entries, from, to, q, buckets), nil
+	return model.AggregateLogs(entries, p), nil
+}
+
+// Browse returns a filtered, paginated page over the full retained store, newest
+// first, plus the total number of matching rows.
+func (s *LogStore) Browse(ctx context.Context, p model.BrowseParams) (model.BrowsePage, error) {
+	limit := p.Limit
+	if limit <= 0 || limit > maxLogQueryLimit {
+		limit = maxLogQueryLimit
+	}
+
+	offset := max(p.Offset, 0)
+
+	qb := browseQuery(s.client.LogEvent.Query(), p)
+
+	total, err := qb.Clone().Count(ctx)
+	if err != nil {
+		return model.BrowsePage{}, fmt.Errorf("count browse logs: %w", err)
+	}
+
+	rows, err := qb.
+		Order(logevent.ByID(entsql.OrderDesc())).
+		Offset(offset).
+		Limit(limit).
+		All(ctx)
+	if err != nil {
+		return model.BrowsePage{}, fmt.Errorf("browse logs: %w", err)
+	}
+
+	page := model.BrowsePage{Total: total, Rows: make([]model.LogEntry, 0, len(rows))}
+
+	for _, r := range rows {
+		var e model.LogEntry
+
+		err = json.Unmarshal([]byte(r.Data), &e)
+		if err != nil {
+			return model.BrowsePage{}, fmt.Errorf("unmarshal browse log: %w", err)
+		}
+
+		e.ID = int64(r.ID)
+		page.Rows = append(page.Rows, e)
+	}
+
+	return page, nil
 }
 
 // Clear removes all stored logs.
@@ -187,6 +234,33 @@ func (s *LogStore) prune(ctx context.Context) {
 	if err != nil {
 		return // best-effort; next prune retries
 	}
+}
+
+func browseQuery(qb *ent.LogEventQuery, p model.BrowseParams) *ent.LogEventQuery {
+	if !p.From.IsZero() {
+		qb = qb.Where(logevent.TsGTE(p.From.UnixNano()))
+	}
+
+	if !p.To.IsZero() {
+		qb = qb.Where(logevent.TsLTE(p.To.UnixNano()))
+	}
+
+	if q := strings.ToLower(strings.TrimSpace(p.Query)); q != "" {
+		qb = qb.Where(searchLike(q))
+	}
+
+	// Match the JSON tokens exactly (with quotes) so a value never matches a
+	// substring elsewhere: action "blocked" must not match the host
+	// "blocked-malware.example", and component "http" must not match "https".
+	if action := strings.ToLower(strings.TrimSpace(p.Action)); action != "" {
+		qb = qb.Where(searchLike(`"action":"` + action + `"`))
+	}
+
+	if comp := strings.ToLower(strings.TrimSpace(p.Component)); comp != "" {
+		qb = qb.Where(searchLike(`"component":"` + comp + `"`))
+	}
+
+	return qb
 }
 
 // searchLike matches user input literally against the search column, escaping

@@ -106,7 +106,7 @@ func (s *memStore) Query(_ context.Context, q string, sinceID int64, limit int) 
 }
 
 func (s *memStore) Aggregate(
-	_ context.Context, from, to time.Time, q string, buckets int,
+	_ context.Context, p model.AggregateParams,
 ) (model.AggregateResult, error) {
 	s.mu.RLock()
 
@@ -121,7 +121,70 @@ func (s *memStore) Aggregate(
 
 	s.mu.RUnlock()
 
-	return model.AggregateLogs(entries, from, to, q, buckets), nil
+	return model.AggregateLogs(entries, p), nil
+}
+
+// Browse returns a paginated, filtered page over the buffered entries, newest first.
+func (s *memStore) Browse(_ context.Context, p model.BrowseParams) (model.BrowsePage, error) {
+	q := strings.ToLower(strings.TrimSpace(p.Query))
+	action := strings.ToUpper(strings.TrimSpace(p.Action))
+	component := strings.ToLower(strings.TrimSpace(p.Component))
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	matched := make([]LogEntry, 0, s.count)
+	if s.count > 0 {
+		idx := (s.head - 1 + s.size) % s.size
+		for range s.count {
+			it := s.buf[idx]
+			if browseMatch(&it, q, action, component, p.From, p.To) {
+				matched = append(matched, it)
+			}
+
+			idx = s.prevIndex(idx)
+		}
+	}
+
+	page := model.BrowsePage{Total: len(matched), Rows: []LogEntry{}}
+
+	lo := min(max(p.Offset, 0), len(matched))
+	hi := len(matched)
+
+	if p.Limit > 0 && lo+p.Limit < hi {
+		hi = lo + p.Limit
+	}
+
+	page.Rows = append(page.Rows, matched[lo:hi]...)
+
+	return page, nil
+}
+
+func browseMatch(it *LogEntry, q, action, component string, from, to time.Time) bool {
+	if !from.IsZero() && it.Time.Before(from) {
+		return false
+	}
+
+	if !to.IsZero() && it.Time.After(to) {
+		return false
+	}
+
+	if action != "" && !strings.EqualFold(strings.TrimSpace(it.Action), action) {
+		return false
+	}
+
+	if component != "" && model.ComponentOf(it) != component {
+		return false
+	}
+
+	return q == "" || strings.Contains(browseHaystack(it), q)
+}
+
+func browseHaystack(it *LogEntry) string {
+	return strings.ToLower(strings.Join([]string{
+		it.Message, string(it.Fields), it.Action, it.HTTPHost, it.HTTPS,
+		it.SourceIP, it.DestinationIP, it.Hostname, it.Protocol, it.Src, it.Dst,
+	}, "\n"))
 }
 
 func (s *memStore) shouldSkipEntry(entry LogEntry, q string, sinceID int64) bool {

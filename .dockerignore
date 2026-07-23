@@ -8,13 +8,13 @@
 
 # Local/dev artifacts
 data/
-dist/
+**/dist/
 test/
 .trunk/
 .dev/
 
 # The dashboard image rebuilds the UI in a Node stage; keep host artifacts out
-# (dist/ is covered above; UI source stays).
+# (generated dist directories are covered above; UI source stays).
 **/node_modules/
 **/.vite/
 

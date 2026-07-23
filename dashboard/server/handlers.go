@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/shared/logging"
 )
 
@@ -23,6 +24,7 @@ const (
 	keyStatus   = "status"
 	keyPending  = "pending"
 	keyHTTPS    = "https"
+	keyDNS      = "dns"
 	keyAuthMode = "auth_mode"
 )
 
@@ -213,7 +215,14 @@ func (s *Server) aggregateLogsHandler(w http.ResponseWriter, r *http.Request) {
 		from = to.Add(-duration)
 	}
 
-	result, err := s.store.Aggregate(r.Context(), from, to, query, aggregateBuckets)
+	result, err := s.store.Aggregate(r.Context(), model.AggregateParams{
+		From:      from,
+		To:        to,
+		Query:     query,
+		Dimension: aggregateDimension(r.URL.Query().Get("dimension")),
+		Component: filterComponent(r.URL.Query().Get("component")),
+		Buckets:   aggregateBuckets,
+	})
 	if err != nil {
 		s.logger.Error("logs.aggregate_failed", "error", err.Error(), "range", duration, "query", query)
 		http.Error(w, "store error", http.StatusInternalServerError)
@@ -227,6 +236,86 @@ func (s *Server) aggregateLogsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("failed to encode aggregate response", "error", err)
 	}
+}
+
+func (s *Server) browseLogsHandler(w http.ResponseWriter, r *http.Request) {
+	duration, all, err := parseAggregateRange(r.URL.Query().Get("range"))
+	if err != nil {
+		http.Error(w, `{"error":"invalid range"}`, http.StatusBadRequest)
+
+		return
+	}
+
+	to := time.Now().UTC()
+
+	from := time.Time{}
+	if !all {
+		from = to.Add(-duration)
+	}
+
+	params := model.BrowseParams{
+		Query:     SanitizeSearchQuery(strings.TrimSpace(r.URL.Query().Get("q"))),
+		Action:    sanitizeAction(r.URL.Query().Get("action")),
+		Component: filterComponent(r.URL.Query().Get("component")),
+		From:      from,
+		To:        to,
+		Limit:     parseBoundedInt(r.URL.Query().Get("limit"), s.readLimit, 1, 5000),
+		Offset:    parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1<<30),
+	}
+
+	page, err := s.store.Browse(r.Context(), params)
+	if err != nil {
+		s.logger.Error("logs.browse_failed", "error", err.Error(), "query", params.Query)
+		http.Error(w, "store error", http.StatusInternalServerError)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	err = json.NewEncoder(w).Encode(page)
+	if err != nil {
+		s.logger.Error("failed to encode browse response", "error", err)
+	}
+}
+
+func aggregateDimension(raw string) string {
+	dim := strings.ToLower(strings.TrimSpace(raw))
+	switch dim {
+	case model.DimensionDomain, model.DimensionIP, model.DimensionClient:
+		return dim
+	default:
+		return ""
+	}
+}
+
+func filterComponent(raw string) string {
+	comp := strings.ToLower(strings.TrimSpace(raw))
+	switch comp {
+	case keyHTTPS, "http", keyDNS, "nflog":
+		return comp
+	default:
+		return ""
+	}
+}
+
+func sanitizeAction(raw string) string {
+	action := strings.ToUpper(strings.TrimSpace(raw))
+	switch action {
+	case "ALLOWED", "BLOCKED", "AUDIT":
+		return action
+	default:
+		return ""
+	}
+}
+
+func parseBoundedInt(raw string, fallback, minVal, maxVal int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+
+	return min(max(n, minVal), maxVal)
 }
 
 func parseAggregateRange(raw string) (time.Duration, bool, error) {

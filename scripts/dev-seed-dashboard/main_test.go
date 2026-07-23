@@ -7,25 +7,51 @@ import (
 	"testing"
 	"time"
 
+	"github.com/g0lab/g0efilter/dashboard/demo"
+	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/dashboard/store"
 )
 
-//nolint:wsl_v5 // sequential range assertions
+func testFixtures(t *testing.T) demo.Fixtures {
+	t.Helper()
+
+	fixtures, err := demo.Scenarios()
+	if err != nil {
+		t.Fatalf("load scenarios: %v", err)
+	}
+
+	return fixtures
+}
+
+//nolint:cyclop,wsl_v5 // sequential range + verdict-consistency assertions
 func TestBuildEntriesCoversEveryDashboardRange(t *testing.T) {
 	t.Parallel()
 
+	fixtures := testFixtures(t)
 	now := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
-	entries := buildEntries(defaultSeedCount, now)
+	entries := buildEntries(defaultSeedCount, now, fixtures)
 	if len(entries) != defaultSeedCount {
 		t.Fatalf("entries = %d, want %d", len(entries), defaultSeedCount)
 	}
 
-	domains := make(map[string]struct{})
+	// Key by domain, falling back to IP for raw-IP destinations. A shared CDN IP
+	// may back two domains with different verdicts, so key by identity, not IP.
+	// Each destination must keep a single, consistent verdict everywhere.
+	verdicts := make(map[string]string)
 	for _, entry := range entries {
-		domains[entry.HTTPHost] = struct{}{}
+		key := entry.HTTPHost
+		if key == "" {
+			key = entry.DestinationIP
+		}
+
+		if prev, ok := verdicts[key]; ok && prev != entry.Action {
+			t.Fatalf("dest %s has inconsistent verdicts %s and %s", key, prev, entry.Action)
+		}
+
+		verdicts[key] = entry.Action
 	}
-	if len(domains) != 14 {
-		t.Fatalf("seeded domains = %d, want 14", len(domains))
+	if len(verdicts) != len(fixtures.Destinations) {
+		t.Fatalf("seeded destinations = %d, want %d", len(verdicts), len(fixtures.Destinations))
 	}
 
 	windows := []time.Duration{
@@ -53,15 +79,16 @@ func TestSeedDatabaseReplacesLogFixture(t *testing.T) {
 
 	ctx := context.Background()
 	now := time.Now().UTC()
+	fixtures := testFixtures(t)
 	dbPath := filepath.Join(t.TempDir(), "dashboard.db")
 
-	err := seedDatabase(ctx, dbPath, 250, now)
+	err := seedDatabase(ctx, dbPath, 250, now, fixtures)
 	if err != nil {
 		t.Fatalf("seed database: %v", err)
 	}
 	assertSeedCount(ctx, t, dbPath, now, 250)
 
-	err = seedDatabase(ctx, dbPath, 75, now)
+	err = seedDatabase(ctx, dbPath, 75, now, fixtures)
 	if err != nil {
 		t.Fatalf("reseed database: %v", err)
 	}
@@ -87,7 +114,7 @@ func TestSeedDatabaseRejectsUnsafeConfiguration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := seedDatabase(context.Background(), tt.path, tt.count, time.Now())
+			err := seedDatabase(context.Background(), tt.path, tt.count, time.Now(), testFixtures(t))
 			if !errors.Is(err, errInvalidSeedConfig) {
 				t.Fatalf("seedDatabase error = %v, want errInvalidSeedConfig", err)
 			}
@@ -105,7 +132,7 @@ func assertSeedCount(ctx context.Context, t *testing.T, dbPath string, now time.
 	}
 	defer func() { _ = client.Close() }()
 
-	result, err := store.NewLogStore(client, maxSeedCount).Aggregate(ctx, time.Time{}, now, "", 24)
+	result, err := store.NewLogStore(client, maxSeedCount).Aggregate(ctx, model.AggregateParams{To: now, Buckets: 24})
 	if err != nil {
 		t.Fatalf("aggregate seeded database: %v", err)
 	}

@@ -27,7 +27,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-# Overwrite any committed/absent dist with the fresh build from stage 1.
+# Add the freshly built UI for go:embed.
 COPY --from=ui /ui/dist ./dashboard/ui/dist
 
 ENV CGO_ENABLED=0 GOOS=linux

@@ -1,12 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { apiFetch, apiKeyHeaders } from './lib/api';
-  import { app, setLive, setStreamLimit, clearItems, pushItem, reload, loadUnblockStatus } from './lib/state.svelte';
+  import { app, setLive, setStreamLimit, clearItems, pushItem, reload, loadUnblockStatus, go } from './lib/state.svelte';
   import { sanitizeInput } from './lib/format';
   import { toast } from './lib/toast.svelte';
   import { confirm } from './lib/dialog.svelte';
   import { initTheme, isDark, toggleTheme } from './lib/theme';
+  import { DEMO, demoLiveEvent } from '$demo-runtime';
   import StreamView from './StreamView.svelte';
+  import SearchView from './SearchView.svelte';
   import AggView from './AggView.svelte';
   import KeysView from './KeysView.svelte';
   import FleetView from './FleetView.svelte';
@@ -15,12 +17,18 @@
 
   let dark = $state(true);
   let es: EventSource | null = null;
+  let demoTimer: number | null = null;
 
   const isTraffic = $derived(app.page === 'stream' || app.page === 'agg');
   const rowLimitOptions = [100, 500, 1000, 2500, 5000];
 
   function connectSSE() {
     disconnectSSE();
+    if (DEMO) {
+      app.connected = true;
+      demoTimer = window.setInterval(() => pushItem(demoLiveEvent()), 3000);
+      return;
+    }
     es = new EventSource('/api/v1/events');
     es.onmessage = (ev) => {
       try {
@@ -40,17 +48,14 @@
     };
   }
 
-  function disconnectSSE() { if (es) { es.close(); es = null; } }
+  function disconnectSSE() {
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    if (es) { es.close(); es = null; }
+  }
 
   function setLiveState(v: boolean) {
     setLive(v);
     if (v) connectSSE(); else { disconnectSSE(); app.connected = false; }
-  }
-
-  function go(page: string) {
-    app.page = page;
-    localStorage.setItem('view', page);
-    if (isTraffic) reload();
   }
 
   async function changeStreamLimit(value: number) {
@@ -89,7 +94,8 @@
         app.fleetEnabled = !!cfg.fleet_enabled;
       } catch { /* keep defaults */ }
 
-      if (['stream', 'agg', 'keys', 'fleet'].includes(app.view)) app.page = app.view;
+      const allowed = DEMO ? ['stream', 'search', 'agg'] : ['stream', 'search', 'agg', 'keys', 'fleet'];
+      if (allowed.includes(app.view)) app.page = app.view;
       await reload();
       loadUnblockStatus();
       if (app.live) connectSSE();
@@ -100,11 +106,17 @@
 </script>
 
 <div class="topbar">
-  <div class="brand"><span class="dot"></span> g0efilter</div>
+  <div class="brand">
+    <span class="dot"></span> g0efilter
+    {#if DEMO}<span class="demo-badge" title="Synthetic data - no live backend">Demonstration data</span>{/if}
+  </div>
   <nav class="nav">
     <button type="button" class:active={app.page === 'stream'} onclick={() => go('stream')}>Stream</button>
+    <button type="button" class:active={app.page === 'search'} onclick={() => go('search')}>Search</button>
     <button type="button" class:active={app.page === 'agg'} onclick={() => go('agg')}>Aggregates</button>
-    <button type="button" class:active={app.page === 'keys'} onclick={() => go('keys')}>API Keys</button>
+    {#if !DEMO}
+      <button type="button" class:active={app.page === 'keys'} onclick={() => go('keys')}>API Keys</button>
+    {/if}
     {#if app.fleetEnabled}
       <button type="button" class:active={app.page === 'fleet'} onclick={() => go('fleet')}>Fleet</button>
     {/if}
@@ -171,9 +183,13 @@
         </select>
       </label>
       <span class="grow"></span>
-      <button type="button" class="btn btn-sm btn-danger" onclick={clearLogs}>Clear Logs</button>
+      {#if !DEMO}
+        <button type="button" class="btn btn-sm btn-danger" onclick={clearLogs}>Clear Logs</button>
+      {/if}
     </div>
     <StreamView/>
+  {:else if app.page === 'search'}
+    <SearchView/>
   {:else if app.page === 'agg'}
     <AggView/>
   {:else if app.page === 'keys'}

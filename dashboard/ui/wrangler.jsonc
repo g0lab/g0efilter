@@ -1,0 +1,10 @@
+{
+  // Assets-only, backend-free demo: there is intentionally no `main` Worker script.
+  // Build with `pnpm build:demo` (sets VITE_DEMO_MODE=true), then
+  // `npx wrangler deploy` (or `npx wrangler dev` to preview locally).
+  "name": "g0efilter-demo",
+  "compatibility_date": "2026-07-20",
+  "assets": {
+    "directory": "./dist"
+  }
+}

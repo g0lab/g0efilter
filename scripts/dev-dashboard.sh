@@ -27,7 +27,7 @@ HASH=$(printf '%s\n' "$DEV_PASSWORD" | go run ./dashboard hash-password)
 
 echo ">>> dashboard: http://localhost:8081"
 echo ">>> login:     $DEV_USER / $DEV_PASSWORD"
-echo ">>> api key:   $DEV_API_KEY   (scripts/dev-traffic.sh uses this)"
+echo ">>> api key:   $DEV_API_KEY   (dev-traffic-gen uses this)"
 echo ">>> db:        $DEV_DIR/dashboard.db"
 
 AUTH_MODE=session \

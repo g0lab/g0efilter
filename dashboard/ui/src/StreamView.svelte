@@ -1,12 +1,13 @@
 <script lang="ts">
   import { apiFetch, apiKeyHeaders } from './lib/api';
-  import { app, pendingUnblocks, completedUnblocks, isUnblocked } from './lib/state.svelte';
+  import { app, pendingUnblocks, completedUnblocks, isUnblocked, searchFor } from './lib/state.svelte';
+  import { DEMO } from '$demo-runtime';
   import { toast } from './lib/toast.svelte';
   import { prompt } from './lib/dialog.svelte';
   import LookupActions from './LookupActions.svelte';
   import {
     getAction, getComp, hostOf, srcOf, dstOf, hostnameOf, flowIdOf, versionOf,
-    whenOf, matches, unblockIPOf,
+    whenOf, matches, unblockIPOf, cleanIP,
   } from './lib/format';
   import type { LogEntry } from './lib/types';
 
@@ -19,6 +20,7 @@
 
   /* Unblock status per row: 'done' > 'pending' > offer, or null. */
   function unblockState(it: LogEntry): UnblockView {
+    if (DEMO) return null;
     const act = getAction(it);
     if (act !== 'BLOCKED' && act !== 'AUDIT') return null;
 
@@ -109,9 +111,17 @@
                 {/if}
               </td>
               <td>{getComp(it)}</td>
-              <td><LookupActions value={hostOf(it)}/></td>
+              <td title="Search {hostOf(it)}">
+                <LookupActions value={hostOf(it)}
+                  activateLabel="Search {hostOf(it)}"
+                  onactivate={() => searchFor(hostOf(it), { range: app.range })}/>
+              </td>
               <td class="mono">{src}</td>
-              <td class="mono"><LookupActions value={dst} target={it.destination_ip || dst} kind="ip"/></td>
+              <td class="mono" title="Search {it.destination_ip || cleanIP(dst)}">
+                <LookupActions value={dst} target={it.destination_ip || dst} kind="ip"
+                  activateLabel="Search {it.destination_ip || cleanIP(dst)}"
+                  onactivate={() => searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}/>
+              </td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
               <td class="mono">{versionOf(it)}</td>

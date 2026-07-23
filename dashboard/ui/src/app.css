@@ -214,6 +214,9 @@ h1 { font-size: 18px; margin: 0 0 4px; }
 .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px 16px; min-width: 120px; }
 .stat .n { font-size: 22px; font-weight: 680; font-variant-numeric: tabular-nums; }
 .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--faint); }
+.stat-btn { font: inherit; color: inherit; text-align: left; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.stat-btn:hover { border-color: var(--accent); background: color-mix(in oklab, var(--primary) 6%, var(--card)); }
+.stat-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 .stat.ok .n { color: var(--ok); }
 .stat.err .n { color: var(--err); }
 .stat.warn .n { color: var(--warn); }
@@ -247,7 +250,11 @@ h1 { font-size: 18px; margin: 0 0 4px; }
 .count-blocked { color: var(--err); }
 .count-audit { color: var(--warn); }
 .lookup { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
-.lookup-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lookup-value {
+  min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  border: 0; background: transparent; color: inherit; font: inherit;
+  white-space: inherit; text-align: left;
+}
 .lookup-action {
   flex: 0 0 auto; padding: 1px 4px; border: 1px solid var(--border); border-radius: 4px;
   color: var(--muted-foreground); font-family: inherit; font-size: 9px; font-weight: 650;
@@ -315,9 +322,31 @@ h1 { font-size: 18px; margin: 0 0 4px; }
 .barlist { display: flex; flex-direction: column; gap: 8px; }
 .barrow { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; }
 .barrow .lbl { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- sub-tabs (aggregate sections / facets) ---------- */
+.subtabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; }
+.subtab-group { display: inline-flex; gap: 2px; padding: 3px; background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius-btn); }
+.subtab { border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12px; padding: 4px 10px; border-radius: calc(var(--radius-btn) - 2px); cursor: pointer; }
+.subtab:hover { color: var(--foreground); }
+.subtab.active { background: var(--card); color: var(--foreground); box-shadow: var(--shadow); }
+.subtab:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+/* ---------- clickable keys + inline link buttons ---------- */
+.clickable-key { cursor: pointer; border-radius: 3px; padding: 1px 3px; }
+.clickable-key:hover { background: color-mix(in oklab, var(--primary) 8%, transparent); }
+.clickable-key:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.link-btn { border: 0; background: transparent; color: var(--accent); font: inherit; padding: 0; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.link-btn:hover { text-decoration: underline; }
+.link-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }
+
+/* ---------- pagination ---------- */
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border-top: 1px solid var(--border); }
+.pagination-controls { display: flex; gap: 8px; align-items: center; }
 .barrow .val { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
 .bartrack { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
 .barfill { height: 100%; border-radius: 4px; }
+
+.demo-badge { margin-left: 10px; padding: 2px 8px; font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: var(--warn); background: color-mix(in oklab, var(--warn) 14%, transparent); border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent); border-radius: 999px; }
 .chart-tip { position: absolute; pointer-events: none; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 11.5px; box-shadow: var(--shadow); z-index: 15; white-space: nowrap; transform: translate(-50%, -115%); }
 .chart-tip .t-row { display: flex; align-items: center; gap: 6px; }
 .chart-tip .t-row .swatch { width: 8px; height: 8px; border-radius: 2px; }
