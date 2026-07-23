@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/g0lab/g0efilter/dashboard/model"
 )
 
 func TestNewMemStoreMinimumCapacity(t *testing.T) {
@@ -132,6 +134,49 @@ func TestMemStoreQueryMatchesFieldsJSON(t *testing.T) {
 
 	if len(results) != 0 {
 		t.Fatalf("non-matching query returned %d results, want 0", len(results))
+	}
+}
+
+func TestMemStoreBrowseQuerySearchesTrafficFields(t *testing.T) {
+	t.Parallel()
+
+	s := newMemStore(4)
+	now := time.Now().UTC()
+
+	entries := []LogEntry{
+		{
+			Time:          now,
+			Action:        "ALLOWED",
+			HTTPHost:      "api.example",
+			DestinationIP: "192.0.2.10",
+			Hostname:      "runner-1",
+			Fields:        json.RawMessage(`{"component":"https","reason":"allowlisted"}`),
+		},
+		{
+			Time:          now,
+			Action:        testActionBlocked,
+			HTTPHost:      "blocked.example",
+			DestinationIP: "192.0.2.20",
+			Hostname:      "runner-2",
+			Fields:        json.RawMessage(`{"component":"dns","reason":"not-allowlisted"}`),
+		},
+	}
+	for i := range entries {
+		_, err := s.Insert(t.Context(), &entries[i])
+		if err != nil {
+			t.Fatalf("Insert failed: %v", err)
+		}
+	}
+
+	for _, query := range []string{"BLOCKED.EXAMPLE", "192.0.2.20", "runner-2", "not-allowlisted"} {
+		page, err := s.Browse(t.Context(), model.BrowseParams{Query: query, Limit: 10})
+		if err != nil {
+			t.Fatalf("Browse(%q) failed: %v", query, err)
+		}
+
+		if page.Total != 1 || page.Rows[0].HTTPHost != "blocked.example" {
+			t.Errorf("Browse(%q) = %+v, want blocked.example", query, page)
+		}
 	}
 }
 
