@@ -107,3 +107,8 @@ export interface BarItem {
   label: string;
   value: number;
 }
+
+export interface BrowseResponse {
+  total: number;
+  rows: LogEntry[];
+}

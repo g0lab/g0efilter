@@ -1,12 +1,12 @@
 <script lang="ts">
   import { apiFetch, apiKeyHeaders } from './lib/api';
-  import { app, pendingUnblocks, completedUnblocks, isUnblocked } from './lib/state.svelte';
+  import { app, pendingUnblocks, completedUnblocks, isUnblocked, searchFor } from './lib/state.svelte';
   import { toast } from './lib/toast.svelte';
   import { prompt } from './lib/dialog.svelte';
   import LookupActions from './LookupActions.svelte';
   import {
     getAction, getComp, hostOf, srcOf, dstOf, hostnameOf, flowIdOf, versionOf,
-    whenOf, matches, unblockIPOf,
+    whenOf, matches, unblockIPOf, cleanIP,
   } from './lib/format';
   import type { LogEntry } from './lib/types';
 
@@ -109,9 +109,19 @@
                 {/if}
               </td>
               <td>{getComp(it)}</td>
-              <td><LookupActions value={hostOf(it)}/></td>
+              <td class="clickable-key" title="Search {hostOf(it)}"
+                  role="button" tabindex="0"
+                  onclick={() => searchFor(hostOf(it), { range: app.range })}
+                  onkeydown={(e) => e.key === 'Enter' && searchFor(hostOf(it), { range: app.range })}>
+                <LookupActions value={hostOf(it)}/>
+              </td>
               <td class="mono">{src}</td>
-              <td class="mono"><LookupActions value={dst} target={it.destination_ip || dst} kind="ip"/></td>
+              <td class="mono clickable-key" title="Search {it.destination_ip || cleanIP(dst)}"
+                  role="button" tabindex="0"
+                  onclick={() => searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}
+                  onkeydown={(e) => e.key === 'Enter' && searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}>
+                <LookupActions value={dst} target={it.destination_ip || dst} kind="ip"/>
+              </td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
               <td class="mono">{versionOf(it)}</td>

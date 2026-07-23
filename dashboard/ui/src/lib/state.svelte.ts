@@ -7,7 +7,7 @@ import type { LogEntry, UnblockStatus } from './types';
 interface AppState {
   live: boolean;
   view: string;
-  page: string; // stream | agg | keys | fleet
+  page: string; // stream | search | agg | keys | fleet
   streamLimit: number;
   connected: boolean;
   loading: boolean;
@@ -17,6 +17,20 @@ interface AppState {
   filterAction: string;
   filterComp: string;
   filterQuery: string;
+  range: string;
+  aggQuery: string;
+  aggDimension: string;
+  aggComponent: string;
+  searchQuery: string;
+  searchAction: string;
+  searchComponent: string;
+}
+
+const ranges = new Set(['15m', '1h', '6h', '24h', '7d', '30d', '90d', 'all']);
+
+function initialRange(): string {
+  const stored = localStorage.getItem('range') || '';
+  return ranges.has(stored) ? stored : '24h';
 }
 
 function initialStreamLimit(): number {
@@ -37,6 +51,13 @@ export const app: AppState = $state({
   filterAction: '',
   filterComp: '',
   filterQuery: '',
+  range: initialRange(),
+  aggQuery: '',
+  aggDimension: 'domain',
+  aggComponent: '',
+  searchQuery: '',
+  searchAction: '',
+  searchComponent: '',
 });
 
 /* value + "\0" + target_hostname keys, mirroring the server's unblock model */
@@ -57,6 +78,32 @@ export function setStreamLimit(value: number): void {
   app.streamLimit = Math.max(1, Math.min(value, 5000));
   app.items = app.items.slice(0, app.streamLimit);
   localStorage.setItem('streamRows', String(app.streamLimit));
+}
+
+export function setRange(value: string): void {
+  app.range = ranges.has(value) ? value : '24h';
+  localStorage.setItem('range', app.range);
+}
+
+export function go(page: string): void {
+  app.page = page;
+  localStorage.setItem('view', page);
+  if (page === 'stream') void reload();
+}
+
+export function searchFor(key: string, opts: { range?: string } = {}): void {
+  app.searchQuery = (key || '').toLowerCase();
+  app.searchAction = '';
+  app.searchComponent = '';
+  if (opts.range) setRange(opts.range);
+  go('search');
+}
+
+export function aggregateFor(key: string, opts: { range?: string; dimension?: string } = {}): void {
+  app.aggQuery = (key || '').toLowerCase();
+  if (opts.range) setRange(opts.range);
+  if (opts.dimension) app.aggDimension = opts.dimension;
+  go('agg');
 }
 
 /* Matches exact (value, hostname) pair OR (value, "") meaning all hosts. */
