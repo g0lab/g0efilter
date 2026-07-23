@@ -42,7 +42,8 @@ echo "$COMPLETED_STATUS" | grep -q '"target_hostname":"host-01"' \
 log "OK: completed entry has target_hostname=host-01"
 
 log "[Unblock] Verify google.com added to policy.yaml"
-grep -q 'google.com' "$POLICY_FILE" || { cat "$POLICY_FILE"; fail "google.com not in policy.yaml"; }
+grep -Fq -- "- 'google.com'" "$POLICY_FILE" \
+  || { cat "$POLICY_FILE"; fail "google.com not in policy.yaml"; }
 log "OK: google.com found in policy.yaml"
 
 log "[Unblock] Verify pending list is empty"

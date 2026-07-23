@@ -15,12 +15,12 @@ log "=== Phase 13: $FILTER_MODE mode IP-allowlist domain resolution ==="
 
 # Allowlist Cloudflare's 1.1.1.1 by IP only; its domain one.one.one.one is not
 # domain-allowlisted.
-seed_policy '---
+seed_policy "---
 allowlist:
   ips:
-    - "1.1.1.1"
+    - '1.1.1.1'
   domains:
-    - "github.com"'
+    - 'github.com'"
 stack_up
 wait_ready
 
@@ -44,10 +44,10 @@ log "[IP-allowlist] Directly allowlisted IP still works"
 assert_allowed https://1.1.1.1
 
 # Remove the IP allowlist: the resolve-and-check behaviour must switch off.
-seed_policy '---
+seed_policy "---
 allowlist:
   domains:
-    - "github.com"'
+    - 'github.com'"
 wait_for_policy_reload
 
 log "[IP-allowlist] With no IPs in policy, the same domain is blocked again"

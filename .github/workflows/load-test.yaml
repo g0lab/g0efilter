@@ -1,21 +1,21 @@
 ---
-name: load-test
+name: Load Test
 
 # Scaled-up custom stress run. Normal PR e2e already runs tests/e2e/12_load.sh.
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "filter mode"
+        description: 'filter mode'
         type: choice
         options: [https, dns]
         default: https
       total:
-        description: "total blocked connections to fire"
-        default: "2000"
+        description: 'total blocked connections to fire'
+        default: '2000'
       concurrency:
-        description: "concurrent connections per wave"
-        default: "100"
+        description: 'concurrent connections per wave'
+        default: '100'
 
 permissions:
   contents: read
@@ -26,12 +26,10 @@ concurrency:
 
 jobs:
   load:
-    name: load test (${{ github.event.inputs.mode || 'https' }})
-    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-load-test'
+    name: ${{ inputs.mode }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -40,7 +38,7 @@ jobs:
 
       - name: Run load test
         env:
-          FILTER_MODE: ${{ github.event.inputs.mode || 'https' }}
-          LOAD_TOTAL: ${{ github.event.inputs.total || '2000' }}
-          LOAD_CONCURRENCY: ${{ github.event.inputs.concurrency || '100' }}
+          FILTER_MODE: ${{ inputs.mode }}
+          LOAD_TOTAL: ${{ inputs.total }}
+          LOAD_CONCURRENCY: ${{ inputs.concurrency }}
         run: scripts/load.sh

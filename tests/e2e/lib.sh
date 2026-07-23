@@ -35,12 +35,12 @@ seed_policy() {
 }
 
 baseline_policy() {
-  seed_policy '---
+  seed_policy "---
 allowlist:
   ips:
-    - "1.1.1.1"
+    - '1.1.1.1'
   domains:
-    - "github.com"'
+    - 'github.com'"
 }
 
 # stack_up [extra docker compose env as VAR=val args]

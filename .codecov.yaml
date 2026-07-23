@@ -9,4 +9,4 @@ coverage:
     changes: false
 
 ignore:
-  - "dashboard/store/ent"  # generated ent client + schema/migrate scaffolding
+  - 'dashboard/store/ent'  # generated ent client + schema/migrate scaffolding

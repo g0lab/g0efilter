@@ -1094,3 +1094,54 @@ func TestAppendIP(t *testing.T) {
 		}
 	})
 }
+
+func TestAppendUsesSingleQuotedPolicyStrings(t *testing.T) {
+	t.Parallel()
+
+	policyFile := filepath.Join(t.TempDir(), "policy.yaml")
+
+	initialPolicy := `default_action: allow
+allowlist:
+  ips:
+    - 192.168.1.1
+  domains:
+    - github.com
+denylist:
+  domains:
+    - '*.doubleclick.net'
+    - /cache-[0-9]+\.example\.com/
+`
+
+	err := os.WriteFile(policyFile, []byte(initialPolicy), 0o600)
+	if err != nil {
+		t.Fatalf("write initial policy: %v", err)
+	}
+
+	err = AppendDomain(policyFile, "example.org")
+	if err != nil {
+		t.Fatalf("AppendDomain: %v", err)
+	}
+
+	data, err := os.ReadFile(policyFile) //nolint:gosec // t.TempDir path
+	if err != nil {
+		t.Fatalf("read updated policy: %v", err)
+	}
+
+	output := string(data)
+	for _, value := range []string{
+		"default_action: 'allow'",
+		"- '192.168.1.1'",
+		"- 'github.com'",
+		"- 'example.org'",
+		"- '*.doubleclick.net'",
+		"- '/cache-[0-9]+\\.example\\.com/'",
+	} {
+		if !strings.Contains(output, value) {
+			t.Errorf("updated policy does not contain %q:\n%s", value, output)
+		}
+	}
+
+	if strings.Contains(output, "'allowlist':") {
+		t.Errorf("updated policy unexpectedly quotes mapping keys:\n%s", output)
+	}
+}

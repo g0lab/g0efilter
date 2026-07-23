@@ -20,9 +20,9 @@ log "OK: regex allowlist pattern enforced"
 
 log "=== Phase 4b: mid-name wildcard patterns [$FILTER_MODE mode] ==="
 
-seed_policy 'allowlist:
+seed_policy "allowlist:
   domains:
-    - "www.*.com"'
+    - 'www.*.com'"
 wait_for_policy_reload
 
 # '*' between labels spans one or more characters

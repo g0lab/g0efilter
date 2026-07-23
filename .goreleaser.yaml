@@ -16,10 +16,10 @@ builds:
   - id: g0efilter
     main: ./agent
     binary: g0efilter
-    env: ["CGO_ENABLED=0"]
+    env: ['CGO_ENABLED=0']
     goos: [linux]
     goarch: [amd64, arm64]
-    flags: ["-trimpath"]
+    flags: ['-trimpath']
     ldflags:
       - -s -w
       - -X main.version={{ .Version }}
@@ -29,10 +29,10 @@ builds:
   - id: g0efilter-dashboard
     main: ./dashboard
     binary: g0efilter-dashboard
-    env: ["CGO_ENABLED=0"]
+    env: ['CGO_ENABLED=0']
     goos: [linux]
     goarch: [amd64, arm64]
-    flags: ["-trimpath"]
+    flags: ['-trimpath']
     ldflags:
       - -s -w
       - -X main.version={{ .Version }}
@@ -40,7 +40,7 @@ builds:
       - -X main.date={{ .Date }}
 
 checksum:
-  name_template: "checksums.txt"
+  name_template: 'checksums.txt'
 
 dockers_v2:
   - id: g0efilter
@@ -52,22 +52,22 @@ dockers_v2:
     images:
       - docker.io/g0lab/g0efilter
     tags:
-      - "{{ .Tag }}"
+      - '{{ .Tag }}'
       # Keep action @vN aligned with non-prerelease image tags.
-      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
-      - "{{ if not .Prerelease }}latest{{ end }}"
+      - '{{ if not .Prerelease }}v{{ .Major }}{{ end }}'
+      - '{{ if not .Prerelease }}latest{{ end }}'
     platforms:
       - linux/amd64
       - linux/arm64
-    sbom: "true"
+    sbom: 'true'
     flags:
-      - "--provenance=mode=max"
+      - '--provenance=mode=max'
     labels:
-      org.opencontainers.image.source: "https://github.com/g0lab/g0efilter"
-      org.opencontainers.image.title: "g0efilter"
-      org.opencontainers.image.version: "{{ .Version }}"
-      org.opencontainers.image.revision: "{{ .Commit }}"
-      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.source: 'https://github.com/g0lab/g0efilter'
+      org.opencontainers.image.title: 'g0efilter'
+      org.opencontainers.image.version: '{{ .Version }}'
+      org.opencontainers.image.revision: '{{ .Commit }}'
+      org.opencontainers.image.created: '{{ .Date }}'
 
   - id: g0efilter-dashboard
     dockerfile: ./Dockerfile.dashboard
@@ -76,21 +76,21 @@ dockers_v2:
     images:
       - docker.io/g0lab/g0efilter-dashboard
     tags:
-      - "{{ .Tag }}"
-      - "{{ if not .Prerelease }}v{{ .Major }}{{ end }}"
-      - "{{ if not .Prerelease }}latest{{ end }}"
+      - '{{ .Tag }}'
+      - '{{ if not .Prerelease }}v{{ .Major }}{{ end }}'
+      - '{{ if not .Prerelease }}latest{{ end }}'
     platforms:
       - linux/amd64
       - linux/arm64
-    sbom: "true"
+    sbom: 'true'
     flags:
-      - "--provenance=mode=max"
+      - '--provenance=mode=max'
     labels:
-      org.opencontainers.image.source: "https://github.com/g0lab/g0efilter"
-      org.opencontainers.image.title: "g0efilter-dashboard"
-      org.opencontainers.image.version: "{{ .Version }}"
-      org.opencontainers.image.revision: "{{ .Commit }}"
-      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.source: 'https://github.com/g0lab/g0efilter'
+      org.opencontainers.image.title: 'g0efilter-dashboard'
+      org.opencontainers.image.version: '{{ .Version }}'
+      org.opencontainers.image.revision: '{{ .Commit }}'
+      org.opencontainers.image.created: '{{ .Date }}'
 
 release:
   github:
@@ -101,22 +101,22 @@ release:
 
 changelog:
   use: github
-  format: "{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
+  format: '{{ .SHA }}: {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}'
   sort: asc
   groups:
-    - title: "Added"
+    - title: 'Added'
       regexp: '^\s*feat(\([^)]+\))?!?:\s+.+$'
       order: 100
-    - title: "Security"
+    - title: 'Security'
       regexp: '^\s*security(\([^)]+\))?!?:\s+.+$'
       order: 150
-    - title: "Fixed"
+    - title: 'Fixed'
       regexp: '^\s*fix(\([^)]+\))?!?:\s+.+$'
       order: 200
-    - title: "Changed"
+    - title: 'Changed'
       regexp: '^\s*(refactor|perf|chore)(\([^)]+\))?!?:\s+.+$'
       order: 300
-    - title: "Documentation"
+    - title: 'Documentation'
       regexp: '^\s*docs(\([^)]+\))?!?:\s+.+$'
       order: 400
     - title: Other
@@ -135,7 +135,7 @@ changelog:
 signs:
   - cmd: cosign
     artifacts: checksum
-    signature: "${artifact}.sigstore"
+    signature: '${artifact}.sigstore'
     args:
       - sign-blob
       - --bundle=${artifact}.sigstore

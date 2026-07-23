@@ -1,30 +1,31 @@
 ---
-name: update-major-tag
-run-name: Move ${{ github.event.inputs.major_version }} to ${{ github.event.inputs.target }}
+name: Update Major Tag
+run-name: Move ${{ inputs.major_version }} to ${{ inputs.target }}
 
-# Manual override or rollback for the rolling major tag.
 on:
   workflow_dispatch:
     inputs:
       target:
-        description: "The release tag the major tag should point at (e.g. v0.6.0)"
+        description: 'The release tag the major tag should point at (e.g. v0.6.0)'
         required: true
       major_version:
-        description: "The major tag to move (e.g. v0)"
+        description: 'The major tag to move (e.g. v0)'
         required: true
+
+concurrency:
+  group: major-tag-${{ inputs.major_version }}
+  cancel-in-progress: false
 
 jobs:
   tag:
     runs-on: ubuntu-latest
     permissions:
-      # Needed to force-push the rolling major tag
-      contents: write
+      contents: write  # Move the rolling major tag.
     env:
-      MAJOR_VERSION: ${{ github.event.inputs.major_version }}
-      TARGET: ${{ github.event.inputs.target }}
+      MAJOR_VERSION: ${{ inputs.major_version }}
+      TARGET: ${{ inputs.target }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true

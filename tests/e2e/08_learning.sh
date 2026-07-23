@@ -20,11 +20,13 @@ fi
 log "[Learn] Waiting for learner flush + policy write..."
 sleep 8
 
-grep -q 'google.com' "$POLICY_FILE" || { cat "$POLICY_FILE"; fail "google.com was not learned into policy.yaml"; }
+grep -Fq -- "- 'google.com'" "$POLICY_FILE" \
+  || { cat "$POLICY_FILE"; fail "google.com was not learned into policy.yaml"; }
 log "OK: google.com learned into policy.yaml"
 
 if [ "$FILTER_MODE" = "https" ]; then
-  grep -q '1.0.0.1' "$POLICY_FILE" || { cat "$POLICY_FILE"; fail "1.0.0.1 was not learned into policy.yaml"; }
+  grep -Fq -- "- '1.0.0.1'" "$POLICY_FILE" \
+    || { cat "$POLICY_FILE"; fail "1.0.0.1 was not learned into policy.yaml"; }
   log "OK: 1.0.0.1 learned into policy.yaml"
 fi
 

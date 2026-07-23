@@ -17,7 +17,7 @@ services:
     security_opt:
       - no-new-privileges
     ports:
-      - "127.0.0.1:8081:8081"
+      - '127.0.0.1:8081:8081'
     read_only: true
     restart: always
     env_file:
@@ -35,13 +35,13 @@ services:
       - g0efilter-dashboard-data:/app/data
     env_file:
       - .env.dashboard
-    network_mode: "service:g0efilter"
+    network_mode: 'service:g0efilter'
     restart: always
 
   example-container:
     image: docker.io/alpine/curl:latest
-    command: sh -c "sleep infinity"
-    network_mode: "service:g0efilter"
+    command: 'sh -c "sleep infinity"'
+    network_mode: 'service:g0efilter'
 
 volumes:
   g0efilter-dashboard-data:

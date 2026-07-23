@@ -30,7 +30,7 @@ on:
       - 'scripts/test-go.sh'
       - '.github/workflows/ci-go.yaml'
 
-  workflow_dispatch: {}
+  workflow_dispatch:
 
   schedule:
     - cron: '0 3 * * *'
@@ -48,7 +48,7 @@ env:
 
 jobs:
   validate-test-lint:
-    name: Validate, Test & Lint
+    name: Validate, test, lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -61,15 +61,13 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      # The dashboard UI is embedded at compile time (go:embed all:dist), and
-      # server route tests assert on the real UI, so dist/ must be built before
-      # `go test` compiles the test binary.
+      # Go tests embed and exercise the built dashboard UI.
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
           package_json_file: dashboard/ui/package.json
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -81,18 +79,18 @@ jobs:
           pnpm --dir dashboard/ui install --frozen-lockfile
           pnpm --dir dashboard/ui build
 
-      - name: Run golangci-lint
+      - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: "${{ env.GOLANGCI_LINT_VERSION }}"
+          version: '${{ env.GOLANGCI_LINT_VERSION }}'
           args: >
             --timeout=10m
             ./...
 
-      - name: Run Go test suite
+      - name: Test
         run: scripts/test-go.sh
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage
         uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

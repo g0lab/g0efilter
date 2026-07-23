@@ -4,18 +4,18 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 log "=== Phase 5: default-allow with denylist [$FILTER_MODE mode] ==="
 
-seed_policy 'default_action: allow
+seed_policy "default_action: 'allow'
 allowlist:
   domains:
-    - "api.github.com"
+    - 'api.github.com'
 denylist:
   ips:
-    - "1.0.0.1"
+    - '1.0.0.1'
   domains:
-    - "github.com"
-    - "*.github.com"
-    - "google.com"
-    - "*.google.com"'
+    - 'github.com'
+    - '*.github.com'
+    - 'google.com'
+    - '*.google.com'"
 wait_for_policy_reload
 
 # Unlisted destination passes under default-allow

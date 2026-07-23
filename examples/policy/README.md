@@ -12,14 +12,14 @@ Domain lists accept exact names, wildcards, and regular expressions:
 
 ```yaml
 domains:
-  - "github.com"
-  - "*.example.com"
-  - "bucket.*.r2.example.com"
+  - 'github.com'
+  - '*.example.com'
+  - 'bucket.*.r2.example.com'
   - '/cache-[0-9]+\.example\.com/'
 ```
 
 `*` can cross dots. Use a regular expression when a match must stay within one
-domain label. Quote regular expressions with single quotes.
+domain label. Use single quotes for all policy string values.
 
 See the main [policy guide](../../docs/policy.md) for denylist, learning, and
 audit modes.

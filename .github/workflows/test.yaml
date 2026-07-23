@@ -26,14 +26,12 @@ permissions:
   contents: read
 
 jobs:
-  # Build the images once and share them, so the parallel e2e jobs load a prebuilt
-  # image instead of each rebuilding it.
+  # Build once for the parallel E2E jobs.
   build:
-    name: build images
+    name: Build images
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
@@ -51,11 +49,9 @@ jobs:
           path: e2e-images.tar.gz
           retention-days: 1
 
-  # One scenario per runner, run in parallel. "shared" phases (01-07) share one
-  # baseline stack; each stack-recreating phase runs alone. skip_up=1 skips the
-  # baseline bring-up for scenarios whose phases recreate the stack themselves.
+  # Shared phases reuse a stack; isolated phases recreate it themselves.
   e2e:
-    name: e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
+    name: E2E (${{ matrix.mode }} / ${{ matrix.scenario }})
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -63,24 +59,23 @@ jobs:
       max-parallel: 6
       matrix:
         include:
-          - {mode: https, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
-          - {mode: https, scenario: load, phases: "12", skip_up: "0"}
-          - {mode: https, scenario: learning, phases: "08", skip_up: "1"}
-          - {mode: https, scenario: audit, phases: "10", skip_up: "1"}
-          - {mode: https, scenario: resources, phases: "11", skip_up: "1"}
-          - {mode: https, scenario: dashboard, phases: "14 16", skip_up: "1"}
-          - {mode: https, scenario: entrypoint, phases: "15", skip_up: "1"}
-          - {mode: dns, scenario: shared, phases: "01 02 03 04 05 06 07", skip_up: "0"}
-          - {mode: dns, scenario: load, phases: "12", skip_up: "0"}
-          - {mode: dns, scenario: learning, phases: "08", skip_up: "1"}
-          - {mode: dns, scenario: dns-strict, phases: "09", skip_up: "1"}
-          - {mode: dns, scenario: resources, phases: "11", skip_up: "1"}
-          - {mode: dns, scenario: ip-allowlist, phases: "13", skip_up: "1"}
-          - {mode: dns-strict, scenario: ip-allowlist, phases: "13", skip_up: "1"}
+          - {mode: https, scenario: shared, phases: '01 02 03 04 05 06 07', skip_up: '0'}
+          - {mode: https, scenario: load, phases: '12', skip_up: '0'}
+          - {mode: https, scenario: learning, phases: '08', skip_up: '1'}
+          - {mode: https, scenario: audit, phases: '10', skip_up: '1'}
+          - {mode: https, scenario: resources, phases: '11', skip_up: '1'}
+          - {mode: https, scenario: dashboard, phases: '14 16', skip_up: '1'}
+          - {mode: https, scenario: entrypoint, phases: '15', skip_up: '1'}
+          - {mode: dns, scenario: shared, phases: '01 02 03 04 05 06 07', skip_up: '0'}
+          - {mode: dns, scenario: load, phases: '12', skip_up: '0'}
+          - {mode: dns, scenario: learning, phases: '08', skip_up: '1'}
+          - {mode: dns, scenario: dns-strict, phases: '09', skip_up: '1'}
+          - {mode: dns, scenario: resources, phases: '11', skip_up: '1'}
+          - {mode: dns, scenario: ip-allowlist, phases: '13', skip_up: '1'}
+          - {mode: dns-strict, scenario: ip-allowlist, phases: '13', skip_up: '1'}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
@@ -93,13 +88,13 @@ jobs:
       - name: Load images
         run: docker load -i e2e-images.tar.gz
 
-      - name: Set up pnpm for dashboard browser E2E
+      - name: Set up pnpm
         if: matrix.scenario == 'dashboard'
         uses: pnpm/action-setup@v6
         with:
           package_json_file: dashboard/ui/package.json
 
-      - name: Set up Node for dashboard browser E2E
+      - name: Set up Node
         if: matrix.scenario == 'dashboard'
         uses: actions/setup-node@v7
         with:
@@ -107,7 +102,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
-      - name: Install dashboard browser E2E dependencies
+      - name: Install browser dependencies
         if: matrix.scenario == 'dashboard'
         working-directory: dashboard/ui
         run: |
@@ -118,6 +113,6 @@ jobs:
         env:
           FILTER_MODE: ${{ matrix.mode }}
           E2E_SKIP_INITIAL_UP: ${{ matrix.skip_up }}
-          E2E_NO_BUILD: "1"
+          E2E_NO_BUILD: '1'
           E2E_BROWSER: ${{ matrix.scenario == 'dashboard' && '1' || '0' }}
         run: scripts/e2e.sh ${{ matrix.phases }}

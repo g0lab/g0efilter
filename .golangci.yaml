@@ -1,5 +1,5 @@
 ---
-version: "2"
+version: '2'
 
 formatters:
   enable:
@@ -27,10 +27,10 @@ linters:
         main:
           list-mode: lax
           files:
-            - "$all"
+            - '$all'
           deny:
-            - pkg: "math/rand$"
-              desc: "Use math/rand/v2 instead"
+            - pkg: 'math/rand$'
+              desc: 'Use math/rand/v2 instead'
     goconst:
       ignore-tests: true
     gomodguard_v2:
