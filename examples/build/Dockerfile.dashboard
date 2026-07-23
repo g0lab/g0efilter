@@ -1,5 +1,5 @@
 # Build the dashboard UI.
-FROM node:24-alpine AS ui
+FROM node:26-alpine AS ui
 
 RUN corepack enable
 
