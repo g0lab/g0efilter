@@ -8,10 +8,10 @@ on:
     branches:
       - main
     paths:
-      - "action.yml"
-      - "action/**"
-      - ".github/test-actions/**"
-      - ".github/workflows/action-test.yaml"
+      - 'action.yml'
+      - 'action/**'
+      - '.github/test-actions/**'
+      - '.github/workflows/action-test.yaml'
 
 permissions:
   contents: read
@@ -338,7 +338,7 @@ jobs:
       - name: Start g0efilter (block, lockdown)
         uses: ./
         with:
-          lockdown-runner: "true"
+          lockdown-runner: 'true'
           allowed-domains: |
             api.github.com
 
@@ -348,7 +348,7 @@ jobs:
       - name: Assert egress filtered and escalation blocked
         uses: ./.github/test-actions/post-egress-check
         with:
-          lockdown: "true"
+          lockdown: 'true'
 
   audit:
     name: egress-policy audit

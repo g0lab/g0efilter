@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: "The release tag the major tag should point at (e.g. v0.6.0)"
+        description: 'The release tag the major tag should point at (e.g. v0.6.0)'
         required: true
       major_version:
-        description: "The major tag to move (e.g. v0)"
+        description: 'The major tag to move (e.g. v0)'
         required: true
 
 jobs:

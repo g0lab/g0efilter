@@ -6,16 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "filter mode"
+        description: 'filter mode'
         type: choice
         options: [https, dns]
         default: https
       total:
-        description: "total blocked connections to fire"
-        default: "2000"
+        description: 'total blocked connections to fire'
+        default: '2000'
       concurrency:
-        description: "concurrent connections per wave"
-        default: "100"
+        description: 'concurrent connections per wave'
+        default: '100'
 
 permissions:
   contents: read

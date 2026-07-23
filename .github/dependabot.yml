@@ -1,66 +1,66 @@
 version: 2
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "weekly"
-    labels: ["dependencies", "github-actions"]
+      interval: 'weekly'
+    labels: ['dependencies', 'github-actions']
     commit-message:
-      prefix: "chore"
+      prefix: 'chore'
     groups:
       github-actions:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
 
-  - package-ecosystem: "gomod"
-    directory: "/"
+  - package-ecosystem: 'gomod'
+    directory: '/'
     groups:
       gomod:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
     schedule:
-      interval: "cron"
-      cronjob: "0 9 * * *"
-    labels: ["dependencies", "gomod"]
+      interval: 'cron'
+      cronjob: '0 9 * * *'
+    labels: ['dependencies', 'gomod']
     commit-message:
-      prefix: "chore"
+      prefix: 'chore'
 
-  - package-ecosystem: "npm"
-    directory: "/dashboard/ui"
+  - package-ecosystem: 'npm'
+    directory: '/dashboard/ui'
     schedule:
-      interval: "cron"
-      cronjob: "0 9 * * *"
-    labels: ["dependencies", "npm"]
+      interval: 'cron'
+      cronjob: '0 9 * * *'
+    labels: ['dependencies', 'npm']
     commit-message:
-      prefix: "chore"
+      prefix: 'chore'
     groups:
       npm:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'
 
-  - package-ecosystem: "docker"
+  - package-ecosystem: 'docker'
     directories:
-      - "/"
-      - "/examples/build"
+      - '/'
+      - '/examples/build'
     schedule:
-      interval: "cron"
-      cronjob: "0 9 * * *"
-    labels: ["dependencies", "docker"]
+      interval: 'cron'
+      cronjob: '0 9 * * *'
+    labels: ['dependencies', 'docker']
     commit-message:
-      prefix: "chore"
+      prefix: 'chore'
     groups:
       docker:
         patterns:
-          - "*"
+          - '*'
         update-types:
-          - "minor"
-          - "patch"
+          - 'minor'
+          - 'patch'

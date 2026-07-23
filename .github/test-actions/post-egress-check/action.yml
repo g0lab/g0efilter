@@ -1,5 +1,5 @@
 ---
-name: "post-egress-check"
+name: 'post-egress-check'
 
 description: >-
   Test-only action standing in for a later, potentially compromised action.
@@ -15,9 +15,9 @@ inputs:
       When 'true', additionally assert that sudo escalation and Docker
       access are denied (used to test the action's lockdown-runner mode).
     required: false
-    default: "false"
+    default: 'false'
 
 runs:
-  using: "node24"
+  using: 'node24'
   main: main.js
   post: post.js
