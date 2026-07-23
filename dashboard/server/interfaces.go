@@ -23,7 +23,8 @@ type (
 type LogStore interface {
 	Insert(ctx context.Context, e *LogEntry) (int64, error)
 	Query(ctx context.Context, q string, sinceID int64, limit int) ([]LogEntry, error)
-	Aggregate(ctx context.Context, from, to time.Time, q string, buckets int) (model.AggregateResult, error)
+	Browse(ctx context.Context, p model.BrowseParams) (model.BrowsePage, error)
+	Aggregate(ctx context.Context, p model.AggregateParams) (model.AggregateResult, error)
 	Clear(ctx context.Context) error
 }
 

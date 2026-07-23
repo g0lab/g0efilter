@@ -30,9 +30,13 @@ func (failingStore) Query(_ context.Context, _ string, _ int64, _ int) ([]LogEnt
 }
 
 func (failingStore) Aggregate(
-	_ context.Context, _, _ time.Time, _ string, _ int,
+	_ context.Context, _ model.AggregateParams,
 ) (model.AggregateResult, error) {
 	return model.AggregateResult{}, errStoreFailure
+}
+
+func (failingStore) Browse(_ context.Context, _ model.BrowseParams) (model.BrowsePage, error) {
+	return model.BrowsePage{}, errStoreFailure
 }
 
 func (failingStore) Clear(_ context.Context) error {
@@ -506,6 +510,82 @@ func TestAggregateLogsHandler_DefaultRangeAndFilter(t *testing.T) {
 	code, _ = request("/api/v1/aggregates?range=forever")
 	if code != http.StatusBadRequest {
 		t.Fatalf("invalid range status = %d, want 400", code)
+	}
+}
+
+//nolint:cyclop // sequential scenario covering pagination + filters
+func TestBrowseLogsHandler_RangePaginationAndFilters(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+	now := time.Now().UTC()
+
+	entries := []LogEntry{
+		{Time: now.Add(-31 * 24 * time.Hour), Action: testActionBlocked, HTTPHost: "old.example"},
+		{Time: now.Add(-3 * time.Hour), Action: "ALLOWED", HTTPHost: "a.example", Fields: []byte(`{"component":"https"}`)},
+		{
+			Time: now.Add(-2 * time.Hour), Action: testActionBlocked, HTTPHost: "b.example",
+			Fields: []byte(`{"component":"dns"}`),
+		},
+		{Time: now.Add(-time.Hour), Action: "ALLOWED", HTTPHost: "c.example", Fields: []byte(`{"component":"http"}`)},
+	}
+	for i := range entries {
+		_, _ = srv.store.Insert(context.Background(), &entries[i])
+	}
+
+	request := func(target string) (int, model.BrowsePage) {
+		t.Helper()
+
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, target, nil)
+		w := httptest.NewRecorder()
+		srv.browseLogsHandler(w, req)
+
+		var page model.BrowsePage
+		if w.Code == http.StatusOK {
+			err := json.NewDecoder(w.Body).Decode(&page)
+			if err != nil {
+				t.Fatalf("decode browse: %v", err)
+			}
+		}
+
+		return w.Code, page
+	}
+
+	// Default 24h range excludes the 31-day-old row; newest first, paginated.
+	code, page := request("/api/v1/logs/browse?limit=2&offset=0")
+	if code != http.StatusOK || page.Total != 3 || len(page.Rows) != 2 || page.Rows[0].HTTPHost != "c.example" {
+		t.Fatalf("browse page: status=%d page=%+v", code, page)
+	}
+
+	// Exact component facet: http must not match https.
+	code, page = request("/api/v1/logs/browse?component=http")
+	if code != http.StatusOK || page.Total != 1 || page.Rows[0].HTTPHost != "c.example" {
+		t.Fatalf("http facet: status=%d page=%+v", code, page)
+	}
+
+	// Action filter.
+	code, page = request("/api/v1/logs/browse?action=BLOCKED")
+	if code != http.StatusOK || page.Total != 1 || page.Rows[0].HTTPHost != "b.example" {
+		t.Fatalf("blocked filter: status=%d page=%+v", code, page)
+	}
+
+	code, _ = request("/api/v1/logs/browse?range=forever")
+	if code != http.StatusBadRequest {
+		t.Fatalf("invalid range status = %d, want 400", code)
+	}
+}
+
+func TestBrowseLogsHandler_StoreError(t *testing.T) {
+	t.Parallel()
+
+	srv := newTestServer()
+	srv.store = failingStore{}
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/logs/browse", nil)
+	w := httptest.NewRecorder()
+	srv.browseLogsHandler(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("Status = %d, want 500", w.Code)
 	}
 }
 

@@ -11,6 +11,99 @@ import (
 	"github.com/g0lab/g0efilter/dashboard/store"
 )
 
+func seedBrowseStore(t *testing.T) (*store.LogStore, time.Time) {
+	t.Helper()
+
+	ctx := context.Background()
+	client, _ := testDB(t)
+	s := store.NewLogStore(client, 1000)
+	now := time.Now()
+
+	fx := func(action, comp string) []byte {
+		return []byte(`{"action":"` + action + `","component":"` + comp + `"}`)
+	}
+	entries := []model.LogEntry{
+		{Time: now.Add(-3 * time.Hour), Action: "ALLOWED", HTTPHost: "a.example", Fields: fx("allowed", "https")},
+		{Time: now.Add(-2 * time.Hour), Action: "BLOCKED", HTTPHost: "b.example", Fields: fx("blocked", "dns")},
+		{Time: now.Add(-time.Hour), Action: "ALLOWED", HTTPHost: "c.example", Fields: []byte(`{"component":"http"}`)},
+		{Time: now.Add(-90 * 24 * time.Hour), Action: "AUDIT", HTTPHost: "old.example", Fields: fx("audit", "https")},
+		{
+			Time: now.Add(-40 * 24 * time.Hour), Action: "ALLOWED",
+			HTTPHost: "blocked-malware.example", Fields: fx("allowed", "https"),
+		},
+	}
+
+	for i := range entries {
+		_, err := s.Insert(ctx, &entries[i])
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	return s, now
+}
+
+func TestLogStore_BrowsePagination(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s, now := seedBrowseStore(t)
+
+	page, err := s.Browse(ctx, model.BrowseParams{From: now.Add(-24 * time.Hour), To: now, Limit: 2})
+	if err != nil {
+		t.Fatalf("browse: %v", err)
+	}
+
+	if page.Total != 3 || len(page.Rows) != 2 || page.Rows[0].HTTPHost != "c.example" {
+		t.Fatalf("browse page = %+v (total %d), want total 3, first c.example", page.Rows, page.Total)
+	}
+
+	page2, err := s.Browse(ctx, model.BrowseParams{From: now.Add(-24 * time.Hour), To: now, Limit: 2, Offset: 2})
+	if err != nil {
+		t.Fatalf("browse offset: %v", err)
+	}
+
+	if page2.Total != 3 || len(page2.Rows) != 1 || page2.Rows[0].HTTPHost != "a.example" {
+		t.Fatalf("browse offset page = %+v (total %d), want the a.example tail", page2.Rows, page2.Total)
+	}
+}
+
+func TestLogStore_BrowseFilters(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s, _ := seedBrowseStore(t)
+
+	// Component facet is exact: "http" must not also match the "https" rows.
+	httpOnly, err := s.Browse(ctx, model.BrowseParams{Component: "http", Limit: 10})
+	if err != nil {
+		t.Fatalf("browse component: %v", err)
+	}
+
+	if httpOnly.Total != 1 || httpOnly.Rows[0].HTTPHost != "c.example" {
+		t.Fatalf("http facet = %+v (total %d), want only c.example", httpOnly.Rows, httpOnly.Total)
+	}
+
+	// Action facet is exact: "blocked" must not match host "blocked-malware.example".
+	blocked, err := s.Browse(ctx, model.BrowseParams{Action: "BLOCKED", Limit: 10})
+	if err != nil {
+		t.Fatalf("browse action: %v", err)
+	}
+
+	if blocked.Total != 1 || blocked.Rows[0].HTTPHost != "b.example" {
+		t.Fatalf("blocked = %+v (total %d), want only b.example", blocked.Rows, blocked.Total)
+	}
+
+	allowed, err := s.Browse(ctx, model.BrowseParams{Action: "ALLOWED", Query: "c.example", Limit: 10})
+	if err != nil {
+		t.Fatalf("browse typed action: %v", err)
+	}
+
+	if allowed.Total != 1 || allowed.Rows[0].HTTPHost != "c.example" {
+		t.Fatalf("typed action facet = %+v (total %d), want c.example", allowed.Rows, allowed.Total)
+	}
+}
+
 //nolint:cyclop,funlen // sequential scenario test
 func TestLogStore_InsertQueryClear(t *testing.T) {
 	t.Parallel()
@@ -143,7 +236,9 @@ func TestLogStore_AggregateUsesFullTimeWindow(t *testing.T) {
 		}
 	}
 
-	result, err := s.Aggregate(ctx, now.Add(-30*24*time.Hour), now, "", 24)
+	result, err := s.Aggregate(ctx, model.AggregateParams{
+		From: now.Add(-30 * 24 * time.Hour), To: now, Buckets: 24,
+	})
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
@@ -151,7 +246,7 @@ func TestLogStore_AggregateUsesFullTimeWindow(t *testing.T) {
 		t.Fatalf("30-day aggregate = %+v", result)
 	}
 
-	all, err := s.Aggregate(ctx, time.Time{}, now, "old.example", 24)
+	all, err := s.Aggregate(ctx, model.AggregateParams{To: now, Query: "old.example", Buckets: 24})
 	if err != nil {
 		t.Fatalf("aggregate all: %v", err)
 	}
@@ -175,7 +270,7 @@ func TestLogStore_AggregateRejectsCorruptRows(t *testing.T) {
 		t.Fatalf("insert corrupt row: %v", err)
 	}
 
-	_, err = store.NewLogStore(client, 1000).Aggregate(ctx, time.Time{}, time.Time{}, "", 24)
+	_, err = store.NewLogStore(client, 1000).Aggregate(ctx, model.AggregateParams{Buckets: 24})
 	if err == nil || !strings.Contains(err.Error(), "unmarshal aggregate log") {
 		t.Fatalf("Aggregate error = %v, want corrupt-row error", err)
 	}
@@ -203,7 +298,7 @@ func TestLogStore_AggregateFiltersSearchBeforeDecode(t *testing.T) {
 		t.Fatalf("insert unrelated corrupt row: %v", err)
 	}
 
-	result, err := logStore.Aggregate(ctx, time.Time{}, time.Time{}, " MATCH.EXAMPLE ", 24)
+	result, err := logStore.Aggregate(ctx, model.AggregateParams{Query: " MATCH.EXAMPLE ", Buckets: 24})
 	if err != nil {
 		t.Fatalf("aggregate matching rows: %v", err)
 	}
