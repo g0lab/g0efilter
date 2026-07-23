@@ -1,24 +1,19 @@
 # Dashboard HTTP endpoints
 
-The `g0efilter-dashboard` server exposes a small HTTP API plus the embedded
-Svelte UI. Routes fall into distinct **auth realms**; a request must satisfy the
-realm of the route it hits.
+The dashboard API has three authentication realms.
 
 ## Auth realms
 
 | Realm | How a request authenticates | Used by |
 | --- | --- | --- |
 | **public** | none | health checks, login page, hashed UI assets |
-| **machine** | `X-Api-Key: <key>` (see [configuration.md](configuration.md)) | g0efilter instances |
-| **session/UI** | session cookie (`AUTH_MODE=session`), proxy header (`forward`), bearer JWT (`jwt`), or open (`none`) - plus CSRF (Origin / `Sec-Fetch-Site`) on mutations | the browser dashboard |
+| **machine** | `X-Api-Key: <key>` (see [API keys](configuration.md#api-keys)) | g0efilter instances |
+| **UI** | session cookie, proxy header, bearer JWT, or no auth, based on `AUTH_MODE` | browser dashboard |
 
-Successful API responses are JSON. Errors use standard HTTP status codes and may
-be plain text. Mutating UI requests are CSRF-checked; cross-site requests are
-rejected. CORS is off unless `CORS_ALLOWED_ORIGINS` is set (and a wildcard `*`
-is rejected at startup).
+Successful API responses are JSON. Errors may be plain text. UI mutations are
+CSRF-checked. CORS is off unless `CORS_ALLOWED_ORIGINS` is set.
 
-For scripting compatibility, `AUTH_MODE=session` also accepts a valid
-`X-Api-Key` on session/UI routes.
+In session mode, UI routes also accept a valid `X-Api-Key` for scripts.
 
 ## Public
 
@@ -36,11 +31,10 @@ For scripting compatibility, `AUTH_MODE=session` also accepts a valid
 | `POST` | `/api/v1/auth/logout` | authenticated + CSRF-checked; revokes the session |
 | `GET` | `/api/v1/auth/me` | current principal, or 401 |
 
-Bootstrap: in `session` mode with no `ADMIN_PASSWORD_HASH` and no existing user,
-the server generates a random admin password and prints it **once** at startup as
-`dashboard.bootstrap_admin`.
-Recover a lost password with `g0efilter-dashboard reset-password [username]`
-(requires persistent storage).
+With no configured hash or existing user, session mode prints a generated admin
+password once as `dashboard.bootstrap_admin`. Recover a password with
+`g0efilter-dashboard reset-password [username]`; this requires persistent
+storage.
 
 ## Machine realm (`X-Api-Key`)
 
@@ -57,6 +51,7 @@ Recover a lost password with `g0efilter-dashboard reset-password [username]`
 | --- | --- | --- |
 | `GET` | `/api/v1/config` | UI config (feature flags such as `fleet_enabled`) |
 | `GET` | `/api/v1/logs` | recent traffic logs (query: `q`, `since`, `limit`) - **sensitive** |
+| `GET` | `/api/v1/logs/browse` | paginated search across stored logs - **sensitive** |
 | `GET` | `/api/v1/aggregates` | server-side traffic totals (query: `range`, default `24h`; `q` filters host/IP) - **sensitive** |
 | `GET` | `/api/v1/events` | UI-authenticated SSE live traffic stream - **sensitive** |
 | `DELETE` | `/api/v1/logs` | clears all logs - **sensitive, destructive** |
@@ -93,13 +88,12 @@ Instance (machine realm) - `POST /api/v1/sync`:
 { "managed": true, "changed": true, "config_hash": "...", "policy": "...", "filter_mode": "https" }
 ```
 
-- `managed: false` means the instance belongs to no group and has no override - the
-  dashboard pushes **no** policy and the instance keeps its local file (`changed:false`).
-- A managed instance whose reported `config_hash` differs from desired receives the
-  new `policy` + `filter_mode`; otherwise `changed:false`.
-- `?wait=<duration>` (max 30s) enables long-polling; omitted/zero returns immediately.
+- `managed: false`: keep the local policy.
+- `changed: true`: apply the returned policy and filter mode.
+- `changed: false`: the reported `config_hash` is current.
+- `?wait=<duration>` enables long-polling for up to 30 seconds.
 
 ## Static UI (catch-all)
 
-`GET /` and any unmatched non-API path serve the embedded SPA (`index.html`),
-behind UI auth. The login page and `/assets/*` remain public.
+`GET /` and unmatched non-API paths serve the UI behind its configured
+authentication. The login page and assets remain public.

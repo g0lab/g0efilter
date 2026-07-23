@@ -46,26 +46,18 @@
 
 #### Running as a non-root user
 
-The g0efilter container runs as a non-root user (`nobody`, uid 65534) by default.
-Its entrypoint starts as root, hands the writable dirs (`/app/policy`, `/app/data`)
-to the runtime user, then drops privileges - keeping `NET_ADMIN` as an
-*ambient* capability so nftables and the SO_MARK dialer keep working. The binary
-stays root-owned and read-only.
+The container starts as root, prepares `/app/policy` and `/app/data`, then runs
+as uid/gid 65534 (`nobody`). Set `PUID` and `PGID` to use another identity, or
+set `PUID=0` to stay root.
 
-- Override the uid/gid with `PUID`/`PGID` (e.g. to match a host user that edits the
-  policy file). Set `PUID=0` to run as root.
-- `NET_ADMIN` is required at runtime (nftables + the SO_MARK dialer). Without it the
-  container exits on startup rather than run with filtering disabled.
-- The privilege drop needs `SETUID` and `SETGID` at startup. If either is
-  unavailable, the entrypoint warns and stays root. `CHOWN` hands writable
-  directories to the runtime user; without it the process still drops privileges,
-  but writes may fail. These startup-only capabilities are not retained.
-- Compatible with `read_only: true` and `no-new-privileges` (the numeric uid needs
-  no `/etc/passwd` entry, and ambient caps survive `no-new-privileges`).
+- `NET_ADMIN` is required while running. Startup fails without it.
+- `SETUID` and `SETGID` allow the startup privilege drop.
+- `CHOWN` makes the writable directories available to the runtime user.
+- Only `NET_ADMIN` is retained after startup.
 
-The g0efilter-dashboard image already runs non-root (`distroless` nonroot, uid
-65532). Its `/app/data` volume must be writable by that user; the supplied
-Compose examples handle this for their named volumes.
+The image supports `read_only: true` and `no-new-privileges`. The dashboard
+image runs as uid 65532; its `/app/data` volume must be writable by that user.
+The supplied Compose example handles this.
 
 ### g0efilter-dashboard
 
@@ -97,84 +89,67 @@ Compose examples handle this for their named volumes.
 
 #### Dashboard authentication
 
-`AUTH_MODE=session` (the default) serves a login form and protects all UI
-endpoints (logs, live stream, unblocks, config) with server-side sessions.
+`AUTH_MODE=session` is the default. It protects the UI with a login and
+server-side sessions.
 
-The admin login is bootstrapped one of three ways:
+Set `ADMIN_PASSWORD_HASH` to a bcrypt hash:
 
-- Set `ADMIN_PASSWORD_HASH` to a bcrypt hash you generate yourself:
+```sh
+docker run --rm -i docker.io/g0lab/g0efilter-dashboard:latest hash-password
+```
 
-  ```sh
-  # generate the bcrypt hash for ADMIN_PASSWORD_HASH (reads one line from stdin)
-  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:latest hash-password
-  ```
+If no hash or admin user exists, the dashboard generates a password and prints
+it once as `dashboard.bootstrap_admin`.
 
-- Leave `ADMIN_PASSWORD_HASH` unset: on first startup with no existing admin
-  user, a strong random password is generated and printed **once** (look for
-  `dashboard.bootstrap_admin` in the container output). Log in and
-  set your own hash, or rotate it with `reset-password`.
-- Rotate a lost password, which prints a new one:
+Reset a lost password with:
 
-  ```sh
-  # reset-password [username]; defaults to ADMIN_USERNAME (else "admin")
-  docker run --rm -v g0efilter-dashboard-data:/app/data \
-    docker.io/g0lab/g0efilter-dashboard:latest reset-password
-  ```
+```sh
+docker run --rm -v g0efilter-dashboard-data:/app/data \
+  docker.io/g0lab/g0efilter-dashboard:latest reset-password
+```
 
-  An existing `ADMIN_PASSWORD_HASH` overrides the reset on the next startup.
+The optional final argument is a username. `ADMIN_PASSWORD_HASH` overrides a
+stored reset on the next startup. In ephemeral mode, credentials reset at each
+restart unless a hash is configured.
 
-With `EPHEMERAL=true`, users live in memory, so a fresh random password is
-generated on every restart unless `ADMIN_PASSWORD_HASH` is set.
+#### API keys
 
-### API key management
+Machine endpoints use `X-Api-Key`. Set `API_KEY` to seed the first key. If the
+key store is empty, the dashboard generates a key and prints it once as
+`dashboard.bootstrap_api_key`.
 
-Machine endpoints authenticate with `X-Api-Key`. A supplied `API_KEY` is stored
-as the initial key. If it is unset and the key store is empty, the dashboard
-generates one and prints it once as `dashboard.bootstrap_api_key`. Copy that key
-to each agent's `DASHBOARD_API_KEY`. The accompanying structured event contains
-no secret.
+Copy an active key to each agent's `DASHBOARD_API_KEY`. Create or revoke keys in
+the UI or through `/api/v1/apikeys`. Ephemeral mode resets keys on restart.
 
-Create and revoke keys in the dashboard or through `/api/v1/apikeys`. The
-dashboard still starts with no active keys, but ingestion is unavailable until
-an administrator creates one. With `EPHEMERAL=true`, keys reset on every restart.
+#### Other authentication modes
 
-Use `AUTH_MODE=none` to keep the pre-auth behavior behind Traefik/nginx, or
-`AUTH_MODE=forward` behind an authenticating proxy (oauth2-proxy, Authelia)
-that sets `FORWARD_AUTH_HEADER`.
+- `none`: no UI authentication; use only behind an authenticating proxy.
+- `forward`: trust the proxy identity in `FORWARD_AUTH_HEADER`.
+- `jwt`: validate a bearer token or `jwt` cookie.
 
-`AUTH_MODE=jwt` validates a bearer token (`Authorization: Bearer <token>` or a
-`jwt` cookie) for SSO/OIDC. Configure exactly one key source - `JWT_SECRET`
-(HS256), `JWT_PUBLIC_KEY` (RSA, ECDSA, or Ed25519 PEM, inline or
-`@/path/to/key.pem`), or `JWKS_URL` (fetched and cached from your IdP). Signatures
-and token time claims are validated. Set `JWT_ISSUER`/`JWT_AUDIENCE` to also
-require `iss`/`aud`, and `JWT_USERNAME_CLAIM` to select the principal claim
-(default `sub`). Startup fails closed on a missing, ambiguous, or unreachable key
-source.
+JWT mode requires exactly one key source: `JWT_SECRET`, `JWT_PUBLIC_KEY`, or
+`JWKS_URL`. It validates signatures and time claims. Use `JWT_ISSUER`,
+`JWT_AUDIENCE`, and `JWT_USERNAME_CLAIM` for additional checks. Startup fails if
+the key configuration is missing, ambiguous, or unavailable.
 
 #### CORS
 
-By default the API is same-origin only. To allow a browser app on another
-origin (e.g. a separately hosted UI), set `CORS_ALLOWED_ORIGINS` to a
-comma-separated list. Credentials are enabled, so origins must be listed
-explicitly - the `*` wildcard is rejected.
+The API is same-origin by default. Set `CORS_ALLOWED_ORIGINS` to a comma-separated
+list for other browser origins. `*` is not allowed because requests include
+credentials.
 
 #### Fleet management (optional)
 
-Set `FLEET_ENABLED=true` to enable the dashboard fleet API and UI. It requires
-persistent storage. Clients register and reconcile through
-`POST /api/v1/sync`; g0efilter does not currently include a managed sync client,
-so enabling this option alone does not register instances. The dashboard
-resolves desired config from an instance override, its group, or leaves it
-unmanaged. The `config_hash` keeps steady-state responses small and ships policy
-only on change. Manage groups, policies and instance assignments from the
-**Fleet** tab in the UI. It is disabled by default because remote control of an
-egress filter is sensitive. The request and response format is documented in
-[endpoints.md](endpoints.md#fleet).
+Set `FLEET_ENABLED=true` to enable fleet management. It requires persistent
+storage. Clients reconcile through `POST /api/v1/sync`, but g0efilter does not
+yet include a sync client.
+
+The dashboard resolves policy from an instance override or its group. Manage
+both in the **Fleet** tab. See [fleet endpoints](endpoints.md#fleet) for the
+protocol.
 
 #### Persistent logs
 
-Traffic logs and dashboard state are stored in SQLite by default. `LOG_RETENTION`
-limits stored rows. Set `EPHEMERAL=true` to use an in-memory ring buffer instead;
-all dashboard state then resets on restart and fleet management is unavailable.
-The Aggregates page queries retained SQLite history directly, using the last 24
-hours by default; operators can select shorter windows or all retained history.
+SQLite stores dashboard state and traffic logs. `LOG_RETENTION` limits log rows.
+Set `EPHEMERAL=true` to keep everything in memory; all state then resets on
+restart and fleet management is unavailable.

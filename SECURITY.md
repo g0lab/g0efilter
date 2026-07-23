@@ -4,20 +4,16 @@ This is a personal open-source project maintained in spare time, best effort onl
 
 ## Supported Versions
 
-| Version                      | Supported          |
-| ---------------------------- | ------------------ |
-| g0efilter `latest`           | :white_check_mark: |
-| g0efilter-dashboard `latest` | :white_check_mark: |
-| `main` branch                | :white_check_mark: |
-| anything else                | :x:                |
+Only the latest g0efilter and dashboard releases, plus the `main` branch, receive
+security fixes.
 
 ## Report a Vulnerability
 
-Please report issues **privately** via GitHub:
+Report vulnerabilities privately through GitHub:
 
 - Repository > **Security** > **Report a vulnerability**
-- Include steps to reproduce, affected commit/branch, impact, and any suggested fixes
-- Please don't open public issues or PRs with exploit details
+- Include reproduction steps, the affected version, and the impact.
+- Do not open a public issue or pull request with exploit details.
 
 ## Disclosure
 

@@ -1,3 +1,5 @@
+# g0efilter
+
 [![agent pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=agent%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
 [![dashboard pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-dashboard.svg?label=dashboard%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-dashboard)
 [![CI (Go)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml)
@@ -11,20 +13,20 @@
 > [!WARNING]
 > g0efilter is in active development and its configuration may change often.
 
-g0efilter is a lightweight container that filters outbound (egress) traffic from attached container workloads. Run it alongside your workloads, attach them with `network_mode: "service:g0efilter"`, and enforce an IP and domain policy without terminating TLS.
+g0efilter controls network traffic leaving your containers. It runs beside a
+workload and applies IP and domain rules without decrypting TLS traffic.
 
-### Features
+## Features
 
-- **Egress filtering** by IP/CIDR and domain, default-deny with an allowlist
-- **Flexible domain patterns**: exact names, wildcards anywhere (`*.example.com`, `bucket.*.r2.example.com`), and regex (`/cache-[0-9]+\.example\.com/`)
-- **Three filter modes**: `https` (SNI/Host inspection), `dns` (resolution filtering), `dns-strict` (resolution filtering plus kernel connection-time enforcement)
-- **Default-allow (denylist) mode**: allow everything except listed domains/IPs
-- **Learning mode**: observe without blocking and auto-build the allowlist
-- **Audit mode**: dry-run a policy; would-be blocks are logged, nothing breaks
-- **Process attribution**: flow logs can carry the owning PID/command (opt-in)
-- **Live policy reloading**, real-time dashboard, remote unblock, Gotify notifications
+- Allow or block traffic by IP, CIDR, or domain.
+- Match exact domains, wildcards, or regular expressions.
+- Choose HTTPS inspection, DNS filtering, or strict DNS filtering.
+- Start with either a default-deny allowlist or a default-allow denylist.
+- Test and build policies with audit and learning modes.
+- Reload policies without restarting the container.
+- Use the optional dashboard, remote unblock, process details, and Gotify alerts.
 
-### Quick start
+## Quick start
 
 Create a policy directory:
 
@@ -43,7 +45,7 @@ allowlist:
     - '*.alpinelinux.org'
 ```
 
-Run g0efilter and attach a workload to its network namespace:
+Save this as `docker-compose.yaml`:
 
 ```yaml
 services:
@@ -54,9 +56,9 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN       # nftables + SO_MARK dialer
-      - SETUID          # entrypoint drops to a non-root user (nobody) at startup;
-      - SETGID          # these are used only then, not by the running process
+      - NET_ADMIN
+      - SETUID
+      - SETGID
       - CHOWN
     security_opt:
       - no-new-privileges
@@ -67,24 +69,38 @@ services:
     network_mode: "service:g0efilter"
 ```
 
-See [examples](https://github.com/g0lab/g0efilter/tree/main/examples) for ready-to-run compose files and policies. The container runs as a non-root user (`nobody`) by default - see [Running as a non-root user](docs/configuration.md#running-as-a-non-root-user) to customise the uid/gid or run as root.
+Start the services:
 
-### How it works
+```sh
+docker compose up -d
+```
 
-Attached containers share g0efilter's network namespace. Traffic to allowlisted IPs/CIDRs passes through directly; everything else is handled by the selected `FILTER_MODE`.
+See the [examples](examples/) for complete Compose files and policies. See
+[runtime user configuration](docs/configuration.md#running-as-a-non-root-user)
+to change the container identity.
+
+## Filter modes
+
+Attached containers share g0efilter's network connection. Allowed IPs and CIDRs
+pass through directly. Other traffic is handled by `FILTER_MODE`.
 
 | Mode | Checks domains at | Blocks hardcoded IPs? | Best for |
 | --- | --- | ---: | --- |
-| `https` | Connection time via TLS SNI / HTTP Host inspection | Yes, unless IP allowlisted | Web-heavy workloads needing precise domain control |
-| `dns` | DNS resolution time | No | Lightweight broad filtering |
-| `dns-strict` | DNS plus kernel connection-time enforcement | Yes | Strong default-deny egress control |
+| `https` | Connection time, using TLS SNI or the HTTP Host header | Yes | Precise control of web traffic |
+| `dns` | DNS lookup time | No | Simple, broad filtering |
+| `dns-strict` | DNS lookup and connection time | Yes | Strict domain filtering on any port |
 
-See [docs/modes.md](docs/modes.md) for detailed flow diagrams and mode-specific limits.
+See [filter modes](docs/modes.md) for details and limits.
+
+Use `dns-strict` when a workload connects to allowed domains over protocols or
+ports other than HTTP and HTTPS. It allows IPs learned through approved DNS
+lookups while blocking direct-IP and alternate-DNS bypasses.
 
 > [!NOTE]
-> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (65080), `HTTPS_PORT` (65443), and `DNS_PORT` (65053) in dns modes.
+> Attached containers must not use g0efilter's internal HTTP, HTTPS, or DNS
+> ports. The defaults are 65080, 65443, and 65053.
 
-### Policy
+## Policy
 
 ```yaml
 allowlist:
@@ -92,37 +108,23 @@ allowlist:
     - '1.1.1.1'
     - '192.168.0.0/16'
   domains:
-    - 'github.com'                                 # exact
-    - '*.alpinelinux.org'                          # wildcard, any subdomain level
-    - 'bucket.*.r2.cloudflarestorage.com'          # wildcard works mid-name too
-    - '/cache-[0-9]+\.example\.com/'              # regex (single-quote it in YAML)
+    - 'github.com'
+    - '*.alpinelinux.org'
+    - '/cache-[0-9]+\.example\.com/'
 ```
 
-Each `*` matches one or more characters including dots. Regex entries are slash-delimited, matched case-insensitively against the whole hostname (anchoring is automatic), and compiled with Go's linear-time RE2 engine. Ready-made example policies live in [examples/policy/](https://github.com/g0lab/g0efilter/tree/main/examples/policy).
+Mount the policy directory, not only the file. This keeps live reload working
+when an editor replaces the file during save.
 
-The policy file live-reloads: edits apply without restarting the container. Mount the policy *directory*, not the single file, or editors that use atomic save will silently break reloads:
+Policies can also use a default-allow denylist, learning mode, or audit mode.
+See [policy](docs/policy.md) for patterns and policy modes. See
+[environment variables](docs/configuration.md#environment-variables) for
+configuration.
 
-```yaml
-volumes:
-  - ./policy/:/app/policy/   # correct
-# NOT: - ./policy.yaml:/app/policy.yaml
-```
+## GitHub Actions
 
-Environment variables (`ALLOWLIST_IPS`, `ALLOWLIST_DOMAINS`, ...) can replace the policy file and take precedence when set. See [docs/policy.md](docs/policy.md) for policy modes and [docs/configuration.md](docs/configuration.md) for environment variables.
-
-### Common modes
-
-Set `default_action: allow` in the policy file to invert the model: traffic passes unless it matches the `denylist`. Useful for containers that need broad internet access but should be kept away from analytics/telemetry endpoints or the LAN. An explicit allowlist match always overrides the denylist.
-
-`LEARNING_MODE=true` runs g0efilter observe-only: nothing is blocked and every domain (or destination IP when no SNI/Host is present) not already covered is appended to the policy file. Run it for a representative period, prune the result, then switch back to enforcement.
-
-`ENFORCE=audit` is a dry run for an existing policy: would-be-blocked traffic is allowed through and logged with the `AUDIT` action (visible in the dashboard), so you can preview a policy's impact before enforcing it. Unlike learning mode, nothing is written to the policy file.
-
-`PROCESS_INFO=true` enriches flow logs with the owning process (`pid`, `process_name`, `cmdline`, `executable`), resolved via `/proc` and cached per flow. This requires g0efilter to share a PID namespace with the client processes (host deploy, `pid: host`, or `shareProcessNamespace: true`); in a plain network-only sidecar the fields degrade to `process_name=unknown`.
-
-### GitHub Actions
-
-g0efilter can filter egress from GitHub Actions runners. The action starts the g0efilter container with host networking, so all traffic from the job and later steps is inspected.
+The GitHub Action filters traffic from the runner. Add it before the steps you
+want to protect.
 
 ```yaml
 jobs:
@@ -132,7 +134,7 @@ jobs:
       - name: Filter egress
         uses: g0lab/g0efilter@v0
         with:
-          egress-policy: block   # or 'audit' to log without blocking
+          egress-policy: block
           allowed-domains: |
             *.npmjs.org
             registry.npmjs.org
@@ -140,71 +142,23 @@ jobs:
       - uses: actions/checkout@v7
 ```
 
-See [docs/github-actions.md](docs/github-actions.md) for inputs, baseline allow rules, and runner limitations.
+See [GitHub Actions](docs/github-actions.md) for inputs, built-in allow rules,
+and security limits.
 
-### Dashboard
+## Dashboard
 
 [View the live demo](https://g0efilter-demo.g0lab.workers.dev/)
 
-The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set `DASHBOARD_HOST` and `DASHBOARD_API_KEY` on g0efilter to ship logs to it.
+The optional dashboard shows live and saved traffic. Point g0efilter at it with
+`DASHBOARD_HOST` and `DASHBOARD_API_KEY`. The dashboard can also manage API keys,
+fleet policy, and remote unblock requests.
 
-The dashboard uses built-in session login and persists its state to `/app/data/dashboard.db` by default. On first startup it generates and prints any missing admin password or machine API key once in the container output. Mount `/app/data` for persistence, or set `EPHEMERAL=true` to run entirely in memory. Other authentication modes and recovery commands are documented in [docs/configuration.md](docs/configuration.md).
+See the [examples](examples/) for a complete setup. See
+[dashboard authentication](docs/configuration.md#dashboard-authentication),
+[persistent logs](docs/configuration.md#persistent-logs), and
+[remote unblock](docs/remote-unblock.md) for its security requirements.
 
-Remote unblock lets administrators unblock domains/IPs from the dashboard UI. Instances poll for approved requests and apply them via live reload. It is disabled by default. To enable it, set `ENABLE_REMOTE_UNBLOCK=true` on g0efilter along with `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. See [docs/remote-unblock.md](docs/remote-unblock.md) for setup, endpoints, and a Traefik example.
-
-> [!WARNING]
-> Do not enable remote unblock with `AUTH_MODE=none` unless `POST /api/v1/unblocks` is protected by reverse-proxy authentication. Anyone who can reach that endpoint can modify your allowlist. With the default `AUTH_MODE=session` it requires a logged-in session (or a valid API key).
-
-### Example docker-compose.yaml
-
-```yaml
-services:
-  g0efilter:
-    image: docker.io/g0lab/g0efilter:latest
-    container_name: g0efilter
-    volumes:
-      - ./policy/:/app/policy/   # directory mount, see Policy section
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_ADMIN                # nftables + SO_MARK dialer
-      - SETUID                   # drop to a non-root user (nobody) at startup;
-      - SETGID                   # override with PUID/PGID, or PUID=0 to stay root
-      - CHOWN
-    security_opt:
-      - no-new-privileges
-    ports:
-      - 8081:8081                # dashboard (runs in the same netns)
-    read_only: true
-    restart: always
-    env_file:
-      - .env
-
-  g0efilter-dashboard:
-    image: docker.io/g0lab/g0efilter-dashboard:latest
-    container_name: g0efilter-dashboard
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges
-    read_only: true
-    volumes:
-      - g0efilter-dashboard-data:/app/data
-    env_file:
-      - .env.dashboard
-    network_mode: "service:g0efilter"
-    restart: always
-
-  example-container:
-    image: docker.io/alpine/curl:latest
-    command: sh -c "sleep infinity"
-    network_mode: "service:g0efilter"
-
-volumes:
-  g0efilter-dashboard-data:
-```
-
-### Documentation
+## Documentation
 
 - [Filter modes](docs/modes.md)
 - [Policy](docs/policy.md)
@@ -213,13 +167,12 @@ volumes:
 - [GitHub Actions](docs/github-actions.md)
 - [Remote unblock](docs/remote-unblock.md)
 
-### Verifying container signatures
+## Verify container signatures
 
-Images are signed with [Cosign](https://github.com/sigstore/cosign) keyless signing. To
-keep the image repositories clean, signatures are stored in a dedicated repo rather than
-alongside the images, so point cosign at it with `COSIGN_REPOSITORY`:
+Images use [Cosign](https://github.com/sigstore/cosign) keyless signatures.
+Signatures are stored in `g0lab/signatures`:
 
-```bash
+```sh
 COSIGN_REPOSITORY=docker.io/g0lab/signatures \
 cosign verify g0lab/g0efilter:latest \
   --certificate-identity-regexp=https://github.com/g0lab/g0efilter \
@@ -227,7 +180,7 @@ cosign verify g0lab/g0efilter:latest \
   -o text
 ```
 
-(Repeat with `g0lab/g0efilter-dashboard:latest` for the dashboard image.)
+Use `g0lab/g0efilter-dashboard:latest` to verify the dashboard image.
 
 ## License
 

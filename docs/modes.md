@@ -1,86 +1,57 @@
 # Filter modes
 
-Attached containers share g0efilter's network namespace. Traffic to allowlisted IPs/CIDRs passes through directly; everything else is handled by the selected `FILTER_MODE`.
+Attached containers share g0efilter's network namespace. Allowed IPs and CIDRs
+pass through directly. Other traffic is handled by `FILTER_MODE`.
 
-| Mode | Checks domains at | Blocks hardcoded IPs? | Best for |
+| Mode | Domain check | Hardcoded IPs blocked? | Best for |
 | --- | --- | ---: | --- |
-| `https` | Connection time via TLS SNI / HTTP Host inspection | Yes, unless IP allowlisted | Web-heavy workloads needing precise domain control |
-| `dns` | DNS resolution time | No | Lightweight broad filtering |
-| `dns-strict` | DNS plus kernel connection-time enforcement | Yes | Strong default-deny egress control |
+| `https` | Each HTTP or HTTPS connection | Yes | Precise web filtering |
+| `dns` | DNS lookup | No | Simple filtering across protocols |
+| `dns-strict` | DNS lookup and connection | Yes | Strict domain filtering on any port |
 
 > [!NOTE]
-> Attached containers must not bind to ports used by g0efilter: `HTTP_PORT` (65080), `HTTPS_PORT` (65443), and `DNS_PORT` (65053) in dns modes.
+> Attached containers must not use g0efilter's internal HTTP, HTTPS, or DNS
+> ports. The defaults are 65080, 65443, and 65053.
 
-## https mode
+## HTTPS mode
 
-Outbound traffic on ports 80/443 is redirected by nftables to local proxy services inside g0efilter. The proxies read the HTTP `Host` header (port 80) or the TLS SNI from the ClientHello (port 443, without terminating TLS) and check it against the policy. Allowed connections are spliced through to the original destination at kernel speed; blocked connections are reset. Traffic on other ports is dropped unless the destination IP is allowlisted.
+g0efilter redirects outbound traffic on ports 80 and 443 to local proxies. It
+checks the HTTP `Host` header or TLS SNI against the policy. TLS is not
+decrypted.
 
-```text
-Start
-|
-+- Destination IP in allowlist? -- Yes -> ALLOW (no redirect)
-|
-+- Connection already established? -- Yes -> ALLOW
-|
-+- Destination port 80/443? -- No -> BLOCK
-|
-+- Redirect to local proxy, extract Host header / SNI
-|
-+- Domain matches policy? -- Yes -> FORWARD to original destination
-|                          -- No  -> DROP (connection reset)
-|
-+- LOG decision -> dashboard (if enabled)
-```
+Allowed connections continue to the original destination. Blocked connections
+are reset. Other destination ports are blocked unless their IP is allowed.
 
-Strengths: precise per-connection domain checks, works with CDNs and changing IPs.
-Limits: domain filtering applies to ports 80/443 only; a client that sends no SNI is blocked (default-deny).
+This mode works well with CDNs and changing IPs. It only checks domains on ports
+80 and 443, and blocks TLS clients that omit SNI under a default-deny policy.
 
-## dns mode
+## DNS mode
 
-All DNS (UDP/TCP port 53) is redirected to an internal DNS proxy. Allowed domains resolve normally through the upstream resolver. A non-allowlisted A/AAAA query is resolved and its records checked against the IP allowlist (when the policy has IP entries); if none are allowlisted it is sinkholed to 0.0.0.0/::. Other blocked query types get NXDOMAIN.
+g0efilter redirects TCP and UDP DNS traffic on port 53 to its DNS proxy. Allowed
+domains resolve normally. Blocked A and AAAA queries return sinkhole addresses;
+other blocked query types return `NXDOMAIN`.
 
-```text
-Start
-|
-+- DNS query to port 53? -- No -> PASS (no domain check)
-|
-+- Redirect to local DNS proxy
-|
-+- Domain matches policy? -- Yes -> FORWARD to upstream resolver
-|                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
-|                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
-|
-+- LOG decision -> dashboard (if enabled)
-```
+If an unlisted domain resolves to an allowed IP, only its allowed addresses are
+returned. This check applies only when the policy contains allowed IPs.
 
-When the policy has IP allowlist entries, a domain that is not domain-allowlisted is still resolved so its addresses can be checked; if any resolved IP is allowlisted the proxy replies with only those records (non-allowlisted IPs are stripped), matching https mode's connection-time IP allowance. With no IPs in the policy the domain is sinkholed as before.
+DNS mode covers any protocol with little overhead, but it only enforces rules
+during lookup. Hardcoded IPs, cached answers, and DNS-over-HTTPS can bypass it.
 
-Strengths: covers every protocol and port, cheapest data path (no proxying of the traffic itself).
-Limits: enforcement happens at resolution only. A process that connects to a hardcoded IP, uses DNS-over-HTTPS, or replays a cached answer bypasses filtering entirely. Use `dns-strict` to close that gap.
+## DNS-strict mode
 
-## dns-strict mode
+DNS-strict starts with DNS mode, then adds each allowed A or AAAA answer to a
+temporary nftables set. Connections are allowed only when their destination is
+in that set or the IP allowlist.
 
-Everything dns mode does, plus: when an allowed domain resolves, the proxy pushes the answer's A/AAAA addresses into a kernel nftables set with a TTL-bounded timeout (60s floor, 24h cap), before the client sees the answer. The filter chain is default-drop, so connections to any IP that was never resolved through the proxy (hardcoded IPs, DoH, cached answers) are dropped.
+Use it when allowed domains serve protocols or ports other than HTTP and HTTPS,
+but direct-IP and alternate-DNS bypasses must still be blocked.
 
-```text
-Start
-|
-+- Destination IP in allowlist/resolved set? -- Yes -> ALLOW
-|
-+- DNS query to port 53? -- Yes -> Redirect to DNS proxy
-|      |
-|      +- Domain matches policy? -- Yes -> Resolve, add answer IPs, return answer
-|      |                          -- No  -> Resolves to an allowlisted IP? -- Yes -> return only those IPs
-|      |                                                                    -- No  -> SINKHOLE A/AAAA or NXDOMAIN
-|
-+- Connection already established? -- Yes -> ALLOW
-|
-+- BLOCK
-|
-+- LOG decision -> dashboard (if enabled)
-```
+Entries follow the DNS TTL, with a 60-second minimum and 24-hour maximum.
+Existing connections survive expiry. A policy reload clears resolved entries.
 
-- Enforcement covers all ports and both IPv4/IPv6, entirely in the kernel
-- Entries expire with the DNS TTL; established connections survive expiry via conntrack
-- Resolved entries are flushed on policy reload and repopulate on the next resolution
-- Requires `default_action: deny`; under default-allow or learning mode it degrades to plain dns mode with a warning
+This mode:
+
+- Covers all ports and IPv4/IPv6.
+- Blocks hardcoded IPs, cached answers, and DNS-over-HTTPS bypasses.
+- Requires `default_action: deny`.
+- Falls back to DNS mode during learning or default-allow mode.

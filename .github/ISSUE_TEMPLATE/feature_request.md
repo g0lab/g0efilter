@@ -8,16 +8,13 @@ assignees: g0lab
 ---
 
 **Feature description**
-A clear and concise description of the feature you'd like to see.
+What would you like to add?
 
 **Use case**
-Describe the problem this feature would solve or the use case it would enable.
+What problem would this solve?
 
 **Proposed solution**
-Describe how you envision this feature working.
+How should it work?
 
 **Alternatives considered**
-(Optional) Any alternative solutions or workarounds you've considered.
-
-**Additional context**
-Add any other context, examples, or screenshots about the feature request here.
+What alternatives or workarounds have you tried?

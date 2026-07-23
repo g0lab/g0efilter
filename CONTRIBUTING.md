@@ -4,76 +4,47 @@ Thanks for helping improve g0efilter.
 
 ## Before You Start
 
-For larger features, behavior changes, or changes that affect filtering behavior, please open an issue or comment on an existing one first so the approach can be discussed.
-
-Small fixes, documentation updates, tests, and clearly scoped bug fixes are welcome directly.
+Discuss large features or filtering changes in an issue first. Small fixes,
+documentation, and tests can go straight to a pull request.
 
 ## AI Usage
 
-AI tools are fine. Please understand, review, and test any AI-assisted changes yourself before submitting them.
+AI tools are welcome, but you must understand, review, and test their changes.
 
 ## Pull Requests
 
-Keep PRs focused. Prefer smaller PRs that are easy to review over large mixed changes.
+Keep pull requests small and focused.
 
-Use a conventional title when it fits:
+Use a conventional title when practical:
 
 ```text
 fix(scope): short description
 ```
 
-Examples:
-
-```text
-fix(dns): handle empty resolver response
-test(action): add setup coverage
-docs(readme): clarify Docker usage
-```
-
-In your PR description, explain what changed, why it changed, and which checks you ran.
-
-If you skipped a relevant check, or if a check failed for a known reason, explain that in the PR.
+Explain what changed, why, and which checks you ran. Note any skipped or failed
+checks.
 
 ## Validation
 
-Run the checks and tests that match the files you touched.
-
-### Go
+Run the script for each area you changed:
 
 ```sh
-scripts/test-go.sh                    # tidy, ent + migration no-diff, vet, race + coverage
-golangci-lint run --timeout=10m ./...
+scripts/test-go.sh
+scripts/test-action.sh
+scripts/test-ui.sh
 ```
 
-`scripts/test-go.sh` also fails if `go.mod`/`go.sum` aren't tidy, if the generated Ent client is stale, or if the committed migrations don't match the schema, so make sure any such changes are committed and expected. After editing a DB schema in `dashboard/store/ent/schema/`, run `scripts/gen-migration.sh <name>` to regenerate the client and migration.
-
-### Action
-
-```sh
-scripts/test-action.sh                # node --check, unit tests, setup.sh checks
-```
-
-### Dashboard UI
-
-Only when `dashboard/ui/` changes. Requires Node 24 + pnpm.
-
-```sh
-scripts/test-ui.sh                    # svelte-check, eslint, unit tests, build
-```
-
-The embedded `dist/` is generated, not committed - `scripts/dev.sh`, CI and the
-Docker/release build produce it. Make sure the UI type-checks, lints, passes its
-unit tests, and builds cleanly.
-
-### Docker/e2e
+Run Docker end-to-end tests for filtering changes:
 
 ```sh
 FILTER_MODE=https scripts/e2e.sh
 FILTER_MODE=dns scripts/e2e.sh
 ```
 
+After changing `dashboard/store/ent/schema/`, run
+`scripts/gen-migration.sh <name>` and commit the generated client and migration.
+
 ## Security
 
-Please do not open a public issue or PR for security vulnerabilities.
-
-Follow the instructions in `SECURITY.md`.
+Report vulnerabilities privately as described in
+[Security](SECURITY.md#report-a-vulnerability).
