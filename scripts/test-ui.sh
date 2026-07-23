@@ -23,8 +23,8 @@ pnpm test:unit
 
 echo ">>> build (Cloudflare demo)"
 pnpm build:demo
-node tests/assert-build-mode.mjs demo
+node tests/assert-build-mode.ts demo
 
 echo ">>> build (embedded dist/)"
 pnpm build
-node tests/assert-build-mode.mjs production
+node tests/assert-build-mode.ts production
