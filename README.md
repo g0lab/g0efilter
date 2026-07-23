@@ -144,11 +144,11 @@ See [docs/github-actions.md](docs/github-actions.md) for inputs, baseline allow 
 
 ### Dashboard
 
+[View the live demo](https://g0efilter-demo.g0lab.workers.dev/)
+
 The optional **g0efilter-dashboard** container serves a web UI on port 8081. Set `DASHBOARD_HOST` and `DASHBOARD_API_KEY` on g0efilter to ship logs to it.
 
 The dashboard uses built-in session login and persists its state to `/app/data/dashboard.db` by default. On first startup it generates and prints any missing admin password or machine API key once in the container output. Mount `/app/data` for persistence, or set `EPHEMERAL=true` to run entirely in memory. Other authentication modes and recovery commands are documented in [docs/configuration.md](docs/configuration.md).
-
-![g0efilter-dashboard-example](https://raw.githubusercontent.com/g0lab/g0efilter/main/examples/images/g0efilter-dashboard-example.png)
 
 Remote unblock lets administrators unblock domains/IPs from the dashboard UI. Instances poll for approved requests and apply them via live reload. It is disabled by default. To enable it, set `ENABLE_REMOTE_UNBLOCK=true` on g0efilter along with `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. See [docs/remote-unblock.md](docs/remote-unblock.md) for setup, endpoints, and a Traefik example.
 
