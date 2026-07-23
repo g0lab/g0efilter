@@ -10,15 +10,14 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  id-token: write  # Cosign OIDC signing
-
 jobs:
   release:
     runs-on: ubuntu-latest
     environment: dockerhub
     timeout-minutes: 30
+    permissions:
+      contents: write  # Publish the release.
+      id-token: write  # Sign artifacts with Cosign.
     # Release only tags created from main.
     if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
 
@@ -102,7 +101,7 @@ jobs:
     # Do not move the rolling tag for prereleases.
     if: ${{ !contains(github.ref_name, '-') }}
     permissions:
-      contents: write
+      contents: write  # Move the rolling major tag.
     steps:
       - uses: actions/checkout@v7
 

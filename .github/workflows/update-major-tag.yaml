@@ -12,11 +12,15 @@ on:
         description: 'The major tag to move (e.g. v0)'
         required: true
 
+concurrency:
+  group: major-tag-${{ inputs.major_version }}
+  cancel-in-progress: false
+
 jobs:
   tag:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write  # Move the rolling major tag.
     env:
       MAJOR_VERSION: ${{ inputs.major_version }}
       TARGET: ${{ inputs.target }}
