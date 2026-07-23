@@ -104,30 +104,62 @@ export function createDemoRuntime(
     client: string,
     sequence: number,
   ): LogEntry {
-    return {
-      id,
-      time: new Date(timeMs).toISOString(),
-      msg: 'flow.decision',
+    const sourceIp = `${fixtures.source_subnet}.${Math.floor(sequence / 250) % 4}.${(sequence % 250) + 2}`;
+    const sourcePort = 1024 + (sequence * 37) % 40000;
+    const baseFields: Record<string, unknown> = {
       action: destination.verdict,
       component: destination.component,
-      http_host: destination.domain,
-      https: destination.domain,
-      source_ip: `${fixtures.source_subnet}.${Math.floor(sequence / 250) % 4}.${(sequence % 250) + 2}`,
-      source_port: 1024 + (sequence * 37) % 40000,
-      destination_ip: destination.ip,
-      destination_port: destination.port,
-      protocol: 'TCP',
+      hostname: client,
+      reason: destination.reason,
+    };
+    const entry: LogEntry = {
+      id,
+      time: new Date(timeMs).toISOString(),
+      action: destination.verdict,
+      component: destination.component,
+      source_ip: sourceIp,
+      source_port: sourcePort,
       hostname: client,
       flow_id: `demo-${sequence + 1}`,
-      version: 'demo',
-      fields: {
-        action: destination.verdict,
-        component: destination.component,
-        http_host: destination.domain,
-        hostname: client,
-        reason: destination.reason,
-      },
+      version: 'v0.demo',
+      fields: baseFields,
     };
+
+    if (destination.component === 'dns') {
+      entry.msg = `dns.${destination.verdict.toLowerCase()}`;
+      entry.https = destination.domain;
+      entry.protocol = 'UDP';
+      entry.fields = { ...baseFields, qname: destination.domain, qtype: 'A' };
+      return entry;
+    }
+
+    entry.protocol = 'TCP';
+    entry.destination_ip = destination.ip;
+    entry.destination_port = destination.port;
+    entry.dst = `${destination.ip}:${destination.port}`;
+
+    if (destination.component === 'nflog') {
+      entry.msg = 'nflog.event';
+      entry.src = `${sourceIp}:${sourcePort}`;
+      entry.fields = {
+        ...baseFields,
+        protocol: 'TCP',
+        source_ip: sourceIp,
+        source_port: sourcePort,
+        destination_ip: destination.ip,
+        destination_port: destination.port,
+      };
+      return entry;
+    }
+
+    entry.msg = `${destination.component}.${destination.verdict.toLowerCase()}`;
+    entry.https = destination.domain;
+    if (destination.component === 'http') entry.http_host = destination.domain;
+    entry.fields = {
+      ...baseFields,
+      [destination.component === 'http' ? 'host' : 'https']: destination.domain,
+    };
+    return entry;
   }
 
   const generatedAt = currentTime();

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/g0lab/g0efilter/dashboard/demo"
@@ -52,21 +53,47 @@ func main() {
 }
 
 func buildPayload(subnet string, dest demo.Destination, hostname string, seq int) map[string]any {
-	return map[string]any{
-		"time":             time.Now().UTC().Format(time.RFC3339),
-		"msg":              "flow.decision",
-		"action":           dest.Verdict,
-		"component":        dest.Component,
-		"http_host":        dest.Domain,
-		"reason":           dest.Reason,
-		"source_ip":        fmt.Sprintf("%s.%d.%d", subnet, (seq/250)%4, seq%250+2),
-		"source_port":      1024 + (seq*37)%40000,
-		"destination_ip":   dest.IP,
-		"destination_port": dest.Port,
-		"hostname":         hostname,
-		"flow_id":          fmt.Sprintf("dev-%d", seq),
-		"version":          "dev",
+	sourceIP := fmt.Sprintf("%s.%d.%d", subnet, (seq/250)%4, seq%250+2)
+	sourcePort := 1024 + (seq*37)%40000
+	payload := map[string]any{
+		"time":        time.Now().UTC().Format(time.RFC3339),
+		"action":      dest.Verdict,
+		"component":   dest.Component,
+		"reason":      dest.Reason,
+		"source_ip":   sourceIP,
+		"source_port": sourcePort,
+		"hostname":    hostname,
+		"flow_id":     fmt.Sprintf("dev-%d", seq),
+		"version":     "v0.demo",
 	}
+
+	switch dest.Component {
+	case "dns":
+		payload["msg"] = "dns." + strings.ToLower(dest.Verdict)
+		payload["qname"] = dest.Domain
+		payload["qtype"] = "A"
+		payload["protocol"] = "UDP"
+	case "nflog":
+		payload["msg"] = "nflog.event"
+		payload["protocol"] = "TCP"
+		payload["destination_ip"] = dest.IP
+		payload["destination_port"] = dest.Port
+		payload["src"] = fmt.Sprintf("%s:%d", sourceIP, sourcePort)
+		payload["dst"] = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+	default:
+		payload["msg"] = dest.Component + "." + strings.ToLower(dest.Verdict)
+		payload["protocol"] = "TCP"
+		payload["destination_ip"] = dest.IP
+		payload["destination_port"] = dest.Port
+		payload["dst"] = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+		if dest.Component == "http" {
+			payload["host"] = dest.Domain
+		} else {
+			payload["https"] = dest.Domain
+		}
+	}
+
+	return payload
 }
 
 func postEvent(client *http.Client, url, apiKey string, payload map[string]any) error {

@@ -121,22 +121,44 @@ func buildEntries(count int, now time.Time, fixtures demo.Fixtures) []model.LogE
 		dest := fixtures.Destinations[(i*11)%len(fixtures.Destinations)]
 		client := fixtures.Clients[(i*3)%len(fixtures.Clients)]
 
-		entries = append(entries, model.LogEntry{
-			Time:            now.Add(-age),
-			Message:         "flow.decision",
-			Fields:          seedFields(dest, client),
-			Action:          dest.Verdict,
-			HTTPHost:        dest.Domain,
-			HTTPS:           dest.Domain,
-			SourceIP:        fmt.Sprintf("%s.%d.%d", subnet, (i/250)%250, i%250+2),
-			SourcePort:      1024 + (i*37)%40_000,
-			DestinationIP:   dest.IP,
-			DestinationPort: dest.Port,
-			Protocol:        "TCP",
-			FlowID:          fmt.Sprintf("dev-seed-%05d", i+1),
-			Hostname:        client,
-			Version:         "dev-seed",
-		})
+		sourceIP := fmt.Sprintf("%s.%d.%d", subnet, (i/250)%250, i%250+2)
+		sourcePort := 1024 + (i*37)%40_000
+		entry := model.LogEntry{
+			Time:       now.Add(-age),
+			Fields:     seedFields(dest, client),
+			Action:     dest.Verdict,
+			SourceIP:   sourceIP,
+			SourcePort: sourcePort,
+			FlowID:     fmt.Sprintf("dev-seed-%05d", i+1),
+			Hostname:   client,
+			Version:    "v0.demo",
+		}
+
+		switch dest.Component {
+		case "dns":
+			entry.Message = "dns." + strings.ToLower(dest.Verdict)
+			entry.HTTPS = dest.Domain
+			entry.Protocol = "UDP"
+		case "nflog":
+			entry.Message = "nflog.event"
+			entry.Protocol = "TCP"
+			entry.DestinationIP = dest.IP
+			entry.DestinationPort = dest.Port
+			entry.Src = fmt.Sprintf("%s:%d", sourceIP, sourcePort)
+			entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+		default:
+			entry.Message = dest.Component + "." + strings.ToLower(dest.Verdict)
+			entry.Protocol = "TCP"
+			entry.HTTPS = dest.Domain
+			if dest.Component == "http" {
+				entry.HTTPHost = dest.Domain
+			}
+			entry.DestinationIP = dest.IP
+			entry.DestinationPort = dest.Port
+			entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+		}
+
+		entries = append(entries, entry)
 	}
 
 	return entries
@@ -157,10 +179,26 @@ func bandForPosition(bands []ageBand, index, count int) ageBand {
 }
 
 func seedFields(dest demo.Destination, client string) json.RawMessage {
-	fields, err := json.Marshal(map[string]string{
-		"action": dest.Verdict, "component": dest.Component, "http_host": dest.Domain,
+	values := map[string]any{
+		"action": dest.Verdict, "component": dest.Component,
 		"hostname": client, "reason": dest.Reason,
-	})
+	}
+
+	switch dest.Component {
+	case "dns":
+		values["qname"] = dest.Domain
+		values["qtype"] = "A"
+	case "nflog":
+		values["protocol"] = "TCP"
+		values["destination_ip"] = dest.IP
+		values["destination_port"] = dest.Port
+	case "http":
+		values["host"] = dest.Domain
+	default:
+		values["https"] = dest.Domain
+	}
+
+	fields, err := json.Marshal(values)
 	if err != nil {
 		return json.RawMessage(`{}`)
 	}

@@ -26,18 +26,20 @@ func TestBuildPayloadUsesCanonicalDestination(t *testing.T) {
 	payload := buildPayload("172.20", destination, "runner-1", 251)
 
 	for key, want := range map[string]any{
-		"msg":              "flow.decision",
+		"msg":              "https.blocked",
 		"action":           "BLOCKED",
 		"component":        "https",
-		"http_host":        "api.example",
+		"https":            "api.example",
 		"reason":           "not-allowlisted",
 		"source_ip":        "172.20.1.3",
 		"source_port":      10311,
 		"destination_ip":   "192.0.2.10",
 		"destination_port": 443,
+		"protocol":         "TCP",
+		"dst":              "192.0.2.10:443",
 		"hostname":         "runner-1",
 		"flow_id":          "dev-251",
-		"version":          "dev",
+		"version":          "v0.demo",
 	} {
 		if got := payload[key]; got != want {
 			t.Errorf("payload[%q] = %v, want %v", key, got, want)
@@ -52,6 +54,35 @@ func TestBuildPayloadUsesCanonicalDestination(t *testing.T) {
 	_, err := time.Parse(time.RFC3339, timestamp)
 	if err != nil {
 		t.Fatalf("payload time %q is not RFC3339: %v", timestamp, err)
+	}
+}
+
+func TestBuildPayloadUsesComponentSpecificEventShape(t *testing.T) {
+	t.Parallel()
+
+	dns := buildPayload("172.20", demo.Destination{
+		Domain: "blocked.example", Verdict: "BLOCKED", Component: "dns", Reason: "not-allowlisted",
+	}, "runner-1", 1)
+	if dns["qname"] != "blocked.example" || dns["protocol"] != "UDP" {
+		t.Fatalf("DNS payload lacks query identity: %+v", dns)
+	}
+	for _, key := range []string{"http_host", "https", "destination_ip", "destination_port", "dst"} {
+		if _, ok := dns[key]; ok {
+			t.Errorf("DNS payload unexpectedly contains %q: %+v", key, dns)
+		}
+	}
+
+	nflog := buildPayload("172.20", demo.Destination{
+		Verdict: "AUDIT", Component: "nflog", Port: 8443,
+		Reason: "filter-bypass-attempt", IP: "192.0.2.30",
+	}, "runner-1", 2)
+	if nflog["destination_ip"] != "192.0.2.30" || nflog["dst"] != "192.0.2.30:8443" {
+		t.Fatalf("NFLOG payload lacks packet destination: %+v", nflog)
+	}
+	for _, key := range []string{"http_host", "host", "https", "qname"} {
+		if _, ok := nflog[key]; ok {
+			t.Errorf("NFLOG payload unexpectedly contains %q: %+v", key, nflog)
+		}
 	}
 }
 

@@ -41,6 +41,9 @@ func TestBuildEntriesCoversEveryDashboardRange(t *testing.T) {
 	for _, entry := range entries {
 		key := entry.HTTPHost
 		if key == "" {
+			key = entry.HTTPS
+		}
+		if key == "" {
 			key = entry.DestinationIP
 		}
 
@@ -52,6 +55,20 @@ func TestBuildEntriesCoversEveryDashboardRange(t *testing.T) {
 	}
 	if len(verdicts) != len(fixtures.Destinations) {
 		t.Fatalf("seeded destinations = %d, want %d", len(verdicts), len(fixtures.Destinations))
+	}
+
+	for _, entry := range entries {
+		component := model.ComponentOf(&entry)
+		if entry.Version != "v0.demo" {
+			t.Fatalf("demo entry version = %q, want v0.demo", entry.Version)
+		}
+		if component == "dns" &&
+			(entry.HTTPS == "" || entry.DestinationIP != "" || entry.DestinationPort != 0 || entry.Protocol != "UDP") {
+			t.Fatalf("DNS entry has packet destination fields: %+v", entry)
+		}
+		if component == "nflog" && (entry.HTTPHost != "" || entry.HTTPS != "" || entry.DestinationIP == "") {
+			t.Fatalf("NFLOG entry has a domain or lacks an IP: %+v", entry)
+		}
 	}
 
 	windows := []time.Duration{

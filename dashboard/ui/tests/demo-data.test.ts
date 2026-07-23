@@ -25,9 +25,9 @@ const fixtures: DemoFixtures = {
       category: 'malware',
       verdict: 'BLOCKED',
       component: 'dns',
-      port: 53,
-      reason: 'blocked-at-dns',
-      ip: '192.0.2.20',
+      port: 0,
+      reason: 'not-allowlisted',
+      ip: '',
     },
     {
       domain: '',
@@ -95,6 +95,26 @@ test('demo aggregates preserve verdict totals, dimensions, and buckets', () => {
   assert.equal(dns.rows[0]?.key, 'blocked.example');
 });
 
+test('demo entries mirror DNS query and NFLOG packet fields', () => {
+  const demo = runtime();
+  const dns = demo.browse(new URLSearchParams({
+    range: 'all', component: 'dns', limit: '1',
+  })).rows[0];
+  assert.equal(dns?.https, 'blocked.example');
+  assert.equal(dns?.protocol, 'UDP');
+  assert.equal(dns?.destination_ip, undefined);
+  assert.equal(dns?.destination_port, undefined);
+  assert.equal((dns?.fields as Record<string, unknown>)?.qname, 'blocked.example');
+
+  const nflog = demo.browse(new URLSearchParams({
+    range: 'all', component: 'nflog', limit: '1',
+  })).rows[0];
+  assert.equal(nflog?.http_host, undefined);
+  assert.equal(nflog?.https, undefined);
+  assert.equal(nflog?.destination_ip, '192.0.2.30');
+  assert.equal(nflog?.destination_port, 4444);
+});
+
 test('live demo events update every read model while retaining the buffer size', () => {
   const demo = runtime();
   const before = demo.aggregate(new URLSearchParams({ range: '15m' }));
@@ -102,6 +122,7 @@ test('live demo events update every read model while retaining the buffer size',
 
   assert.equal(event.id, 31);
   assert.equal(event.flow_id, 'demo-31');
+  assert.equal(event.version, 'v0.demo');
   assert.equal(demo.logs(new URLSearchParams({ limit: '1' }))[0]?.id, event.id);
   assert.equal(demo.browse(new URLSearchParams({ range: 'all' })).total, 30);
   assert.equal(

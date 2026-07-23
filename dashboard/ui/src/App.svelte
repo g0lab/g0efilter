@@ -108,7 +108,6 @@
 <div class="topbar">
   <div class="brand">
     <span class="dot"></span> g0efilter
-    {#if DEMO}<span class="demo-badge" title="Synthetic data - no live backend">Demonstration data</span>{/if}
   </div>
   <nav class="nav">
     <button type="button" class:active={app.page === 'stream'} onclick={() => go('stream')}>Stream</button>
@@ -121,6 +120,7 @@
       <button type="button" class:active={app.page === 'fleet'} onclick={() => go('fleet')}>Fleet</button>
     {/if}
   </nav>
+  {#if DEMO}<span class="demo-badge" title="Synthetic data - no live backend">Demonstration data</span>{/if}
 
   <div class="topbar-right">
     {#if app.loading}

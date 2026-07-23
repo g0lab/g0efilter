@@ -2,6 +2,7 @@ package demo_test
 
 import (
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/g0lab/g0efilter/dashboard/demo"
@@ -26,6 +27,12 @@ func TestScenariosCanonicalFixtureInvariants(t *testing.T) {
 			t.Fatalf("client %q is empty or duplicated", client)
 		}
 
+		for _, deviceLabel := range []string{"laptop", "desktop", "workstation"} {
+			if strings.Contains(strings.ToLower(client), deviceLabel) {
+				t.Errorf("client %q looks like an end-user device, not a workload", client)
+			}
+		}
+
 		clients[client] = true
 	}
 
@@ -41,12 +48,21 @@ func TestScenariosCanonicalFixtureInvariants(t *testing.T) {
 			t.Errorf("destination %d has unsupported component %q", i, destination.Component)
 		}
 
-		if net.ParseIP(destination.IP) == nil {
+		if destination.Component != "dns" && net.ParseIP(destination.IP) == nil {
 			t.Errorf("destination %d has invalid IP %q", i, destination.IP)
 		}
 
 		if destination.Port < 0 || destination.Port > 65535 {
 			t.Errorf("destination %d has invalid port %d", i, destination.Port)
+		}
+
+		if destination.Component == "dns" &&
+			(destination.Domain == "" || destination.IP != "" || destination.Port != 0) {
+			t.Errorf("DNS destination %d must contain only a domain identity: %+v", i, destination)
+		}
+
+		if destination.Component == "nflog" && destination.Domain != "" {
+			t.Errorf("NFLOG destination %d must not invent a domain: %+v", i, destination)
 		}
 
 		if destination.Category == "" || destination.Reason == "" {

@@ -5,7 +5,7 @@
     "build-runner-2",
     "ci-agent-1",
     "ci-agent-2",
-    "developer-laptop"
+    "integration-test-7d9f6c"
   ],
   "destinations": [
     { "domain": "github.com", "category": "source-hosting", "verdict": "ALLOWED", "component": "https", "port": 443, "reason": "allowlisted", "ip": "140.82.121.3" },
@@ -15,16 +15,16 @@
     { "domain": "pypi.org", "category": "package-registry", "verdict": "ALLOWED", "component": "https", "port": 443, "reason": "allowlisted", "ip": "151.101.0.223" },
     { "domain": "index.docker.io", "category": "container-registry", "verdict": "ALLOWED", "component": "https", "port": 443, "reason": "allowlisted", "ip": "34.226.69.105" },
     { "domain": "storage.googleapis.com", "category": "shared-cdn", "verdict": "ALLOWED", "component": "https", "port": 443, "reason": "allowlisted-sni", "ip": "142.250.72.16" },
-    { "domain": "cdn.example.org", "category": "shared-cdn", "verdict": "AUDIT", "component": "dns", "port": 53, "reason": "shared-cdn-dns-strict", "ip": "142.250.72.16" },
-    { "domain": "metrics.internal", "category": "observability", "verdict": "ALLOWED", "component": "dns", "port": 53, "reason": "allowlisted", "ip": "10.0.0.53" },
+    { "domain": "cdn.example.org", "category": "shared-cdn", "verdict": "AUDIT", "component": "dns", "port": 0, "reason": "not-allowlisted", "ip": "" },
+    { "domain": "metrics.internal", "category": "observability", "verdict": "ALLOWED", "component": "dns", "port": 0, "reason": "allowlisted", "ip": "" },
     { "domain": "legacy-updates.example", "category": "software-update", "verdict": "ALLOWED", "component": "http", "port": 80, "reason": "allowlisted", "ip": "198.51.100.20" },
     { "domain": "telemetry.bad.example", "category": "telemetry", "verdict": "BLOCKED", "component": "https", "port": 443, "reason": "not-allowlisted", "ip": "198.51.100.30" },
     { "domain": "evil.example", "category": "malware", "verdict": "BLOCKED", "component": "https", "port": 443, "reason": "not-allowlisted", "ip": "198.51.100.40" },
-    { "domain": "blocked-malware.example", "category": "malware", "verdict": "BLOCKED", "component": "dns", "port": 53, "reason": "blocked-at-dns", "ip": "198.51.100.50" },
+    { "domain": "blocked-malware.example", "category": "malware", "verdict": "BLOCKED", "component": "dns", "port": 0, "reason": "not-allowlisted", "ip": "" },
     { "domain": "crypto-miner.bad.example", "category": "malware", "verdict": "BLOCKED", "component": "https", "port": 443, "reason": "not-allowlisted", "ip": "198.51.100.60" },
-    { "domain": "unknown-egress.example", "category": "unknown", "verdict": "AUDIT", "component": "nflog", "port": 0, "reason": "not-allowlisted", "ip": "203.0.113.77" },
-    { "domain": "shadow-it.example", "category": "unknown", "verdict": "AUDIT", "component": "nflog", "port": 0, "reason": "not-allowlisted", "ip": "203.0.113.90" },
-    { "domain": "", "category": "raw-egress", "verdict": "AUDIT", "component": "nflog", "port": 0, "reason": "no-sni", "ip": "45.66.77.88" },
+    { "domain": "", "category": "unknown", "verdict": "AUDIT", "component": "nflog", "port": 443, "reason": "direct-ip-egress", "ip": "203.0.113.77" },
+    { "domain": "", "category": "unknown", "verdict": "AUDIT", "component": "nflog", "port": 8443, "reason": "filter-bypass-attempt", "ip": "203.0.113.90" },
+    { "domain": "", "category": "raw-egress", "verdict": "AUDIT", "component": "nflog", "port": 80, "reason": "direct-ip-egress", "ip": "45.66.77.88" },
     { "domain": "", "category": "raw-egress", "verdict": "BLOCKED", "component": "nflog", "port": 4444, "reason": "not-allowlisted", "ip": "185.220.101.9" }
   ]
 }
