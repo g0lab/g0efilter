@@ -56,6 +56,7 @@ func (s *LogStore) Insert(ctx context.Context, e *model.LogEntry) (int64, error)
 	if component := model.ComponentOf(e); component != "" {
 		searchParts = append(searchParts, `"component":"`+component+`"`)
 	}
+
 	search := strings.ToLower(strings.Join(searchParts, "\n"))
 
 	ts := e.Time

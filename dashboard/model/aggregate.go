@@ -15,6 +15,7 @@ const (
 	verdictAudit   = "AUDIT"
 )
 
+// Aggregate dimensions accepted by AggregateParams.
 const (
 	DimensionDomain = "domain"
 	DimensionIP     = "ip"
