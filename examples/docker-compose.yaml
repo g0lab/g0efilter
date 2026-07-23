@@ -4,29 +4,20 @@ services:
     image: docker.io/g0lab/g0efilter:latest
     container_name: g0efilter
     volumes:
-      # Mount the directory (not a single file) so live reload works with all editors.
-      # Editors like vim use atomic save (write + rename) which creates a new inode;
-      # a single-file bind mount stays pinned to the old inode and never sees updates.
+      # Mount the directory so live reload keeps working after file replacement.
       - ./policy/:/app/policy/
     cap_drop:
       - ALL
     cap_add:
-      - NET_ADMIN  # nftables + SO_MARK dialer
-      # The entrypoint drops to a non-root user (nobody by default): SETUID/SETGID
-      # switch user, CHOWN hands it the writable dirs. Without them it falls back
-      # to running as root. Only NET_ADMIN is retained at runtime.
+      # Filter traffic, then drop to a non-root user.
+      - NET_ADMIN
       - SETUID
       - SETGID
       - CHOWN
     security_opt:
       - no-new-privileges
-    # Runs as non-root (nobody) by default. Override the uid/gid - e.g. to match a
-    # host user editing the policy - or set PUID=0 to stay root:
-    #   environment: { PUID: "1000", PGID: "1000" }
-    #   environment: { PUID: "0" }
-    # Host-exposed port for dashboard (dashboard runs in same netns)
     ports:
-      - 8081:8081  # Dashboard port
+      - "127.0.0.1:8081:8081"
     read_only: true
     restart: always
     env_file:
@@ -35,10 +26,6 @@ services:
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:latest
     container_name: g0efilter-dashboard
-    # Already runs non-root (distroless nonroot, uid 65532). Override the uid
-    # with `user:` if you prefer - the /app/data volume must then be writable by
-    # that uid (chown the named volume, or run a one-shot init container).
-    #   user: "1000:1000"
     cap_drop:
       - ALL
     security_opt:

@@ -1,4 +1,4 @@
-# Stage 1: Build
+# Build the agent.
 FROM golang:1.26.5-alpine3.23 AS builder
 
 ARG VERSION=dev
@@ -17,7 +17,7 @@ RUN go build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /build/g0efilter ./agent
 
-# Stage 2: Runtime
+# Create the runtime image.
 FROM alpine:3.24.1
 
 RUN apk add --no-cache nftables ca-certificates setpriv \

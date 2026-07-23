@@ -3,16 +3,12 @@ services:
     build:
       context: ../..
       dockerfile: examples/build/Dockerfile
-    # Named so CI can build once, `docker save`, and reuse across parallel e2e jobs
-    # (E2E_NO_BUILD=1). Local `up --build` still builds and tags this same image.
+    # CI builds this tag once and reuses it across e2e jobs.
     image: g0efilter:e2e
     container_name: g0efilter
     ports:
       - "127.0.0.1:8081:8081"
     volumes:
-      # Mount the directory (not a single file) so live reload works with all editors.
-      # Editors like vim use atomic save (write + rename) which creates a new inode;
-      # a single-file bind mount stays pinned to the old inode and never sees updates.
       - ./policy/:/app/policy/
     cap_drop:
       - ALL
@@ -27,6 +23,10 @@ services:
       LEARNING_MODE: ${LEARNING_MODE:-false}
       ENFORCE: ${ENFORCE:-block}
       PROCESS_INFO: ${PROCESS_INFO:-false}
+      # Required by remote-unblock e2e phases.
+      HOSTNAME: host-01
+      ENABLE_REMOTE_UNBLOCK: "true"
+      UNBLOCK_POLL_INTERVAL: 2s
     cap_add:
       - NET_ADMIN
 
@@ -60,8 +60,7 @@ services:
     env_file:
       - ../.env.dashboard
     environment:
-      # Defaults keep the shared traffic phases lightweight. The dedicated
-      # dashboard phase overrides these through stack_up's DASHBOARD_* vars.
+      # Dashboard tests override these values when needed.
       AUTH_MODE: ${DASHBOARD_AUTH_MODE:-none}
       ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD_HASH: ${DASHBOARD_ADMIN_PASSWORD_HASH:-}
