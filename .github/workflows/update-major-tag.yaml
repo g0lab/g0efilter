@@ -1,8 +1,7 @@
 ---
-name: update-major-tag
-run-name: Move ${{ github.event.inputs.major_version }} to ${{ github.event.inputs.target }}
+name: Update Major Tag
+run-name: Move ${{ inputs.major_version }} to ${{ inputs.target }}
 
-# Manual override or rollback for the rolling major tag.
 on:
   workflow_dispatch:
     inputs:
@@ -17,14 +16,12 @@ jobs:
   tag:
     runs-on: ubuntu-latest
     permissions:
-      # Needed to force-push the rolling major tag
       contents: write
     env:
-      MAJOR_VERSION: ${{ github.event.inputs.major_version }}
-      TARGET: ${{ github.event.inputs.target }}
+      MAJOR_VERSION: ${{ inputs.major_version }}
+      TARGET: ${{ inputs.target }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true

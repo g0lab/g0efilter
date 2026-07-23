@@ -20,7 +20,7 @@ on:
       - 'scripts/test-ui.sh'
       - '.github/workflows/ci-ui.yaml'
 
-  workflow_dispatch: {}
+  workflow_dispatch:
 
   schedule:
     - cron: '0 3 * * *'
@@ -34,7 +34,7 @@ concurrency:
 
 jobs:
   ui:
-    name: UI (type-check, lint, build)
+    name: Type-check, lint, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -46,12 +46,12 @@ jobs:
         with:
           package_json_file: dashboard/ui/package.json
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
           cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
-      - name: Run UI test suite
+      - name: Test
         run: scripts/test-ui.sh

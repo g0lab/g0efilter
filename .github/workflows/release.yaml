@@ -12,19 +12,18 @@ concurrency:
 
 permissions:
   contents: write
-  id-token: write  # Required for OIDC signing with Cosign
+  id-token: write  # Cosign OIDC signing
 
 jobs:
   release:
     runs-on: ubuntu-latest
     environment: dockerhub
     timeout-minutes: 30
-    # Only release tags pushed to main branch
+    # Release only tags created from main.
     if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -35,26 +34,25 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      # GoReleaser's before-hooks build the dashboard UI (pnpm), so the release
-      # runner needs Node + pnpm just like the UI CI job.
+      # GoReleaser builds the dashboard UI in its before hook.
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
         with:
           package_json_file: dashboard/ui/package.json
 
-      - name: Set up Node.js
+      - name: Set up Node
         uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
           cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
-      - name: go mod tidy check
+      - name: Check Go modules
         run: |
           go mod tidy
           git diff --exit-code
 
-      - name: go vet
+      - name: Vet
         run: go vet ./...
 
       - name: Build dashboard UI
@@ -62,10 +60,10 @@ jobs:
           pnpm --dir dashboard/ui install --frozen-lockfile
           pnpm --dir dashboard/ui build
 
-      - name: Run tests
+      - name: Test
         run: go test -race -covermode=atomic -coverprofile=coverage.txt ./...
 
-      - name: Run golangci-lint
+      - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: latest
@@ -79,7 +77,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Also pushes cosign signatures to docker.io/g0lab/signatures (see .goreleaser.yaml).
       - name: Login to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -89,7 +86,7 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
 
-      - name: Run GoReleaser
+      - name: Release
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -102,16 +99,14 @@ jobs:
     name: Move major version tag
     needs: release
     runs-on: ubuntu-latest
-    # Prereleases (v1.0.0-rc1) must not move the rolling tag
+    # Do not move the rolling tag for prereleases.
     if: ${{ !contains(github.ref_name, '-') }}
     permissions:
-      # Needed to force-push the rolling major tag
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Move major tag to this release
+      - name: Move major tag
         run: |
           MAJOR="${GITHUB_REF_NAME%%.*}"
           git config user.name "github-actions[bot]"

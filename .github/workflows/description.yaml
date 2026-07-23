@@ -1,5 +1,5 @@
 ---
-name: Update Dockerhub Description
+name: Docker Hub Descriptions
 
 on:
   push:
@@ -22,14 +22,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Update Docker Hub description
+      - name: Update agent description
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter
 
-      - name: Update Docker Hub description
+      - name: Update dashboard description
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}

@@ -26,14 +26,12 @@ permissions:
   contents: read
 
 jobs:
-  # Build the images once and share them, so the parallel e2e jobs load a prebuilt
-  # image instead of each rebuilding it.
+  # Build once for the parallel E2E jobs.
   build:
-    name: build images
+    name: Build images
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
@@ -51,11 +49,9 @@ jobs:
           path: e2e-images.tar.gz
           retention-days: 1
 
-  # One scenario per runner, run in parallel. "shared" phases (01-07) share one
-  # baseline stack; each stack-recreating phase runs alone. skip_up=1 skips the
-  # baseline bring-up for scenarios whose phases recreate the stack themselves.
+  # Shared phases reuse a stack; isolated phases recreate it themselves.
   e2e:
-    name: e2e (${{ matrix.mode }} / ${{ matrix.scenario }})
+    name: E2E (${{ matrix.mode }} / ${{ matrix.scenario }})
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -79,8 +75,7 @@ jobs:
           - {mode: dns-strict, scenario: ip-allowlist, phases: '13', skip_up: '1'}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Compose
         uses: docker/setup-compose-action@v2
@@ -93,13 +88,13 @@ jobs:
       - name: Load images
         run: docker load -i e2e-images.tar.gz
 
-      - name: Set up pnpm for dashboard browser E2E
+      - name: Set up pnpm
         if: matrix.scenario == 'dashboard'
         uses: pnpm/action-setup@v6
         with:
           package_json_file: dashboard/ui/package.json
 
-      - name: Set up Node for dashboard browser E2E
+      - name: Set up Node
         if: matrix.scenario == 'dashboard'
         uses: actions/setup-node@v7
         with:
@@ -107,7 +102,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
-      - name: Install dashboard browser E2E dependencies
+      - name: Install browser dependencies
         if: matrix.scenario == 'dashboard'
         working-directory: dashboard/ui
         run: |
