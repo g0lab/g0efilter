@@ -86,6 +86,7 @@ func buildPayload(subnet string, dest demo.Destination, hostname string, seq int
 		payload["destination_ip"] = dest.IP
 		payload["destination_port"] = dest.Port
 		payload["dst"] = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+
 		if dest.Component == "http" {
 			payload["host"] = dest.Domain
 		} else {

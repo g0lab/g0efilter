@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Go test runner, used by CI and runnable locally:
 #   scripts/test-go.sh
-# Confirms go.mod/go.sum are tidy, vets, and runs the race-enabled suite with
-# coverage. Requires the Go toolchain. Lint is run separately (golangci-lint).
+# Confirms go.mod/go.sum are tidy, vets, runs the race-enabled suite with
+# coverage, and runs golangci-lint with the same arguments used by CI.
+# Requires the Go toolchain and golangci-lint.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -27,3 +28,9 @@ go vet ./...
 
 echo ">>> go test (race + coverage)"
 go test -race -covermode=atomic -coverprofile=coverage.txt ./...
+
+echo ">>> golangci-lint config verify"
+golangci-lint config verify
+
+echo ">>> golangci-lint"
+golangci-lint run --timeout=10m ./...

@@ -19,6 +19,8 @@ import (
 const (
 	defaultSeedCount = 10_000
 	maxSeedCount     = 100_000
+	demoVersion      = "v0.demo"
+	protocolTCP      = "TCP"
 )
 
 var errInvalidSeedConfig = errors.New("dev seed requires a database path and a count from 1 to 100000")
@@ -121,47 +123,53 @@ func buildEntries(count int, now time.Time, fixtures demo.Fixtures) []model.LogE
 		dest := fixtures.Destinations[(i*11)%len(fixtures.Destinations)]
 		client := fixtures.Clients[(i*3)%len(fixtures.Clients)]
 
-		sourceIP := fmt.Sprintf("%s.%d.%d", subnet, (i/250)%250, i%250+2)
-		sourcePort := 1024 + (i*37)%40_000
-		entry := model.LogEntry{
-			Time:       now.Add(-age),
-			Fields:     seedFields(dest, client),
-			Action:     dest.Verdict,
-			SourceIP:   sourceIP,
-			SourcePort: sourcePort,
-			FlowID:     fmt.Sprintf("dev-seed-%05d", i+1),
-			Hostname:   client,
-			Version:    "v0.demo",
-		}
-
-		switch dest.Component {
-		case "dns":
-			entry.Message = "dns." + strings.ToLower(dest.Verdict)
-			entry.HTTPS = dest.Domain
-			entry.Protocol = "UDP"
-		case "nflog":
-			entry.Message = "nflog.event"
-			entry.Protocol = "TCP"
-			entry.DestinationIP = dest.IP
-			entry.DestinationPort = dest.Port
-			entry.Src = fmt.Sprintf("%s:%d", sourceIP, sourcePort)
-			entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
-		default:
-			entry.Message = dest.Component + "." + strings.ToLower(dest.Verdict)
-			entry.Protocol = "TCP"
-			entry.HTTPS = dest.Domain
-			if dest.Component == "http" {
-				entry.HTTPHost = dest.Domain
-			}
-			entry.DestinationIP = dest.IP
-			entry.DestinationPort = dest.Port
-			entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
-		}
-
-		entries = append(entries, entry)
+		entries = append(entries, buildEntry(now.Add(-age), dest, client, subnet, i))
 	}
 
 	return entries
+}
+
+func buildEntry(at time.Time, dest demo.Destination, client, subnet string, index int) model.LogEntry {
+	sourceIP := fmt.Sprintf("%s.%d.%d", subnet, (index/250)%250, index%250+2)
+	sourcePort := 1024 + (index*37)%40_000
+	entry := model.LogEntry{
+		Time:       at,
+		Fields:     seedFields(dest, client),
+		Action:     dest.Verdict,
+		SourceIP:   sourceIP,
+		SourcePort: sourcePort,
+		FlowID:     fmt.Sprintf("dev-seed-%05d", index+1),
+		Hostname:   client,
+		Version:    demoVersion,
+	}
+
+	switch dest.Component {
+	case "dns":
+		entry.Message = "dns." + strings.ToLower(dest.Verdict)
+		entry.HTTPS = dest.Domain
+		entry.Protocol = "UDP"
+	case "nflog":
+		entry.Message = "nflog.event"
+		entry.Protocol = protocolTCP
+		entry.DestinationIP = dest.IP
+		entry.DestinationPort = dest.Port
+		entry.Src = fmt.Sprintf("%s:%d", sourceIP, sourcePort)
+		entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+	default:
+		entry.Message = dest.Component + "." + strings.ToLower(dest.Verdict)
+		entry.Protocol = protocolTCP
+		entry.HTTPS = dest.Domain
+
+		if dest.Component == "http" {
+			entry.HTTPHost = dest.Domain
+		}
+
+		entry.DestinationIP = dest.IP
+		entry.DestinationPort = dest.Port
+		entry.Dst = fmt.Sprintf("%s:%d", dest.IP, dest.Port)
+	}
+
+	return entry
 }
 
 func bandForPosition(bands []ageBand, index, count int) ageBand {
@@ -189,7 +197,7 @@ func seedFields(dest demo.Destination, client string) json.RawMessage {
 		values["qname"] = dest.Domain
 		values["qtype"] = "A"
 	case "nflog":
-		values["protocol"] = "TCP"
+		values["protocol"] = protocolTCP
 		values["destination_ip"] = dest.IP
 		values["destination_port"] = dest.Port
 	case "http":

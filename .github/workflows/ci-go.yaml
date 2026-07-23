@@ -81,9 +81,6 @@ jobs:
           pnpm --dir dashboard/ui install --frozen-lockfile
           pnpm --dir dashboard/ui build
 
-      - name: Run Go test suite
-        run: scripts/test-go.sh
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
@@ -91,6 +88,9 @@ jobs:
           args: >
             --timeout=10m
             ./...
+
+      - name: Run Go test suite
+        run: scripts/test-go.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7

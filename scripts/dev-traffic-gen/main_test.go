@@ -66,6 +66,7 @@ func TestBuildPayloadUsesComponentSpecificEventShape(t *testing.T) {
 	if dns["qname"] != "blocked.example" || dns["protocol"] != "UDP" {
 		t.Fatalf("DNS payload lacks query identity: %+v", dns)
 	}
+
 	for _, key := range []string{"http_host", "https", "destination_ip", "destination_port", "dst"} {
 		if _, ok := dns[key]; ok {
 			t.Errorf("DNS payload unexpectedly contains %q: %+v", key, dns)
@@ -79,6 +80,7 @@ func TestBuildPayloadUsesComponentSpecificEventShape(t *testing.T) {
 	if nflog["destination_ip"] != "192.0.2.30" || nflog["dst"] != "192.0.2.30:8443" {
 		t.Fatalf("NFLOG payload lacks packet destination: %+v", nflog)
 	}
+
 	for _, key := range []string{"http_host", "host", "https", "qname"} {
 		if _, ok := nflog[key]; ok {
 			t.Errorf("NFLOG payload unexpectedly contains %q: %+v", key, nflog)
