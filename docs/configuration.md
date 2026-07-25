@@ -43,6 +43,7 @@
 | `CONN_MAX_LIFETIME_MS` | Max connection lifetime in ms (a single deadline, not an idle timeout; `0` = none) | `600000` |
 | `PUID` | Drop to this uid at startup (`0` = run as root) | `65534` (nobody) |
 | `PGID` | Drop to this gid at startup | `65534` |
+| `ALLOW_ROOT_FALLBACK` | Fall back to running as root when the privilege drop fails; set `false` to fail closed instead | `true` |
 
 #### Running as a non-root user
 
@@ -54,6 +55,12 @@ set `PUID=0` to stay root.
 - `SETUID` and `SETGID` allow the startup privilege drop.
 - `CHOWN` makes the writable directories available to the runtime user.
 - Only `NET_ADMIN` is retained after startup.
+
+If the drop capabilities (`SETUID`/`SETGID`) are missing, the container falls
+back to running as root by default (with a warning). Set
+`ALLOW_ROOT_FALLBACK=false` to fail closed instead - more secure, but it stops
+containers that do not grant those capabilities from starting. `NET_ADMIN` is
+always required regardless of this setting.
 
 The image supports `read_only: true` and `no-new-privileges`. The dashboard
 image runs as uid 65532; its `/app/data` volume must be writable by that user.
