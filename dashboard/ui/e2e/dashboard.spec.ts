@@ -34,6 +34,7 @@ test('session dashboard renders and updates without browser errors', async ({ pa
         source_port: 51234,
         destination_ip: '7.7.7.7',
         destination_port: 443,
+        protocol: 'TCP',
       },
     });
     expect(aggregateResponse.status()).toBe(201);
@@ -82,6 +83,7 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   await expect(streamAggregateRow.getByRole('link', {
     name: 'Search 10.10.10.10 on VirusTotal',
   })).toHaveCount(0);
+  await expect(streamAggregateRow.getByRole('cell').nth(6)).toHaveText('TCP');
 
   await page.getByRole('button', { name: 'Aggregates' }).click();
   await expect(page.getByRole('heading', { name: 'Traffic over time' })).toBeVisible();
@@ -126,10 +128,13 @@ test('session dashboard renders and updates without browser errors', async ({ pa
       msg: 'browser-live-e2e',
       action: 'ALLOWED',
       hostname: browserHost,
+      protocol: 'UDP',
     },
   });
   expect(response.status()).toBe(201);
-  await expect(page.getByRole('row').filter({ hasText: browserHost })).toBeVisible();
+  const liveRow = page.getByRole('row').filter({ hasText: browserHost });
+  await expect(liveRow).toBeVisible();
+  await expect(liveRow.getByRole('cell').nth(6)).toHaveText('UDP');
 
   await page.getByRole('button', { name: 'Clear Logs', exact: true }).click();
   await page.getByRole('button', { name: 'Clear logs', exact: true }).click();

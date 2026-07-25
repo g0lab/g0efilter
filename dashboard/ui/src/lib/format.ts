@@ -82,6 +82,10 @@ export function versionOf(it: LogEntry): string {
   return sanitizeRemoteData(it.version || fields(it).version || '');
 }
 
+export function protoOf(it: LogEntry): string {
+  return sanitizeRemoteData(it.protocol || fields(it).protocol || '').toUpperCase();
+}
+
 export function whenOf(it: LogEntry): string {
   return it.time || it.ts || new Date().toISOString();
 }
@@ -97,7 +101,7 @@ export function matches(it: LogEntry, action: string, comp: string, query: strin
   const c = getComp(it);
   if (comp && c !== comp) return false;
   if (!query) return true;
-  const hay = [act, c, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), flowIdOf(it), versionOf(it)]
+  const hay = [act, c, hostOf(it), srcOf(it), dstOf(it), hostnameOf(it), flowIdOf(it), versionOf(it), protoOf(it)]
     .join(' ')
     .toLowerCase();
   return hay.indexOf(query) !== -1;
