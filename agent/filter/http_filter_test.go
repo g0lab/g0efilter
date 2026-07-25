@@ -4,9 +4,13 @@ package filter
 import (
 	"bufio"
 	"context"
+	"errors"
+	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -353,4 +357,380 @@ func TestGetDestinationInfo(t *testing.T) {
 func TestHandleAllowedHTTP(t *testing.T) {
 	t.Parallel()
 	t.Skip("requires real TCP connection with SO_ORIGINAL_DST; covered by integration tests")
+}
+
+func TestForwardHTTPRequestsBlocksLaterAuthority(t *testing.T) {
+	t.Parallel()
+
+	hosts := runForwardHTTP(t, []string{"allowed.example.com"},
+		"GET / HTTP/1.1\r\nHost: allowed.example.com\r\n\r\n"+
+			"GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n")
+
+	if len(hosts) != 1 || hosts[0] != "allowed.example.com" {
+		t.Fatalf("expected only the first authorised request to reach the backend, got %v", hosts)
+	}
+}
+
+func TestForwardHTTPRequestsAllowsRepeatedAuthority(t *testing.T) {
+	t.Parallel()
+
+	hosts := runForwardHTTP(t, []string{"allowed.example.com"},
+		"GET /a HTTP/1.1\r\nHost: allowed.example.com\r\n\r\n"+
+			"GET /b HTTP/1.1\r\nHost: allowed.example.com\r\n\r\n")
+
+	if len(hosts) != 2 {
+		t.Fatalf("expected both same-authority requests forwarded, got %v", hosts)
+	}
+}
+
+func TestForwardHTTPRequestsAllowsLaterAuthorityInAuditMode(t *testing.T) {
+	t.Parallel()
+
+	hosts := runForwardHTTPWithOptions(t, []string{"allowed.example.com"},
+		"GET / HTTP/1.1\r\nHost: allowed.example.com\r\n\r\n"+
+			"GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n",
+		Options{AuditMode: true},
+	)
+
+	if len(hosts) != 2 {
+		t.Fatalf("expected audit mode to forward both requests, got %v", hosts)
+	}
+}
+
+func TestForwardHTTPRequestsPreservesRequestBytes(t *testing.T) {
+	t.Parallel()
+
+	requests := "POST /submit HTTP/1.1\r\nhOsT: allowed.example.com\r\nX-Second: two\r\nx-first: one\r\n" +
+		"Content-Length: 4\r\n\r\nbody" +
+		"POST /chunked HTTP/1.1\r\nHost: allowed.example.com\r\nTransfer-Encoding: chunked\r\n\r\n" +
+		"4;ext=value\r\ndata\r\n0\r\nX-Trailer: kept\r\n\r\n"
+
+	if got := captureForwardedHTTP(t, requests); got != requests {
+		t.Fatalf("forwarded request bytes changed:\n got: %q\nwant: %q", got, requests)
+	}
+}
+
+const upgradeRequest = "GET /socket HTTP/1.1\r\nHost: allowed.example.com\r\n" +
+	"Connection: keep-alive, Upgrade\r\nUpgrade: websocket\r\n\r\n"
+
+func TestForwardHTTPRequestsSplicesAfterAcceptedUpgrade(t *testing.T) {
+	t.Parallel()
+
+	got := upgradeOutcome(t, upgradeRequest,
+		"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n",
+		"opaque bytes")
+
+	if want := upgradeRequest + "opaque bytes"; got != want {
+		t.Fatalf("upgraded stream bytes changed:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// A refused upgrade leaves the connection framed as HTTP, so filtering continues.
+func TestForwardHTTPRequestsKeepsFilteringWhenUpgradeRefused(t *testing.T) {
+	t.Parallel()
+
+	got := upgradeOutcome(t, upgradeRequest,
+		"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
+		"GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n")
+
+	if got != upgradeRequest {
+		t.Fatalf("blocked authority reached the backend after a refused upgrade: %q", got)
+	}
+}
+
+func TestForwardHTTPRequestsRejectsPipeliningBehindUpgrade(t *testing.T) {
+	t.Parallel()
+
+	got := upgradeOutcome(t,
+		upgradeRequest+"GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n",
+		"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n", "")
+
+	if got != upgradeRequest {
+		t.Fatalf("request smuggled behind the upgrade reached the backend: %q", got)
+	}
+}
+
+func TestRawHTTPRequestErrors(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := readRawHTTPRequestHead(bufio.NewReader(strings.NewReader("not HTTP\r\n\r\n")))
+	if err == nil {
+		t.Error("malformed request was accepted")
+	}
+
+	for _, chunk := range []string{"invalid\r\n", "-1\r\n"} {
+		_, err = parseChunkSize(chunk)
+		if err == nil {
+			t.Errorf("invalid chunk size %q was accepted", chunk)
+		}
+	}
+
+	var dst strings.Builder
+
+	err = copyRawChunkedBody(&dst, bufio.NewReader(strings.NewReader("1\r\naX\r\n")))
+	if !errors.Is(err, errInvalidChunkTerminator) {
+		t.Errorf("invalid chunk terminator returned %v", err)
+	}
+}
+
+func runForwardHTTP(t *testing.T, allow []string, requests string) []string {
+	t.Helper()
+
+	return runForwardHTTPWithOptions(t, allow, requests, Options{})
+}
+
+func runForwardHTTPWithOptions(t *testing.T, allow []string, requests string, opts Options) []string {
+	t.Helper()
+
+	backendConn, originConn := tcpPair(t)
+	proxyConn, clientConn := tcpPair(t)
+
+	go func() { _, _ = io.Copy(io.Discard, clientConn) }()
+
+	var (
+		mu    sync.Mutex
+		hosts []string
+	)
+
+	originDone := make(chan struct{})
+
+	go func() {
+		defer close(originDone)
+		defer func() { _ = originConn.Close() }()
+
+		obr := bufio.NewReader(originConn)
+
+		for {
+			req, err := http.ReadRequest(obr)
+			if err != nil {
+				return
+			}
+
+			mu.Lock()
+
+			hosts = append(hosts, req.Host)
+			mu.Unlock()
+
+			_, _ = io.WriteString(originConn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+		}
+	}()
+
+	opts.Logger = slog.New(slog.DiscardHandler)
+	br := bufio.NewReader(strings.NewReader(requests))
+
+	fdone := make(chan struct{})
+
+	go func() {
+		defer close(fdone)
+
+		forwardHTTPRequests(proxyConn, backendConn, nil, br, newMatcher(allow), "127.0.0.1:80", opts)
+	}()
+
+	select {
+	case <-fdone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("forwardHTTPRequests did not return")
+	}
+
+	<-originDone
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	return append([]string(nil), hosts...)
+}
+
+func captureForwardedHTTP(t *testing.T, requests string) string {
+	t.Helper()
+
+	backendConn, originConn := tcpPair(t)
+	proxyConn, clientConn := tcpPair(t)
+
+	go func() { _, _ = io.Copy(io.Discard, clientConn) }()
+
+	var forwarded string
+
+	originDone := make(chan struct{})
+
+	go func() {
+		defer close(originDone)
+
+		raw, _ := io.ReadAll(originConn)
+		forwarded = string(raw)
+		_ = originConn.Close()
+	}()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		forwardHTTPRequests(
+			proxyConn,
+			backendConn,
+			nil,
+			bufio.NewReader(strings.NewReader(requests)),
+			newMatcher([]string{"allowed.example.com"}),
+			"127.0.0.1:80",
+			Options{Logger: slog.New(slog.DiscardHandler)},
+		)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("forwardHTTPRequests did not return")
+	}
+
+	<-originDone
+
+	return forwarded
+}
+
+// byteRecorder collects bytes written from a test goroutine.
+type byteRecorder struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (r *byteRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return string(r.buf)
+}
+
+func (r *byteRecorder) record(b []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.buf = append(r.buf, b...)
+}
+
+// serveUpgradeOrigin plays the backend: record the request head, answer, record
+// whatever else is forwarded.
+func serveUpgradeOrigin(originConn net.Conn, response string, rec *byteRecorder, responded chan struct{}) {
+	defer func() { _ = originConn.Close() }()
+
+	obr := bufio.NewReader(originConn)
+
+	head, err := readRawHTTPHeadBytes(obr)
+	rec.record(head)
+
+	if err != nil {
+		close(responded)
+
+		return
+	}
+
+	_, _ = io.WriteString(originConn, response)
+
+	// Signalled before draining: the caller only closes the client stream once it
+	// sees this, and the drain below needs that close to reach EOF.
+	close(responded)
+
+	rest, _ := io.ReadAll(obr)
+	rec.record(rest)
+}
+
+// upgradeOutcome drives an upgrade request through the filter and returns the bytes
+// that reached the backend. followUp is written only after the backend has answered.
+func upgradeOutcome(t *testing.T, request, backendResponse, followUp string) string {
+	t.Helper()
+
+	backendConn, originConn := tcpPair(t)
+	proxyConn, clientConn := tcpPair(t)
+	srcConn, clientWriter := tcpPair(t)
+
+	go func() { _, _ = io.Copy(io.Discard, clientConn) }()
+
+	rec := &byteRecorder{} //nolint:exhaustruct // zero value is the empty buffer
+
+	responded := make(chan struct{})
+	originDone := make(chan struct{})
+
+	go func() {
+		defer close(originDone)
+
+		serveUpgradeOrigin(originConn, backendResponse, rec, responded)
+	}()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		forwardHTTPRequests(
+			proxyConn,
+			backendConn,
+			nil,
+			bufio.NewReader(srcConn),
+			newMatcher([]string{"allowed.example.com"}),
+			"127.0.0.1:80",
+			Options{Logger: slog.New(slog.DiscardHandler)},
+		)
+	}()
+
+	_, _ = io.WriteString(clientWriter, request)
+
+	<-responded
+
+	// Give the filter time to consume the verdict, so the follow-up is not
+	// mistaken for bytes pipelined behind the upgrade.
+	time.Sleep(250 * time.Millisecond)
+
+	if followUp != "" {
+		_, _ = io.WriteString(clientWriter, followUp)
+	}
+
+	_ = clientWriter.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("forwardHTTPRequests did not return")
+	}
+
+	<-originDone
+
+	return rec.String()
+}
+
+func tcpPair(t *testing.T) (net.Conn, net.Conn) {
+	t.Helper()
+
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = ln.Close() }()
+
+	type accepted struct {
+		conn net.Conn
+		err  error
+	}
+
+	ch := make(chan accepted, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		ch <- accepted{conn, err}
+	}()
+
+	var dialer net.Dialer
+
+	dialed, err := dialer.DialContext(context.Background(), "tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res := <-ch
+	if res.err != nil {
+		t.Fatal(res.err)
+	}
+
+	return dialed, res.conn
 }
