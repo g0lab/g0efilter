@@ -15,6 +15,22 @@ linters:
     - gomodguard  # Replaced by gomodguard_v2
   exclusions:
     rules:
+      - path: tests/e2e
+        linters:
+          # Shared stacks mutate policy and must remain serial.
+          - paralleltest
+          - tparallel
+          - thelper
+          - funlen
+          - gocognit
+          - cyclop
+      # Preserve external JSON field names.
+      - path: tests/e2e/internal/harness/(dashboard|load)\.go
+        linters:
+          - tagliatelle
+      - path: tests/e2e/internal/harness/.*_test\.go
+        linters:
+          - testpackage
       # Ent schema definitions are framework boilerplate (Fields/Edges/Indexes/
       # Annotations); the generated client is auto-excluded but the hand-written
       # schema and codegen entrypoint are not.

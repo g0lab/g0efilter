@@ -85,6 +85,17 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   })).toHaveCount(0);
   await expect(streamAggregateRow.getByRole('cell').nth(6)).toHaveText('TCP');
 
+  const unblockButton = streamAggregateRow.getByRole('button', {
+    name: 'Allow ' + aggregateHost,
+  });
+  await expect(unblockButton).toBeVisible();
+  await unblockButton.click();
+
+  const unblockDialog = page.getByRole('dialog');
+  await expect(unblockDialog.getByRole('heading', { name: 'Unblock domain' })).toBeVisible();
+  await unblockDialog.getByRole('button', { name: 'Queue unblock' }).click();
+  await expect(streamAggregateRow.getByText('Unblocked')).toBeVisible({ timeout: 15_000 });
+
   await page.getByRole('button', { name: 'Aggregates' }).click();
   await expect(page.getByRole('heading', { name: 'Traffic over time' })).toBeVisible();
   await page.getByLabel('Filter aggregates by host or IP').fill(aggregateHost);
