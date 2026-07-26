@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/netutil"
+	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/miekg/dns"
 )
@@ -139,14 +140,19 @@ func newIPAllowlist(entries []string) *ipAllowlist {
 			continue
 		}
 
-		_, ipnet, err := net.ParseCIDR(e)
+		rule, err := policy.ParseIPPortRule(e)
+		if err != nil {
+			continue
+		}
+
+		_, ipnet, err := net.ParseCIDR(rule.Addr)
 		if err == nil {
 			m.cidrs = append(m.cidrs, ipnet)
 
 			continue
 		}
 
-		if ip := net.ParseIP(e); ip != nil {
+		if ip := net.ParseIP(rule.Addr); ip != nil {
 			m.exact[ip.String()] = struct{}{}
 		}
 	}
@@ -801,7 +807,7 @@ func (handler *dnsHandler) reportResolvedIPs(lg *slog.Logger, resp *dns.Msg, qna
 		lg.Debug("dns.resolved_ips", "qname", qname, "ips", ips, "ttl", ttl)
 	}
 
-	handler.opts.OnResolved(ips, ttl)
+	handler.opts.OnResolved(ips, ttl, constraintsFor(qname, handler.opts.DomainRules))
 }
 
 // extractAnswerIPs collects the A/AAAA addresses in a DNS answer (CNAME-chased
