@@ -31,7 +31,7 @@ g0efilter dev container ready.
   Dev (seeded API/UI): scripts/dev.sh            (add --traffic for live data)
   Go tests           : scripts/test-go.sh        (or: go test ./...)
   UI tests/lint      : scripts/test-ui.sh
-  e2e (docker)       : scripts/e2e.sh            (FILTER_MODE=https)
+  e2e (docker)       : cd tests/e2e && go test -count=1 -parallel=1 ./...
   Go lint            : golangci-lint run ./...
   DB migration       : edit ent/schema, then scripts/gen-migration.sh <name>
   UI type-check/lint : cd dashboard/ui && pnpm check && pnpm lint

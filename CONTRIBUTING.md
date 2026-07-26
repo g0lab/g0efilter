@@ -34,12 +34,17 @@ scripts/test-action.sh
 scripts/test-ui.sh
 ```
 
-Run Docker end-to-end tests for filtering changes:
+Run the end-to-end tests for filtering changes. They need Docker:
 
 ```sh
-FILTER_MODE=https scripts/e2e.sh
-FILTER_MODE=dns scripts/e2e.sh
+cd tests/e2e
+E2E_FILTER_MODE=https      go test -count=1 -v -parallel=1 -timeout=35m ./...
+E2E_FILTER_MODE=dns        go test -count=1 -v -parallel=1 -timeout=35m ./...
+E2E_FILTER_MODE=dns-strict go test -count=1 -v -parallel=1 -timeout=35m ./...
 ```
+
+Images build automatically when missing; use `E2E_BUILD=force` after changing
+agent or dashboard code. See `tests/e2e/README.md` for modes and suite selection.
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.

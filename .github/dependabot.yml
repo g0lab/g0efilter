@@ -16,7 +16,9 @@ updates:
           - 'patch'
 
   - package-ecosystem: 'gomod'
-    directory: '/'
+    directories:
+      - '/'
+      - '/tests/e2e'
     groups:
       gomod:
         patterns:
