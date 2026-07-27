@@ -511,14 +511,12 @@ func TestReadRawHTTPHeadBytesCapsTheHead(t *testing.T) {
 	})
 }
 
-// neverEndingHeaders yields header lines forever.
 type neverEndingHeaders struct{}
 
 func (neverEndingHeaders) Read(p []byte) (int, error) {
 	return copy(p, strings.Repeat("X: y\r\n", len(p)/6+1)), nil
 }
 
-// endlessBytes yields a single line that never terminates.
 type endlessBytes struct{}
 
 func (endlessBytes) Read(p []byte) (int, error) {
