@@ -37,8 +37,10 @@ jobs:
       - name: Build images
         uses: docker/bake-action@v7
         with:
-          source: .
-          files: tests/e2e/compose.build.yaml
+          # bake resolves the compose file's relative context against the working
+          # directory, not the file's own location as docker compose does.
+          source: tests/e2e
+          files: compose.build.yaml
           load: true
           set: |
             g0efilter.cache-from=type=gha,scope=e2e-agent
