@@ -663,6 +663,7 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 		Logger:       lg,
 		DefaultAllow: effectiveDefaultAllow(cfg, pol),
 		Denylist:     pol.DenyDomains,
+		DenyIPs:      pol.DenyIPs,
 		AllowIPs:     pol.AllowIPs,
 		LearningMode: cfg.learningMode,
 		OnLearn:      learnFunc(cfg.learner),
