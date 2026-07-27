@@ -262,6 +262,14 @@ func connectAndSpliceHTTP(
 	conn net.Conn, host, target string, headBytes []byte, br *bufio.Reader,
 	allowlist *hostMatcher, parseErr error, opts Options,
 ) error {
+	if errors.Is(parseErr, errHTTPHeadTooLarge) {
+		if opts.Logger != nil {
+			opts.Logger.Debug("http.head_too_large", "host", host, "bytes", len(headBytes))
+		}
+
+		return nil
+	}
+
 	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
 		logdstConnDialError(opts, componentHTTP, conn, target, err)
@@ -471,18 +479,35 @@ func readRawHTTPRequestHead(br *bufio.Reader) (*http.Request, []byte, error) {
 	return req, head, nil
 }
 
+// maxHTTPHeadBytes bounds a single request or response head. Without it a peer
+// that never sends the terminating blank line grows the buffer until the
+// connection deadline, which defaults to ten minutes.
+const maxHTTPHeadBytes = 64 << 10
+
+// readRawHTTPHeadBytes accumulates the head verbatim. ReadSlice rather than
+// ReadString so a single endless header line is bounded too.
 func readRawHTTPHeadBytes(br *bufio.Reader) ([]byte, error) {
 	var head bytes.Buffer
 
 	for {
-		line, err := br.ReadString('\n')
-		head.WriteString(line)
+		chunk, err := br.ReadSlice('\n')
+
+		if head.Len()+len(chunk) > maxHTTPHeadBytes {
+			return head.Bytes(), errHTTPHeadTooLarge
+		}
+
+		head.Write(chunk)
+
+		// A partial line: the head is longer than bufio's buffer, not malformed.
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
+		}
 
 		if err != nil {
 			return head.Bytes(), fmt.Errorf("read HTTP request head: %w", err)
 		}
 
-		if line == "\r\n" || line == "\n" {
+		if string(chunk) == "\r\n" || string(chunk) == "\n" {
 			return head.Bytes(), nil
 		}
 	}
@@ -540,6 +565,7 @@ func copyRawChunkedBody(dst io.Writer, src *bufio.Reader) error {
 var (
 	errInvalidChunkSize       = errors.New("invalid HTTP chunk size")
 	errInvalidChunkTerminator = errors.New("invalid HTTP chunk terminator")
+	errHTTPHeadTooLarge       = errors.New("HTTP head exceeds the maximum size")
 )
 
 func parseChunkSize(line string) (int64, error) {

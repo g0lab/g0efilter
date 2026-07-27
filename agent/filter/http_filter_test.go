@@ -450,6 +450,85 @@ func TestForwardHTTPRequestsRejectsPipeliningBehindUpgrade(t *testing.T) {
 	}
 }
 
+// An endless head must be refused rather than buffered until the connection
+// deadline, which defaults to ten minutes.
+func TestReadRawHTTPHeadBytesCapsTheHead(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a head that never terminates is refused", func(t *testing.T) {
+		t.Parallel()
+
+		endless := io.MultiReader(
+			strings.NewReader("GET / HTTP/1.1\r\n"),
+			neverEndingHeaders{},
+		)
+
+		head, err := readRawHTTPHeadBytes(bufio.NewReader(endless))
+		if !errors.Is(err, errHTTPHeadTooLarge) {
+			t.Fatalf("err = %v, want errHTTPHeadTooLarge", err)
+		}
+
+		if len(head) > maxHTTPHeadBytes {
+			t.Errorf("buffered %d bytes, cap is %d", len(head), maxHTTPHeadBytes)
+		}
+	})
+
+	// ReadSlice, not ReadString: one unterminated line must be bounded too.
+	t.Run("a single endless line is refused", func(t *testing.T) {
+		t.Parallel()
+
+		line := io.MultiReader(
+			strings.NewReader("GET / HTTP/1.1\r\nX: "),
+			endlessBytes{},
+		)
+
+		head, err := readRawHTTPHeadBytes(bufio.NewReader(line))
+		if !errors.Is(err, errHTTPHeadTooLarge) {
+			t.Fatalf("err = %v, want errHTTPHeadTooLarge", err)
+		}
+
+		if len(head) > maxHTTPHeadBytes {
+			t.Errorf("buffered %d bytes, cap is %d", len(head), maxHTTPHeadBytes)
+		}
+	})
+
+	t.Run("a large but terminated head is accepted verbatim", func(t *testing.T) {
+		t.Parallel()
+
+		// Comfortably over bufio's 4096-byte buffer, so it exercises the
+		// ErrBufferFull path, but under the cap.
+		req := "GET / HTTP/1.1\r\nHost: a.example.com\r\nX-Big: " +
+			strings.Repeat("v", 20<<10) + "\r\n\r\n"
+
+		head, err := readRawHTTPHeadBytes(bufio.NewReader(strings.NewReader(req)))
+		if err != nil {
+			t.Fatalf("large but valid head rejected: %v", err)
+		}
+
+		if string(head) != req {
+			t.Errorf("head not preserved verbatim: got %d bytes, want %d", len(head), len(req))
+		}
+	})
+}
+
+// neverEndingHeaders yields header lines forever.
+type neverEndingHeaders struct{}
+
+func (neverEndingHeaders) Read(p []byte) (int, error) {
+	return copy(p, strings.Repeat("X: y\r\n", len(p)/6+1)), nil
+}
+
+// endlessBytes yields a single line that never terminates.
+type endlessBytes struct{}
+
+func (endlessBytes) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'v'
+	}
+
+	return len(p), nil
+}
+
 func TestRawHTTPRequestErrors(t *testing.T) {
 	t.Parallel()
 
