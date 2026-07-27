@@ -323,6 +323,8 @@ type Policy struct {
 	AllowDomains  []string
 	DenyIPs       []string
 	DenyDomains   []string
+	// AllowDomainRules preserves the constraints stripped from AllowDomains.
+	AllowDomainRules []DomainRule
 }
 
 // loadConfig reads and parses a YAML policy file with path validation.
@@ -401,15 +403,21 @@ func Read(file string) (*Policy, error) {
 
 	pol := &Policy{DefaultAction: defaultAction} //nolint:exhaustruct
 
-	pol.AllowIPs, pol.AllowDomains, err = validateLists(lg, file, cfg.AllowList)
+	pol.AllowIPs, pol.AllowDomainRules, err = validateLists(lg, file, cfg.AllowList, true)
 	if err != nil {
 		return nil, err
 	}
 
-	pol.DenyIPs, pol.DenyDomains, err = validateLists(lg, file, cfg.DenyList)
+	pol.AllowDomains = domainPatterns(pol.AllowDomainRules)
+
+	var denyRules []DomainRule
+
+	pol.DenyIPs, denyRules, err = validateLists(lg, file, cfg.DenyList, false)
 	if err != nil {
 		return nil, err
 	}
+
+	pol.DenyDomains = domainPatterns(denyRules)
 
 	lg.Debug("policy.read_ok",
 		"component", "policy",
@@ -436,13 +444,16 @@ func validateDefaultAction(action string) (string, error) {
 }
 
 // validateLists validates one allowlist/denylist section, returning nil slices when empty.
-func validateLists(lg *slog.Logger, source string, list AllowList) ([]string, []string, error) {
-	cleanIPs, err := validateIPs(lg, source, list.IPs)
+// Port constraints are accepted only on the allowlist.
+func validateLists(
+	lg *slog.Logger, source string, list AllowList, allowPortConstraints bool,
+) ([]string, []DomainRule, error) {
+	cleanIPs, err := validateIPs(lg, source, list.IPs, allowPortConstraints)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	cleanDomains, err := validateDomains(lg, source, list.Domains)
+	domainRules, err := validateDomains(lg, source, list.Domains, allowPortConstraints)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -451,11 +462,11 @@ func validateLists(lg *slog.Logger, source string, list AllowList) ([]string, []
 		cleanIPs = nil
 	}
 
-	if len(cleanDomains) == 0 {
-		cleanDomains = nil
+	if len(domainRules) == 0 {
+		domainRules = nil
 	}
 
-	return cleanIPs, cleanDomains, nil
+	return cleanIPs, domainRules, nil
 }
 
 func loadFromEnv(lg *slog.Logger, allowIPs, allowDomains, denyIPs, denyDomains string) (*Policy, error) {
@@ -463,21 +474,27 @@ func loadFromEnv(lg *slog.Logger, allowIPs, allowDomains, denyIPs, denyDomains s
 
 	var err error
 
-	pol.AllowIPs, pol.AllowDomains, err = validateLists(lg, "env:ALLOWLIST", AllowList{
+	pol.AllowIPs, pol.AllowDomainRules, err = validateLists(lg, "env:ALLOWLIST", AllowList{
 		IPs:     parseCommaSeparated(allowIPs),
 		Domains: parseCommaSeparated(allowDomains),
-	})
+	}, true)
 	if err != nil {
 		return nil, err
 	}
 
-	pol.DenyIPs, pol.DenyDomains, err = validateLists(lg, "env:DENYLIST", AllowList{
+	pol.AllowDomains = domainPatterns(pol.AllowDomainRules)
+
+	var denyRules []DomainRule
+
+	pol.DenyIPs, denyRules, err = validateLists(lg, "env:DENYLIST", AllowList{
 		IPs:     parseCommaSeparated(denyIPs),
 		Domains: parseCommaSeparated(denyDomains),
-	})
+	}, false)
 	if err != nil {
 		return nil, err
 	}
+
+	pol.DenyDomains = domainPatterns(denyRules)
 
 	lg.Debug("policy.read_ok",
 		"component", "policy",
@@ -509,7 +526,7 @@ func parseCommaSeparated(input string) []string {
 	return result
 }
 
-func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
+func validateIPs(lg *slog.Logger, file string, ips []string, allowPortConstraints bool) ([]string, error) {
 	cleanIPs := make([]string, 0, len(ips))
 
 	for _, ip := range ips {
@@ -518,7 +535,11 @@ func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
 			continue
 		}
 
-		err := validateIP(ip)
+		rule, err := ParseIPPortRule(ip)
+		if err == nil && rule.Constrained() && !allowPortConstraints {
+			err = fmt.Errorf("%w: %s", errPortOnDenylist, ip)
+		}
+
 		if err != nil {
 			lg.Error("policy.validation_error",
 				"component", "policy",
@@ -539,8 +560,8 @@ func validateIPs(lg *slog.Logger, file string, ips []string) ([]string, error) {
 	return cleanIPs, nil
 }
 
-func validateDomains(lg *slog.Logger, file string, domains []string) ([]string, error) {
-	cleanDomains := make([]string, 0, len(domains))
+func validateDomains(lg *slog.Logger, file string, domains []string, allowPortConstraints bool) ([]DomainRule, error) {
+	rules := make([]DomainRule, 0, len(domains))
 
 	for _, dom := range domains {
 		dom = strings.TrimSpace(dom)
@@ -548,7 +569,11 @@ func validateDomains(lg *slog.Logger, file string, domains []string) ([]string, 
 			continue
 		}
 
-		err := validateDomain(dom)
+		rule, err := ParseDomainRule(dom)
+		if err == nil && rule.Constrained() && !allowPortConstraints {
+			err = fmt.Errorf("%w: %s", errPortOnDenylist, dom)
+		}
+
 		if err != nil {
 			lg.Error("policy.validation_error",
 				"component", "policy",
@@ -561,12 +586,25 @@ func validateDomains(lg *slog.Logger, file string, domains []string) ([]string, 
 			return nil, fmt.Errorf("domain validation failed: %w", err)
 		}
 
-		lg.Debug("policy.domain_validated", "domain", dom)
+		lg.Debug("policy.domain_validated", "domain", rule.Pattern, "proto", rule.Proto, "port", rule.Port)
 
-		cleanDomains = append(cleanDomains, dom)
+		rules = append(rules, rule)
 	}
 
-	return cleanDomains, nil
+	return rules, nil
+}
+
+func domainPatterns(rules []DomainRule) []string {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	patterns := make([]string, 0, len(rules))
+	for _, r := range rules {
+		patterns = append(patterns, r.Pattern)
+	}
+
+	return patterns
 }
 
 // AppendDomain validates and appends a domain to the policy file's allowlist.
@@ -665,7 +703,7 @@ func marshalConfig(cfg Config) ([]byte, error) {
 
 func quoteStringValues(node *yaml.Node) {
 	switch node.Kind {
-	case yaml.DocumentNode, yaml.SequenceNode:
+	case yaml.StreamNode, yaml.DocumentNode, yaml.SequenceNode:
 		for _, child := range node.Content {
 			quoteStringValues(child)
 		}

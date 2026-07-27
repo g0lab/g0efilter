@@ -4,10 +4,14 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/textproto"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -68,7 +72,7 @@ func handleHTTP(conn net.Conn, allowlist *hostMatcher, opts Options) error {
 
 	maybeLearnHostBy(host, allowlist, opts)
 
-	return handleAllowedHTTP(conn, tc, host, headBytes, br, opts, !wasAudited)
+	return handleAllowedHTTP(conn, tc, host, headBytes, br, allowlist, parseErr, opts, !wasAudited)
 }
 
 func parseAndValidateHTTP(conn net.Conn, tc *net.TCPConn, opts Options) (string, []byte, *bufio.Reader, error) {
@@ -226,6 +230,8 @@ func handleAllowedHTTP(
 	host string,
 	headBytes []byte,
 	br *bufio.Reader,
+	allowlist *hostMatcher,
+	parseErr error,
 	opts Options,
 	logAllowed bool,
 ) error {
@@ -248,12 +254,13 @@ func handleAllowedHTTP(
 		logAllowedConnection(opts, componentHTTP, target, host, conn)
 	}
 
-	return connectAndSpliceHTTP(conn, host, target, headBytes, br, opts)
+	return connectAndSpliceHTTP(conn, host, target, headBytes, br, allowlist, parseErr, opts)
 }
 
-// connectAndSpliceHTTP dials the original destination, replays the parsed head, and splices.
+// connectAndSpliceHTTP dials the original destination and forwards the connection.
 func connectAndSpliceHTTP(
-	conn net.Conn, host, target string, headBytes []byte, br *bufio.Reader, opts Options,
+	conn net.Conn, host, target string, headBytes []byte, br *bufio.Reader,
+	allowlist *hostMatcher, parseErr error, opts Options,
 ) error {
 	backend, err := newDialerFromOptions(opts).Dial("tcp", target)
 	if err != nil {
@@ -274,49 +281,388 @@ func connectAndSpliceHTTP(
 
 	setConnTimeouts(conn, backend, opts)
 
-	if len(headBytes) > 0 {
-		_, writeErr := backend.Write(headBytes)
-		if writeErr != nil && opts.Logger != nil {
-			opts.Logger.Debug("http.backend_head_write_error", "err", writeErr.Error())
+	// Parse failed: we can't frame later requests, so replay the consumed bytes
+	// and raw-splice (only reached under default-allow/learning).
+	if parseErr != nil {
+		if len(headBytes) > 0 {
+			_, writeErr := backend.Write(headBytes)
+			if writeErr != nil && opts.Logger != nil {
+				opts.Logger.Debug("http.backend_head_write_error", "err", writeErr.Error())
+			}
+		}
+
+		bidirectionalCopyWithBufferedReader(conn, backend, br)
+
+		return nil
+	}
+
+	forwardHTTPRequests(conn, backend, headBytes, br, allowlist, target, opts)
+
+	return nil
+}
+
+// forwardHTTPRequests re-authorises the Host of every request on a persistent
+// connection so a keep-alive client cannot switch to an unpermitted authority
+// after the first request.
+func forwardHTTPRequests(
+	conn net.Conn, backend net.Conn, headBytes []byte, br *bufio.Reader,
+	allowlist *hostMatcher, target string, opts Options,
+) {
+	done := make(chan struct{})
+	upgraded := make(chan bool, 1)
+
+	go func() {
+		defer close(done)
+
+		relayResponses(conn, backend, upgraded)
+		closeWrite(conn)
+	}()
+
+	defer func() {
+		closeWrite(backend)
+
+		<-done
+	}()
+
+	// The first request head was already consumed for the initial decision, so
+	// prepend it to reconstruct the full client request stream.
+	reqReader := bufio.NewReader(io.MultiReader(bytes.NewReader(headBytes), br))
+
+	filterRequestStream(conn, backend, reqReader, br, allowlist, target, upgraded, opts)
+}
+
+// filterRequestStream relays each request on a persistent connection, applying
+// policy to every authority after the first.
+func filterRequestStream(
+	conn net.Conn, backend net.Conn, reqReader, br *bufio.Reader,
+	allowlist *hostMatcher, target string, upgraded <-chan bool, opts Options,
+) {
+	sourceIP, sourcePort := sourceAddr(conn)
+	destIP, destPort := parseHostPort(target)
+
+	first := true
+
+	for {
+		req, rawHead, err := readRawHTTPRequestHead(reqReader)
+		if err != nil {
+			return
+		}
+
+		host := validateAndSanitizeHost(normalizeHost(req.Host), sourceIP, sourcePort, opts)
+
+		wasFirst := first
+
+		// The first request was already authorised and logged by handleHTTP.
+		if !wasFirst && !authoriseForwardedRequest(conn, host, allowlist, destIP, destPort, opts) {
+			return
+		}
+
+		first = false
+
+		_, err = io.Copy(backend, bytes.NewReader(rawHead))
+		if err != nil {
+			return
+		}
+
+		err = copyRawHTTPRequestBody(backend, reqReader, req)
+		if err != nil {
+			return
+		}
+
+		if !isHTTPUpgrade(req) {
+			continue
+		}
+
+		if !tunnelUpgrade(wasFirst, reqReader, br, upgraded) {
+			return
+		}
+
+		_, _ = io.Copy(backend, reqReader)
+
+		return
+	}
+}
+
+func closeWrite(c net.Conn) {
+	if tc, ok := c.(*net.TCPConn); ok {
+		_ = tc.CloseWrite()
+	}
+}
+
+// tunnelUpgrade reports whether an upgrade request may take the stream off HTTP.
+// Splicing an upgrade the backend never accepted would hand the rest of the
+// connection through unchecked.
+func tunnelUpgrade(wasFirst bool, reqReader, br *bufio.Reader, upgraded <-chan bool) bool {
+	// A genuine upgrade is the first request, with nothing pipelined behind it.
+	if !wasFirst || reqReader.Buffered() > 0 || br.Buffered() > 0 {
+		return false
+	}
+
+	return <-upgraded
+}
+
+// relayResponses copies the backend's stream to the client, reporting on upgraded
+// whether the first final response was a 101. Only heads up to that verdict are
+// parsed; the rest is copied off the bare conn so it stays splice-eligible.
+func relayResponses(conn net.Conn, backend net.Conn, upgraded chan<- bool) {
+	br := bufio.NewReader(backend)
+
+	accepted := false
+
+	// upgraded is buffered, so the verdict lands even if the request loop is gone.
+	defer func() {
+		upgraded <- accepted
+
+		if n := br.Buffered(); n > 0 {
+			_, err := io.CopyN(conn, br, int64(n))
+			if err != nil {
+				return
+			}
+		}
+
+		_, _ = io.Copy(conn, backend)
+	}()
+
+	for {
+		head, err := readRawHTTPHeadBytes(br)
+
+		if len(head) > 0 {
+			_, writeErr := conn.Write(head)
+			if writeErr != nil {
+				return
+			}
+		}
+
+		if err != nil {
+			return
+		}
+
+		resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(head)), nil)
+		if err != nil {
+			return
+		}
+
+		_ = resp.Body.Close()
+
+		if resp.StatusCode == http.StatusSwitchingProtocols {
+			accepted = true
+
+			return
+		}
+
+		// A 1xx other than 101 is interim: the final response is still to come.
+		if resp.StatusCode >= http.StatusOK {
+			return
+		}
+	}
+}
+
+func readRawHTTPRequestHead(br *bufio.Reader) (*http.Request, []byte, error) {
+	head, err := readRawHTTPHeadBytes(br)
+	if err != nil {
+		return nil, head, err
+	}
+
+	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(head)))
+	if err != nil {
+		return nil, head, fmt.Errorf("parse HTTP request: %w", err)
+	}
+
+	return req, head, nil
+}
+
+func readRawHTTPHeadBytes(br *bufio.Reader) ([]byte, error) {
+	var head bytes.Buffer
+
+	for {
+		line, err := br.ReadString('\n')
+		head.WriteString(line)
+
+		if err != nil {
+			return head.Bytes(), fmt.Errorf("read HTTP request head: %w", err)
+		}
+
+		if line == "\r\n" || line == "\n" {
+			return head.Bytes(), nil
+		}
+	}
+}
+
+func copyRawHTTPRequestBody(dst io.Writer, src *bufio.Reader, req *http.Request) error {
+	if slices.Contains(req.TransferEncoding, "chunked") {
+		return copyRawChunkedBody(dst, src)
+	}
+
+	if req.ContentLength <= 0 {
+		return nil
+	}
+
+	_, err := io.CopyN(dst, src, req.ContentLength)
+	if err != nil {
+		return fmt.Errorf("copy HTTP request body: %w", err)
+	}
+
+	return nil
+}
+
+func copyRawChunkedBody(dst io.Writer, src *bufio.Reader) error {
+	for {
+		line, err := copyRawLine(dst, src)
+		if err != nil {
+			return err
+		}
+
+		size, err := parseChunkSize(line)
+		if err != nil {
+			return err
+		}
+
+		if size == 0 {
+			return copyRawTrailers(dst, src)
+		}
+
+		_, err = io.CopyN(dst, src, size)
+		if err != nil {
+			return fmt.Errorf("copy HTTP chunk: %w", err)
+		}
+
+		line, err = copyRawLine(dst, src)
+		if err != nil {
+			return err
+		}
+
+		if line != "\r\n" && line != "\n" {
+			return errInvalidChunkTerminator
+		}
+	}
+}
+
+var (
+	errInvalidChunkSize       = errors.New("invalid HTTP chunk size")
+	errInvalidChunkTerminator = errors.New("invalid HTTP chunk terminator")
+)
+
+func parseChunkSize(line string) (int64, error) {
+	sizeText, _, _ := strings.Cut(strings.TrimSpace(line), ";")
+
+	size, err := strconv.ParseInt(sizeText, 16, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse HTTP chunk size: %w", err)
+	}
+
+	if size < 0 {
+		return 0, errInvalidChunkSize
+	}
+
+	return size, nil
+}
+
+func copyRawTrailers(dst io.Writer, src *bufio.Reader) error {
+	for {
+		line, err := copyRawLine(dst, src)
+		if err != nil {
+			return err
+		}
+
+		if line == "\r\n" || line == "\n" {
+			return nil
+		}
+	}
+}
+
+func copyRawLine(dst io.Writer, src *bufio.Reader) (string, error) {
+	line, err := src.ReadString('\n')
+	if len(line) > 0 {
+		_, writeErr := io.WriteString(dst, line)
+		if writeErr != nil {
+			return line, fmt.Errorf("write raw HTTP line: %w", writeErr)
 		}
 	}
 
-	// For splice optimization: if br has buffered data, copy it first,
-	// then copy directly from conn to enable splice(2) on Linux
-	bidirectionalCopyWithBufferedReader(conn, backend, br)
+	if err != nil {
+		return line, fmt.Errorf("read raw HTTP line: %w", err)
+	}
 
-	return nil
+	return line, nil
+}
+
+// authoriseForwardedRequest applies policy to a later request on a persistent
+// connection. It returns false when forwarding must stop (blocked, not audit).
+func authoriseForwardedRequest(
+	conn net.Conn, host string, allowlist *hostMatcher, destIP string, destPort int, opts Options,
+) bool {
+	permitted := hostPermittedBy(host, allowlist, opts)
+	reason := httpViolationReason(host, nil, opts)
+
+	switch {
+	case permitted:
+		if opts.Logger != nil {
+			logAllowedConnection(opts, componentHTTP, net.JoinHostPort(destIP, strconv.Itoa(destPort)), host, conn)
+		}
+
+		maybeLearnHostBy(host, allowlist, opts)
+	case audited(permitted, opts):
+		logAuditedConnection(opts, componentHTTP, reason, host, conn, destIP, destPort)
+	default:
+		logBlockedConnection(opts, componentHTTP, reason, host, conn, destIP, destPort)
+
+		return false
+	}
+
+	return true
+}
+
+// isHTTPUpgrade reports whether a request switches the connection off HTTP/1.1
+// (CONNECT tunnels or Connection: Upgrade, e.g. WebSocket).
+func isHTTPUpgrade(req *http.Request) bool {
+	if req.Method == http.MethodConnect {
+		return true
+	}
+
+	for v := range strings.SplitSeq(req.Header.Get("Connection"), ",") {
+		if strings.EqualFold(strings.TrimSpace(v), "upgrade") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // readHeadWithTextproto parses HTTP headers and returns normalized host and raw bytes.
 // Consumed bytes are returned even on parse error so the connection can still be
 // forwarded under default-allow/learning mode.
 func readHeadWithTextproto(br *bufio.Reader) (string, []byte, error) {
-	var buf bytes.Buffer
-
-	tr := io.TeeReader(br, &buf)
-	tp := textproto.NewReader(bufio.NewReader(tr))
-
-	_, err := tp.ReadLine()
+	head, err := readRawHTTPHeadBytes(br)
 	if err != nil {
-		return "", buf.Bytes(), fmt.Errorf("read request line: %w", err)
+		return "", head, err
+	}
+
+	tp := textproto.NewReader(bufio.NewReader(bytes.NewReader(head)))
+
+	_, err = tp.ReadLine()
+	if err != nil {
+		return "", head, fmt.Errorf("read request line: %w", err)
 	}
 
 	mh, err := tp.ReadMIMEHeader()
 	if err != nil {
-		return "", buf.Bytes(), fmt.Errorf("read MIME header: %w", err)
+		return "", head, fmt.Errorf("read MIME header: %w", err)
 	}
 
-	host := mh.Get("Host")
-	if host != "" {
-		// Strip port for allowlist checking
-		h, _, err := net.SplitHostPort(host)
-		if err == nil {
-			host = h
-		}
+	return normalizeHost(mh.Get("Host")), head, nil
+}
 
-		host = strings.TrimSuffix(strings.ToLower(host), ".")
+// normalizeHost strips any port, lowercases, and trims a trailing dot so the
+// value can be matched against the allowlist.
+func normalizeHost(host string) string {
+	if host == "" {
+		return ""
 	}
 
-	return host, buf.Bytes(), nil
+	h, _, err := net.SplitHostPort(host)
+	if err == nil {
+		host = h
+	}
+
+	return strings.TrimSuffix(strings.ToLower(host), ".")
 }

@@ -50,12 +50,13 @@ const (
 )
 
 var (
-	errPortConflict         = errors.New("port conflict detected")
-	errPolicyPathEmpty      = errors.New("policy path is empty")
-	errUnknownUnblockType   = errors.New("unknown unblock type")
-	errAckFailed            = errors.New("unblock acknowledgment failed")
-	errUnexpectedHTTPStatus = errors.New("unexpected HTTP status")
-	errInodeLinked          = errors.New("inode still linked")
+	errPortConflict                = errors.New("port conflict detected")
+	errUnsupportedDomainConstraint = errors.New("unsupported domain port constraint")
+	errPolicyPathEmpty             = errors.New("policy path is empty")
+	errUnknownUnblockType          = errors.New("unknown unblock type")
+	errAckFailed                   = errors.New("unblock acknowledgment failed")
+	errUnexpectedHTTPStatus        = errors.New("unexpected HTTP status")
+	errInodeLinked                 = errors.New("inode still linked")
 )
 
 type policyUpdate struct {
@@ -529,6 +530,37 @@ func validatePorts(cfg config, lg *slog.Logger) error {
 	return nil
 }
 
+// checkDomainConstraints rejects protocol/port-constrained domain entries in any
+// configuration that cannot enforce them, rather than accepting a policy that is
+// quietly wider than it reads. Only dns-strict has a default-deny filter chain and
+// a resolved set to place the constrained elements in; under default-allow or
+// learning mode even dns-strict degrades to a permissive ruleset.
+func checkDomainConstraints(pol *policy.Policy, cfg config, defaultAllow bool) error {
+	constrained := make([]string, 0)
+
+	for _, rule := range pol.AllowDomainRules {
+		if rule.Constrained() {
+			constrained = append(constrained, rule.Pattern)
+		}
+	}
+
+	if len(constrained) == 0 {
+		return nil
+	}
+
+	if cfg.mode != actions.ModeDNSStrict {
+		return fmt.Errorf("%w: %v require dns-strict mode (got %s)",
+			errUnsupportedDomainConstraint, constrained, cfg.mode)
+	}
+
+	if defaultAllow || cfg.learningMode {
+		return fmt.Errorf("%w: %v cannot be enforced under default_action=allow or learning mode",
+			errUnsupportedDomainConstraint, constrained)
+	}
+
+	return nil
+}
+
 func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*policy.Policy, error) {
 	pol, err := policy.Read(cfg.policyPath)
 	if err != nil {
@@ -554,6 +586,13 @@ func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*poli
 	if !defaultAllow && !cfg.learningMode && (len(pol.DenyIPs) > 0 || len(pol.DenyDomains) > 0) {
 		lg.Warn("policy.denylist_ignored",
 			"reason", "default_action is deny; denylist only applies with default_action: allow")
+	}
+
+	err = checkDomainConstraints(pol, cfg, defaultAllow)
+	if err != nil {
+		lg.Error("policy.unsupported_domain_port_constraint", "mode", cfg.mode, "err", err)
+
+		return nil, err
 	}
 
 	rules := nftables.PolicyRules{
@@ -639,6 +678,7 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 	}
 
 	if cfg.mode == actions.ModeDNSStrict {
+		opts.DomainRules = pol.AllowDomainRules
 		opts.OnResolved = strictResolvedHook(ctx, opts, lg)
 	}
 
@@ -658,7 +698,7 @@ func strictResolvedHook(
 	ctx context.Context,
 	opts filter.Options,
 	lg *slog.Logger,
-) func(ips []string, ttl uint32) {
+) func(ips []string, ttl uint32, rules []policy.DomainRule) {
 	if opts.DefaultAllow || opts.LearningMode {
 		lg.Warn("dns_strict.degraded",
 			"reason", "default_action=allow or learning mode active; connection-time enforcement disabled",
@@ -668,8 +708,8 @@ func strictResolvedHook(
 		return nil
 	}
 
-	return func(ips []string, ttl uint32) {
-		err := nftables.AddResolvedIPs(ctx, ips, time.Duration(ttl)*time.Second)
+	return func(ips []string, ttl uint32, rules []policy.DomainRule) {
+		err := nftables.AddResolvedIPs(ctx, ips, time.Duration(ttl)*time.Second, rules)
 		if err != nil {
 			lg.Warn("dns_strict.set_update_failed", "ips", ips, "err", err)
 		}

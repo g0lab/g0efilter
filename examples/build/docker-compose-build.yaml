@@ -1,10 +1,16 @@
+# Build g0efilter and the dashboard from source, rather than pulling the
+# published images. Settings come from ../.env and ../.env.dashboard.
+#
+#   docker compose -f examples/build/docker-compose-build.yaml up --build
+#
+# For the published images and a fuller walkthrough, see the other examples in
+# this directory and ../../docs/.
 services:
   g0efilter:
     build:
       context: ../..
       dockerfile: examples/build/Dockerfile
-    # CI builds this tag once and reuses it across e2e jobs.
-    image: g0efilter:e2e
+    image: g0efilter:latest
     container_name: g0efilter
     ports:
       - '127.0.0.1:8081:8081'
@@ -17,20 +23,11 @@ services:
     read_only: true
     env_file:
       - ../.env
-    environment:
-      FILTER_MODE: ${FILTER_MODE:-https}
-      DEFAULT_ACTION: ${DEFAULT_ACTION:-deny}
-      LEARNING_MODE: ${LEARNING_MODE:-false}
-      ENFORCE: ${ENFORCE:-block}
-      PROCESS_INFO: ${PROCESS_INFO:-false}
-      LOG_LEVEL: DEBUG
-      # Required by remote-unblock e2e phases.
-      HOSTNAME: host-01
-      ENABLE_REMOTE_UNBLOCK: 'true'
-      UNBLOCK_POLL_INTERVAL: 2s
     cap_add:
       - NET_ADMIN
 
+  # Gives the dashboard's non-root user ownership of its data volume before it
+  # starts. Runs once and exits.
   dashboard-data-init:
     image: alpine:3.23
     command: ['chown', '-R', '65532:65532', '/app/data']
@@ -48,7 +45,7 @@ services:
     build:
       context: ../..
       dockerfile: examples/build/Dockerfile.dashboard
-    image: g0efilter-dashboard:e2e
+    image: g0efilter-dashboard:latest
     container_name: g0efilter-dashboard
     cap_drop:
       - ALL
@@ -60,26 +57,10 @@ services:
         condition: service_completed_successfully
     env_file:
       - ../.env.dashboard
-    environment:
-      # Dashboard tests override these values when needed.
-      AUTH_MODE: ${DASHBOARD_AUTH_MODE:-none}
-      ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD_HASH: ${DASHBOARD_ADMIN_PASSWORD_HASH:-}
-      COOKIE_SECURE: ${DASHBOARD_COOKIE_SECURE:-true}
-      DB_PATH: ${DASHBOARD_DB_PATH:-/app/data/dashboard.db}
-      EPHEMERAL: ${DASHBOARD_EPHEMERAL:-false}
-      FLEET_ENABLED: ${DASHBOARD_FLEET_ENABLED:-false}
-      CORS_ALLOWED_ORIGINS: ${DASHBOARD_CORS_ALLOWED_ORIGINS:-}
     volumes:
       - dashboard-data:/app/data
-    network_mode: 'service:g0efilter'
-
-  tester:
-    image: alpine/curl:latest
-    container_name: tester
-    command: 'sh -c "sleep infinity"'
-    depends_on:
-      - g0efilter
+    # The dashboard shares the agent's network namespace, so it is reached on the
+    # port the agent publishes above.
     network_mode: 'service:g0efilter'
 
 volumes:

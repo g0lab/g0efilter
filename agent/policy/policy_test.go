@@ -574,7 +574,7 @@ func TestValidateIPs(t *testing.T) {
 				testData = []string{}
 			}
 
-			result, err := validateIPs(slog.Default(), "test.yaml", testData)
+			result, err := validateIPs(slog.Default(), "test.yaml", testData, true)
 			validateSliceResult(t, "validateIPs", result, err, tt.wantErr, tt.expected)
 		})
 	}
@@ -602,7 +602,8 @@ func TestValidateDomains(t *testing.T) {
 				testData = []string{}
 			}
 
-			result, err := validateDomains(slog.Default(), "test.yaml", testData)
+			rules, err := validateDomains(slog.Default(), "test.yaml", testData, true)
+			result := domainPatterns(rules)
 			validateSliceResult(t, "validateDomains", result, err, tt.wantErr, tt.expected)
 		})
 	}

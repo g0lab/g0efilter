@@ -3,7 +3,7 @@
   import { app, setRange, aggregateFor } from './lib/state.svelte';
   import {
     sanitizeInput, getAction, getComp, hostOf, srcOf, dstOf,
-    hostnameOf, flowIdOf, versionOf, whenOf, cleanIP,
+    hostnameOf, flowIdOf, versionOf, protoOf, whenOf, cleanIP,
   } from './lib/format';
   import LookupActions from './LookupActions.svelte';
   import type { LogEntry, BrowseResponse } from './lib/types';
@@ -131,12 +131,12 @@
       <table class="table">
         <colgroup>
           <col class="c-action"/><col class="c-filter"/>
-          <col class="c-host"/><col class="c-src"/><col class="c-dst"/>
+          <col class="c-host"/><col class="c-src"/><col class="c-dst"/><col class="c-proto"/>
           <col class="c-client"/><col class="c-flow"/><col class="c-ver"/><col class="c-time"/>
         </colgroup>
         <thead>
           <tr>
-            <th>Action</th><th>Filter</th><th>Host</th><th>Src</th><th>Dst</th>
+            <th>Action</th><th>Filter</th><th>Host</th><th>Src</th><th>Dst</th><th>Proto</th>
             <th>Client</th><th>Flow ID</th><th>Version</th><th>Time</th>
           </tr>
         </thead>
@@ -157,6 +157,7 @@
                   activateLabel="Aggregate {dstKey(it)}"
                   onactivate={() => aggregateFor(dstKey(it), { range: app.range, dimension: 'ip' })}/>
               </td>
+              <td>{protoOf(it)}</td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
               <td class="mono">{versionOf(it)}</td>

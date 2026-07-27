@@ -28,6 +28,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter
+          enable-url-completion: true
 
       - name: Update dashboard description
         uses: peter-evans/dockerhub-description@v5
@@ -35,3 +36,4 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter-dashboard
+          enable-url-completion: true

@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/miekg/dns"
 )
 
@@ -83,7 +84,7 @@ func TestReportResolvedIPsInvokesHook(t *testing.T) {
 
 	h := &dnsHandler{
 		opts: Options{
-			OnResolved: func(ips []string, ttl uint32) {
+			OnResolved: func(ips []string, ttl uint32, _ []policy.DomainRule) {
 				gotIPs = ips
 				gotTTL = ttl
 			},
@@ -110,7 +111,7 @@ func TestReportResolvedIPsNilHookAndEmptyAnswer(t *testing.T) {
 
 	// hook must not fire for answers with no addresses
 	called := false
-	h2 := &dnsHandler{opts: Options{OnResolved: func(_ []string, _ uint32) { called = true }}}
+	h2 := &dnsHandler{opts: Options{OnResolved: func(_ []string, _ uint32, _ []policy.DomainRule) { called = true }}}
 	h2.reportResolvedIPs(nil, new(dns.Msg), "example.com")
 
 	if called {

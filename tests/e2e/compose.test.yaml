@@ -1,0 +1,76 @@
+services:
+  g0efilter:
+    image: ${G0EFILTER_IMAGE:-g0efilter:test}
+    ports:
+      - '8081'
+    volumes:
+      - '${E2E_POLICY_DIR}:/app/policy/'
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    environment:
+      FILTER_MODE: ${FILTER_MODE:-https}
+      DEFAULT_ACTION: ${DEFAULT_ACTION:-deny}
+      LEARNING_MODE: ${LEARNING_MODE:-false}
+      ENFORCE: ${ENFORCE:-block}
+      PROCESS_INFO: ${PROCESS_INFO:-false}
+      LOG_LEVEL: DEBUG
+      # Required by remote-unblock e2e phases.
+      HOSTNAME: host-01
+      ENABLE_REMOTE_UNBLOCK: 'true'
+      UNBLOCK_POLL_INTERVAL: 2s
+      POLICY_PATH: /app/policy/policy.yaml
+      DASHBOARD_HOST: http://127.0.0.1:8081
+      DASHBOARD_API_KEY: ${API_KEY:-your-secure-api-key-here}
+    cap_add:
+      - NET_ADMIN
+
+  dashboard-data-init:
+    image: alpine:3.23
+    command: ['chown', '-R', '65532:65532', '/app/data']
+    user: '0:0'
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    security_opt:
+      - no-new-privileges
+    volumes:
+      - dashboard-data:/app/data
+
+  g0efilter-dashboard:
+    image: ${G0EFILTER_DASHBOARD_IMAGE:-g0efilter-dashboard:test}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    depends_on:
+      dashboard-data-init:
+        condition: service_completed_successfully
+    environment:
+      API_KEY: ${API_KEY:-your-secure-api-key-here}
+      LOG_LEVEL: DEBUG
+      AUTH_MODE: ${DASHBOARD_AUTH_MODE:-none}
+      ADMIN_USERNAME: ${DASHBOARD_ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${DASHBOARD_ADMIN_PASSWORD_HASH:-}
+      COOKIE_SECURE: ${DASHBOARD_COOKIE_SECURE:-true}
+      DB_PATH: ${DASHBOARD_DB_PATH:-/app/data/dashboard.db}
+      EPHEMERAL: ${DASHBOARD_EPHEMERAL:-false}
+      FLEET_ENABLED: ${DASHBOARD_FLEET_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${DASHBOARD_CORS_ALLOWED_ORIGINS:-}
+    volumes:
+      - dashboard-data:/app/data
+    network_mode: 'service:g0efilter'
+
+  tester:
+    image: ${E2E_TESTER_IMAGE:-alpine/curl:latest}
+    command: 'sh -c "sleep infinity"'
+    depends_on:
+      - g0efilter
+    network_mode: 'service:g0efilter'
+
+volumes:
+  dashboard-data:

@@ -7,7 +7,7 @@
   import LookupActions from './LookupActions.svelte';
   import {
     getAction, getComp, hostOf, srcOf, dstOf, hostnameOf, flowIdOf, versionOf,
-    whenOf, matches, unblockIPOf, cleanIP,
+    protoOf, whenOf, matches, unblockIPOf, cleanIP,
   } from './lib/format';
   import type { LogEntry } from './lib/types';
 
@@ -20,7 +20,6 @@
 
   /* Unblock status per row: 'done' > 'pending' > offer, or null. */
   function unblockState(it: LogEntry): UnblockView {
-    if (DEMO) return null;
     const act = getAction(it);
     if (act !== 'BLOCKED' && act !== 'AUDIT') return null;
 
@@ -52,7 +51,9 @@
       });
       if (res.ok) {
         toast('Unblock queued: ' + value + ' (' + (targetHostname || 'all hosts') + ')', 'ok');
-        pendingUnblocks.add(value.toLowerCase() + '\0' + (targetHostname || '').toLowerCase());
+        const key = value.toLowerCase() + '\0' + (targetHostname || '').toLowerCase();
+        if (DEMO) completedUnblocks.add(key);
+        else pendingUnblocks.add(key);
       } else {
         const err = await res.json();
         toast('Failed to queue unblock: ' + (err.error || 'error'), 'err');
@@ -82,12 +83,12 @@
       <table class="table">
         <colgroup>
           <col class="c-action"/><col class="c-unblock"/><col class="c-filter"/>
-          <col class="c-host"/><col class="c-src"/><col class="c-dst"/>
+          <col class="c-host"/><col class="c-src"/><col class="c-dst"/><col class="c-proto"/>
           <col class="c-client"/><col class="c-flow"/><col class="c-ver"/><col class="c-time"/>
         </colgroup>
         <thead>
           <tr>
-            <th>Action</th><th></th><th>Filter</th><th>Host</th><th>Src</th><th>Dst</th>
+            <th>Action</th><th></th><th>Filter</th><th>Host</th><th>Src</th><th>Dst</th><th>Proto</th>
             <th>Client</th><th>Flow ID</th><th>Version</th><th>Time</th>
           </tr>
         </thead>
@@ -122,6 +123,7 @@
                   activateLabel="Search {it.destination_ip || cleanIP(dst)}"
                   onactivate={() => searchFor(it.destination_ip || cleanIP(dst), { range: app.range })}/>
               </td>
+              <td>{protoOf(it)}</td>
               <td>{hostnameOf(it)}</td>
               <td class="mono">{flowIdOf(it)}</td>
               <td class="mono">{versionOf(it)}</td>

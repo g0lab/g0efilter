@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/g0lab/g0efilter/agent/filter"
+	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/shared/actions"
 )
 
 //nolint:exhaustruct
@@ -53,5 +55,41 @@ func TestStrictResolvedHookDegradesWhenPermissive(t *testing.T) {
 
 	if hook := strictResolvedHook(ctx, filter.Options{}, discardLogger()); hook == nil {
 		t.Error("default-deny non-learning must enable the strict hook")
+	}
+}
+
+//nolint:exhaustruct
+func TestCheckDomainConstraints(t *testing.T) {
+	t.Parallel()
+
+	constrained := &policy.Policy{AllowDomainRules: []policy.DomainRule{
+		{Pattern: "example.com", Proto: "tcp", Port: 443},
+	}}
+	plain := &policy.Policy{AllowDomainRules: []policy.DomainRule{{Pattern: "example.com"}}}
+
+	tests := []struct {
+		name         string
+		pol          *policy.Policy
+		cfg          config
+		defaultAllow bool
+		wantErr      bool
+	}{
+		{"dns-strict enforces", constrained, config{mode: actions.ModeDNSStrict}, false, false},
+		{"https cannot enforce", constrained, config{mode: actions.ModeHTTPS}, false, true},
+		{"dns cannot enforce", constrained, config{mode: actions.ModeDNS}, false, true},
+		{"default-allow degrades", constrained, config{mode: actions.ModeDNSStrict}, true, true},
+		{"learning degrades", constrained, config{mode: actions.ModeDNSStrict, learningMode: true}, false, true},
+		{"unconstrained is fine anywhere", plain, config{mode: actions.ModeHTTPS}, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkDomainConstraints(tt.pol, tt.cfg, tt.defaultAllow)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkDomainConstraints = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
 	}
 }

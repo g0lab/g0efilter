@@ -93,6 +93,31 @@ func TestIPAllowlistEmpty(t *testing.T) {
 	}
 }
 
+func TestIPAllowlistStripsPortConstraints(t *testing.T) {
+	t.Parallel()
+
+	m := newIPAllowlist([]string{
+		"tcp/40.89.244.232:443",
+		"udp/[2001:db8::/32]:53",
+	})
+
+	if m.len() != 2 {
+		t.Fatalf("len = %d, want 2", m.len())
+	}
+
+	if !m.contains(net.ParseIP("40.89.244.232")) {
+		t.Error("constrained IPv4 entry did not match its address")
+	}
+
+	if !m.contains(net.ParseIP("2001:db8::1")) {
+		t.Error("constrained IPv6 CIDR did not match an address in its range")
+	}
+
+	if m.contains(net.ParseIP("2001:dead::1")) {
+		t.Error("constrained IPv6 CIDR matched an address outside its range")
+	}
+}
+
 func TestFilterToAllowlistedIPs(t *testing.T) {
 	t.Parallel()
 

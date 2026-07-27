@@ -237,7 +237,7 @@ h1 { font-size: 18px; margin: 0 0 4px; }
 .table tbody tr:hover { background: color-mix(in oklab, var(--foreground) 4%, transparent); }
 .table.rows td { white-space: normal; }
 .c-action { width: 104px; } .c-unblock { width: 132px; } .c-filter { width: 78px; }
-.c-host { width: 280px; } .c-src { width: 200px; } .c-dst { width: 220px; }
+.c-host { width: 280px; } .c-src { width: 200px; } .c-dst { width: 220px; } .c-proto { width: 64px; }
 .c-client { width: 150px; } .c-flow { width: 110px; } .c-ver { width: 84px; } .c-time { width: 190px; }
 .c-aggkey { min-width: 260px; } .c-total { width: 90px; } .c-aggcount { width: 100px; }
 .c-aggrate { width: 120px; } .c-last { width: 150px; }

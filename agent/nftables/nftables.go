@@ -16,6 +16,7 @@ import (
 
 	"github.com/florianl/go-nflog/v2"
 	"github.com/g0lab/g0efilter/agent/netutil"
+	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -25,7 +26,10 @@ const (
 	minPacketSize = 20
 )
 
-var errPortOutOfRange = errors.New("port out of range")
+var (
+	errPortOutOfRange            = errors.New("port out of range")
+	errUnsupportedPortConstraint = errors.New("unsupported port constraint")
+)
 
 // Version returns the nftables version string.
 func Version(ctx context.Context) (string, error) {
@@ -38,6 +42,25 @@ func Version(ctx context.Context) (string, error) {
 	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "nftables ")
 
 	return version, nil
+}
+
+func parseProxyPorts(httpsStr, httpStr, dnsStr string) (int, int, int, error) {
+	httpsPort, err := parsePort(httpsStr, "HTTPS")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	httpPort, err := parsePort(httpStr, "HTTP")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	dnsPort, err := parsePort(dnsStr, "DNS")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	return httpsPort, httpPort, dnsPort, nil
 }
 
 // parsePort validates and converts a port string to an integer between 1 and 65535.
@@ -91,6 +114,63 @@ func splitByFamily(allowlist []string) ([]string, []string) {
 	}
 
 	return v4, v6
+}
+
+func entryFamilyV4(addr string) bool {
+	if strings.Contains(addr, "/") {
+		_, ipnet, err := net.ParseCIDR(addr)
+
+		return err == nil && ipnet.IP.To4() != nil
+	}
+
+	ip := net.ParseIP(addr)
+
+	return ip != nil && ip.To4() != nil
+}
+
+func classifyByFamily(entries []string) ([]string, []string, []string, []string) {
+	var v4, v6, portV4, portV6 []string
+
+	for _, entry := range entries {
+		rule, err := policy.ParseIPPortRule(entry)
+		if err != nil {
+			continue // already validated at policy load; skip defensively
+		}
+
+		switch {
+		case rule.Constrained() && entryFamilyV4(rule.Addr):
+			portV4 = append(portV4, concatElement(rule))
+		case rule.Constrained():
+			portV6 = append(portV6, concatElement(rule))
+		case entryFamilyV4(rule.Addr):
+			v4 = append(v4, rule.Addr)
+		default:
+			v6 = append(v6, rule.Addr)
+		}
+	}
+
+	return v4, v6, portV4, portV6
+}
+
+func concatElement(rule policy.IPPortRule) string {
+	return rule.Addr + " . " + rule.Proto + " . " + strconv.Itoa(rule.Port)
+}
+
+func portConstraintsEnforceable(mode string, defaultAllow bool) bool {
+	return !defaultAllow && (mode == actions.ModeHTTPS || mode == actions.ModeDNSStrict)
+}
+
+// classifyAllow rejects constraints that the active ruleset cannot enforce.
+func classifyAllow(rules PolicyRules, mode string) ([]string, []string, []string, []string, error) {
+	v4, v6, portV4, portV6 := classifyByFamily(rules.AllowIPs)
+
+	if len(portV4)+len(portV6) > 0 && !portConstraintsEnforceable(mode, rules.DefaultAllow) {
+		return nil, nil, nil, nil, fmt.Errorf(
+			"%w: port-constrained allowlist entries require https or dns-strict mode (default-deny)",
+			errUnsupportedPortConstraint)
+	}
+
+	return v4, v6, portV4, portV6, nil
 }
 
 // ApplyNftRulesAuto applies nftables rules using port numbers from environment variables or defaults.
@@ -189,27 +269,23 @@ func ApplyPolicyRulesWithContext(
 		rules.AllowIPs = []string{"127.0.0.1"}
 	}
 
-	httpsPort, err := parsePort(httpsPortStr, "HTTPS")
+	httpsPort, httpPort, dnsPort, err := parseProxyPorts(httpsPortStr, httpPortStr, dnsPortStr)
 	if err != nil {
 		return err
 	}
 
-	httpPort, err := parsePort(httpPortStr, "HTTP")
+	allowV4, allowV6, allowPortV4, allowPortV6, err := classifyAllow(rules, mode)
 	if err != nil {
 		return err
 	}
 
-	dnsPort, err := parsePort(dnsPortStr, "DNS")
-	if err != nil {
-		return err
-	}
-
-	allowV4, allowV6 := splitByFamily(rules.AllowIPs)
 	denyV4, denyV6 := splitByFamily(rules.DenyIPs)
 
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4:      allowV4,
 		AllowV6:      allowV6,
+		AllowPortV4:  allowPortV4,
+		AllowPortV6:  allowPortV6,
 		DenyV4:       denyV4,
 		DenyV6:       denyV6,
 		HTTPSPort:    httpsPort,
@@ -247,6 +323,20 @@ func setBlock(name, addrType, elements string) string {
 
 	return fmt.Sprintf(
 		"    set %s {\n        type %s\n        flags interval\n        elements = {%s}\n    }\n",
+		name, addrType, elements,
+	)
+}
+
+func portSetBlock(name, addrType, elements string) string {
+	if elements == "" {
+		return fmt.Sprintf(
+			"    set %s {\n        type %s . inet_proto . inet_service\n        flags interval\n    }\n",
+			name, addrType,
+		)
+	}
+
+	return fmt.Sprintf(
+		"    set %s {\n        type %s . inet_proto . inet_service\n        flags interval\n        elements = {%s}\n    }\n",
 		name, addrType, elements,
 	)
 }
@@ -473,18 +563,27 @@ table ip6 g0efilter_v6 {
 		dnsPort, dnsPort)
 }
 
-// generateDNSStrictFilterRules creates IPv4 filter rules for dns-strict mode: policy drop,
-// with a runtime resolved_allow_v4 timeout set that the DNS proxy populates as allowed
-// domains resolve. Connections to IPs never resolved through the proxy are dropped.
-func generateDNSStrictFilterRules(allowSet string, dnsPort int) string {
-	return fmt.Sprintf(`
-table ip g0efilter_v4 {
-%s
-    set resolved_allow_v4 {
-        type ipv4_addr
+func resolvedSetBlocks(suffix, addrType string) string {
+	return fmt.Sprintf(`    set resolved_allow_%s {
+        type %s
         flags timeout
     }
 
+    set resolved_allow_%s_port {
+        type %s . inet_proto . inet_service
+        flags timeout
+    }
+`, suffix, addrType, suffix, addrType)
+}
+
+// generateDNSStrictFilterRules creates IPv4 filter rules for dns-strict mode: policy drop,
+// with a runtime resolved_allow_v4 timeout set that the DNS proxy populates as allowed
+// domains resolve. Connections to IPs never resolved through the proxy are dropped.
+func generateDNSStrictFilterRules(allowSet, portSet string, dnsPort int) string {
+	return fmt.Sprintf(`
+table ip g0efilter_v4 {
+%s%s
+%s
     chain egress_allowlist_v4 {
         type filter hook output priority filter; policy drop;
 
@@ -511,28 +610,34 @@ table ip g0efilter_v4 {
         ip daddr @allow_daddr_v4 log prefix "allowed" group 0
         ip daddr @allow_daddr_v4 accept
 
+        # Allow and log destinations allow-listed for a specific protocol/port
+        ip daddr . meta l4proto . th dport @allow_daddr_port_v4 log prefix "allowed" group 0
+        ip daddr . meta l4proto . th dport @allow_daddr_port_v4 accept
+
         # Allow destinations resolved through the DNS proxy (TTL-bounded)
         ip daddr @resolved_allow_v4 log prefix "allowed" group 0
         ip daddr @resolved_allow_v4 accept
+
+        # Same, for domains allow-listed on a specific protocol/port
+        ip daddr . meta l4proto . th dport @resolved_allow_v4_port log prefix "allowed" group 0
+        ip daddr . meta l4proto . th dport @resolved_allow_v4_port accept
 
         # Log and drop everything else
         log prefix "blocked" group 0
         drop
     }
 }
-	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet), bypassRule("accept"), dnsPort, dnsPort)
+	`, setBlock("allow_daddr_v4", "ipv4_addr", allowSet),
+		portSetBlock("allow_daddr_port_v4", "ipv4_addr", portSet),
+		resolvedSetBlocks("v4", "ipv4_addr"), bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateDNSStrictFilterRulesV6 creates IPv6 filter rules for dns-strict mode.
-func generateDNSStrictFilterRulesV6(allowSet string, dnsPort int) string {
+func generateDNSStrictFilterRulesV6(allowSet, portSet string, dnsPort int) string {
 	return fmt.Sprintf(`
 table ip6 g0efilter_v6 {
+%s%s
 %s
-    set resolved_allow_v6 {
-        type ipv6_addr
-        flags timeout
-    }
-
     chain egress_allowlist_v6 {
         type filter hook output priority filter; policy drop;
 
@@ -562,16 +667,26 @@ table ip6 g0efilter_v6 {
         ip6 daddr @allow_daddr_v6 log prefix "allowed" group 0
         ip6 daddr @allow_daddr_v6 accept
 
+        # Allow and log destinations allow-listed for a specific protocol/port
+        ip6 daddr . meta l4proto . th dport @allow_daddr_port_v6 log prefix "allowed" group 0
+        ip6 daddr . meta l4proto . th dport @allow_daddr_port_v6 accept
+
         # Allow destinations resolved through the DNS proxy (TTL-bounded)
         ip6 daddr @resolved_allow_v6 log prefix "allowed" group 0
         ip6 daddr @resolved_allow_v6 accept
+
+        # Same, for domains allow-listed on a specific protocol/port
+        ip6 daddr . meta l4proto . th dport @resolved_allow_v6_port log prefix "allowed" group 0
+        ip6 daddr . meta l4proto . th dport @resolved_allow_v6_port accept
 
         # Log and drop everything else
         log prefix "blocked" group 0
         drop
     }
 }
-	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet), bypassRule("accept"), dnsPort, dnsPort)
+	`, setBlock("allow_daddr_v6", "ipv6_addr", allowSet),
+		portSetBlock("allow_daddr_port_v6", "ipv6_addr", portSet),
+		resolvedSetBlocks("v6", "ipv6_addr"), bypassRule("accept"), dnsPort, dnsPort)
 }
 
 // generateDNSFilterRules creates nftables filter rules for DNS mode that block non-allowlisted traffic.
@@ -611,7 +726,7 @@ table ip g0efilter_v4 {
 }
 
 // generateHTTPSFilterRules creates nftables filter rules for HTTPS mode with logging and allowlist enforcement.
-func generateHTTPSFilterRules(allowSet string, httpPort, httpsPort int) string {
+func generateHTTPSFilterRules(allowSet, portSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip g0efilter_v4 {
     set allow_daddr_v4 {
@@ -619,7 +734,7 @@ table ip g0efilter_v4 {
         flags interval
         elements = {%s}
     }
-
+%s
     chain egress_allowlist_v4 {
         type filter hook output priority filter; policy drop;
 
@@ -646,12 +761,16 @@ table ip g0efilter_v4 {
         ip daddr @allow_daddr_v4 log prefix "allowed" group 0
         ip daddr @allow_daddr_v4 accept
 
+        # Allow and log destinations allow-listed for a specific protocol/port
+        ip daddr . meta l4proto . th dport @allow_daddr_port_v4 log prefix "allowed" group 0
+        ip daddr . meta l4proto . th dport @allow_daddr_port_v4 accept
+
         # Log and drop everything else
         log prefix "blocked" group 0
         drop
     }
 }
-	`, allowSet, bypassRule("accept"), httpPort, httpsPort)
+	`, allowSet, portSetBlock("allow_daddr_port_v4", "ipv4_addr", portSet), bypassRule("accept"), httpPort, httpsPort)
 }
 
 // generateDNSNATRules creates nftables NAT rules that redirect all DNS traffic to the local DNS proxy.
@@ -680,8 +799,10 @@ table ip g0efilter_nat_v4 {
 	`, bypassRule("return"), dnsPort, dnsPort, dnsPort, dnsPort)
 }
 
-// generateHTTPSNATRules creates nftables NAT rules that redirect HTTP/HTTPS to local proxies for non-allowlisted IPs.
-func generateHTTPSNATRules(allowSet string, httpPort, httpsPort int) string {
+// generateHTTPSNATRules creates nftables NAT rules that redirect HTTP/HTTPS to
+// local proxies unless the destination is allow-listed for the packet's
+// protocol and port.
+func generateHTTPSNATRules(allowSet, portSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip g0efilter_nat_v4 {
     set allow_daddr_v4 {
@@ -689,7 +810,7 @@ table ip g0efilter_nat_v4 {
         flags interval
         elements = {%s}
     }
-
+%s
     chain output {
         type nat hook output priority -100;
 
@@ -698,6 +819,9 @@ table ip g0efilter_nat_v4 {
 
         # Return if allow-listed IP
         ip daddr @allow_daddr_v4 return
+
+        # Return if allow-listed for this protocol and port
+        ip daddr . meta l4proto . th dport @allow_daddr_port_v4 return
 
         # Redirect HTTP (80) to local HTTP proxy
         tcp dport 80  log prefix "redirected" group 0
@@ -708,11 +832,12 @@ table ip g0efilter_nat_v4 {
         tcp dport 443 redirect to :%d
     }
 }
-	`, allowSet, bypassRule("return"), httpPort, httpsPort)
+	`, allowSet, portSetBlock("allow_daddr_port_v4", "ipv4_addr", portSet),
+		bypassRule("return"), httpPort, httpsPort)
 }
 
 // generateHTTPSFilterRulesV6 creates IPv6 nftables filter rules for HTTPS mode.
-func generateHTTPSFilterRulesV6(allowSet string, httpPort, httpsPort int) string {
+func generateHTTPSFilterRulesV6(allowSet, portSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip6 g0efilter_v6 {
     set allow_daddr_v6 {
@@ -720,7 +845,7 @@ table ip6 g0efilter_v6 {
         flags interval
         elements = {%s}
     }
-
+%s
     chain egress_allowlist_v6 {
         type filter hook output priority filter; policy drop;
 
@@ -747,16 +872,20 @@ table ip6 g0efilter_v6 {
         ip6 daddr @allow_daddr_v6 log prefix "allowed" group 0
         ip6 daddr @allow_daddr_v6 accept
 
+        # Allow and log destinations allow-listed for a specific protocol/port
+        ip6 daddr . meta l4proto . th dport @allow_daddr_port_v6 log prefix "allowed" group 0
+        ip6 daddr . meta l4proto . th dport @allow_daddr_port_v6 accept
+
         # Log and drop everything else
         log prefix "blocked" group 0
         drop
     }
 }
-	`, allowSet, bypassRule("accept"), httpPort, httpsPort)
+	`, allowSet, portSetBlock("allow_daddr_port_v6", "ipv6_addr", portSet), bypassRule("accept"), httpPort, httpsPort)
 }
 
 // generateHTTPSNATRulesV6 creates IPv6 nftables NAT rules for HTTPS mode.
-func generateHTTPSNATRulesV6(allowSet string, httpPort, httpsPort int) string {
+func generateHTTPSNATRulesV6(allowSet, portSet string, httpPort, httpsPort int) string {
 	return fmt.Sprintf(`
 table ip6 g0efilter_nat_v6 {
     set allow_daddr_v6 {
@@ -764,7 +893,7 @@ table ip6 g0efilter_nat_v6 {
         flags interval
         elements = {%s}
     }
-
+%s
     chain output {
         type nat hook output priority -100;
 
@@ -773,6 +902,9 @@ table ip6 g0efilter_nat_v6 {
 
         # Return if allow-listed IP
         ip6 daddr @allow_daddr_v6 return
+
+        # Return if allow-listed for this protocol and port
+        ip6 daddr . meta l4proto . th dport @allow_daddr_port_v6 return
 
         # Redirect HTTP (80) to local HTTP proxy
         tcp dport 80  log prefix "redirected" group 0
@@ -783,7 +915,8 @@ table ip6 g0efilter_nat_v6 {
         tcp dport 443 redirect to :%d
     }
 }
-	`, allowSet, bypassRule("return"), httpPort, httpsPort)
+	`, allowSet, portSetBlock("allow_daddr_port_v6", "ipv6_addr", portSet),
+		bypassRule("return"), httpPort, httpsPort)
 }
 
 // generateDNSFilterRulesV6 creates IPv6 nftables filter rules for DNS mode.
@@ -864,14 +997,15 @@ func GenerateNftRuleset(v4, v6 []string, httpsPort, httpPort, dnsPort int, mode 
 
 // RulesetConfig holds all inputs for nftables ruleset generation.
 type RulesetConfig struct {
-	AllowV4, AllowV6 []string
-	DenyV4, DenyV6   []string // enforced only when DefaultAllow is true
-	HTTPSPort        int
-	HTTPPort         int
-	DNSPort          int
-	Mode             string
-	DefaultAllow     bool
-	Audit            bool // dry-run: would-be drops logged with the "audit" prefix and accepted
+	AllowV4, AllowV6         []string
+	AllowPortV4, AllowPortV6 []string // "addr . proto . port" concat elements
+	DenyV4, DenyV6           []string // enforced only when DefaultAllow is true
+	HTTPSPort                int
+	HTTPPort                 int
+	DNSPort                  int
+	Mode                     string
+	DefaultAllow             bool
+	Audit                    bool // dry-run: would-be drops logged with the "audit" prefix and accepted
 }
 
 // GenerateRuleset generates a complete nftables ruleset. With DefaultAllow the filter
@@ -918,6 +1052,9 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 		allowSetV6 = "::1"
 	}
 
+	portSetV4 := strings.Join(cfg.AllowPortV4, ", ")
+	portSetV6 := strings.Join(cfg.AllowPortV6, ", ")
+
 	if cfg.DefaultAllow {
 		denySetV4 := strings.Join(cfg.DenyV4, ", ")
 		denySetV6 := strings.Join(cfg.DenyV6, ", ")
@@ -937,9 +1074,9 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 	}
 
 	if mode == actions.ModeDNSStrict {
-		return generateDNSStrictFilterRules(allowSetV4, cfg.DNSPort) +
+		return generateDNSStrictFilterRules(allowSetV4, portSetV4, cfg.DNSPort) +
 			"\n" + generateDNSNATRules(cfg.DNSPort) +
-			"\n" + generateDNSStrictFilterRulesV6(allowSetV6, cfg.DNSPort) +
+			"\n" + generateDNSStrictFilterRulesV6(allowSetV6, portSetV6, cfg.DNSPort) +
 			"\n" + generateDNSNATRulesV6(cfg.DNSPort)
 	}
 
@@ -950,10 +1087,10 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 			"\n" + generateDNSNATRulesV6(cfg.DNSPort)
 	}
 
-	return generateHTTPSFilterRules(allowSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
-		"\n" + generateHTTPSNATRules(allowSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
-		"\n" + generateHTTPSFilterRulesV6(allowSetV6, cfg.HTTPPort, cfg.HTTPSPort) +
-		"\n" + generateHTTPSNATRulesV6(allowSetV6, cfg.HTTPPort, cfg.HTTPSPort)
+	return generateHTTPSFilterRules(allowSetV4, portSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
+		"\n" + generateHTTPSNATRules(allowSetV4, portSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
+		"\n" + generateHTTPSFilterRulesV6(allowSetV6, portSetV6, cfg.HTTPPort, cfg.HTTPSPort) +
+		"\n" + generateHTTPSNATRulesV6(allowSetV6, portSetV6, cfg.HTTPPort, cfg.HTTPSPort)
 }
 
 // StreamNfLog starts streaming netfilter log events using the default logger.

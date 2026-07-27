@@ -4,6 +4,8 @@ const machineKey = process.env.DASHBOARD_E2E_API_KEY || 'your-secure-api-key-her
 const adminPassword = process.env.DASHBOARD_E2E_ADMIN_PASSWORD || 'e2e-password';
 
 test('session dashboard renders and updates without browser errors', async ({ page, request }) => {
+  test.skip(process.env.DASHBOARD_E2E_DEMO === '1', 'production dashboard only');
+
   const browserErrors: string[] = [];
   const runID = Date.now();
   const browserGroup = 'browser-group-' + runID;
@@ -34,6 +36,7 @@ test('session dashboard renders and updates without browser errors', async ({ pa
         source_port: 51234,
         destination_ip: '7.7.7.7',
         destination_port: 443,
+        protocol: 'TCP',
       },
     });
     expect(aggregateResponse.status()).toBe(201);
@@ -82,6 +85,18 @@ test('session dashboard renders and updates without browser errors', async ({ pa
   await expect(streamAggregateRow.getByRole('link', {
     name: 'Search 10.10.10.10 on VirusTotal',
   })).toHaveCount(0);
+  await expect(streamAggregateRow.getByRole('cell').nth(6)).toHaveText('TCP');
+
+  const unblockButton = streamAggregateRow.getByRole('button', {
+    name: 'Allow ' + aggregateHost,
+  });
+  await expect(unblockButton).toBeVisible();
+  await unblockButton.click();
+
+  const unblockDialog = page.getByRole('dialog');
+  await expect(unblockDialog.getByRole('heading', { name: 'Unblock domain' })).toBeVisible();
+  await unblockDialog.getByRole('button', { name: 'Queue unblock' }).click();
+  await expect(streamAggregateRow.getByText('Unblocked')).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole('button', { name: 'Aggregates' }).click();
   await expect(page.getByRole('heading', { name: 'Traffic over time' })).toBeVisible();
@@ -126,10 +141,13 @@ test('session dashboard renders and updates without browser errors', async ({ pa
       msg: 'browser-live-e2e',
       action: 'ALLOWED',
       hostname: browserHost,
+      protocol: 'UDP',
     },
   });
   expect(response.status()).toBe(201);
-  await expect(page.getByRole('row').filter({ hasText: browserHost })).toBeVisible();
+  const liveRow = page.getByRole('row').filter({ hasText: browserHost });
+  await expect(liveRow).toBeVisible();
+  await expect(liveRow.getByRole('cell').nth(6)).toHaveText('UDP');
 
   await page.getByRole('button', { name: 'Clear Logs', exact: true }).click();
   await page.getByRole('button', { name: 'Clear logs', exact: true }).click();

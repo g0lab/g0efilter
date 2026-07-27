@@ -70,8 +70,12 @@ type Options struct {
 
 	// OnResolved receives the A/AAAA addresses from each allowed DNS answer
 	// (dns-strict mode) so they can be pushed into the kernel's resolved set
-	// before the response reaches the client.
-	OnResolved func(ips []string, ttl uint32)
+	// before the response reaches the client. rules carries the protocol/port
+	// constraints that apply to the answer; empty means unconstrained.
+	OnResolved func(ips []string, ttl uint32, rules []policy.DomainRule)
+
+	// DomainRules holds the protocol/port constraints stripped from Allowlist.
+	DomainRules []policy.DomainRule
 
 	// AuditMode is dry-run enforcement: traffic that would be blocked is logged
 	// with the AUDIT action and allowed through, so a policy's impact can be
@@ -286,6 +290,31 @@ func (m *hostMatcher) suffixAllows(host string) bool {
 // pre-built hostMatcher instead; this form exists for one-off checks and tests.
 func allowedHost(host string, allowlist []string) bool {
 	return newMatcher(allowlist).allows(host)
+}
+
+// constraintsFor returns the protocol/port constraints that apply to host.
+// A host also covered by an unconstrained pattern gets none: the broader entry
+// wins, mirroring the kernel rule order where the whole-IP allow is matched
+// before the port-constrained set. Several constrained patterns can apply at
+// once (the same domain listed for tcp/443 and udp/53), so all are returned.
+func constraintsFor(host string, rules []policy.DomainRule) []policy.DomainRule {
+	host = normalizeDomain(host)
+
+	var matched []policy.DomainRule
+
+	for _, r := range rules {
+		if !matchPattern(host, normalizeDomain(r.Pattern)) {
+			continue
+		}
+
+		if !r.Constrained() {
+			return nil
+		}
+
+		matched = append(matched, r)
+	}
+
+	return matched
 }
 
 // matchPattern matches a normalized host against one exact, wildcard, or /regex/ pattern.

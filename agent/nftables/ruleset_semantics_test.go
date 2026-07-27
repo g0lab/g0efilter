@@ -287,9 +287,17 @@ func TestRulesetSemanticsDNSStrictDefaultDeny(t *testing.T) {
 		`log prefix "blocked" group 0`,
 	)
 
+	assertHasAll(t, filterV4,
+		"set resolved_allow_v4_port",
+		"type ipv4_addr . inet_proto . inet_service",
+		"ip daddr . meta l4proto . th dport @resolved_allow_v4_port accept",
+	)
+
 	filterV6 := tableBody(t, ruleset, "ip6 g0efilter_v6")
 	assertSetHas(t, filterV6, "allow_daddr_v6", "2001:db8::5")
-	assertHasAll(t, filterV6, "set resolved_allow_v6", "ip6 daddr @resolved_allow_v6 accept")
+	assertHasAll(t, filterV6, "set resolved_allow_v6", "ip6 daddr @resolved_allow_v6 accept",
+		"set resolved_allow_v6_port",
+		"ip6 daddr . meta l4proto . th dport @resolved_allow_v6_port accept")
 
 	natV4 := tableBody(t, ruleset, "ip g0efilter_nat_v4")
 	assertHasAll(t, natV4, "udp dport 53  redirect to :5353", "tcp dport 53  redirect to :5353")

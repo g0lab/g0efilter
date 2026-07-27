@@ -36,12 +36,22 @@ migration.
 Use `scripts/dev.sh` for local dashboard development; add `--traffic` for live
 synthetic traffic. The `.devcontainer/` contains the supported full toolchain.
 
-Docker end-to-end tests require Docker and recreate the `examples/build` stack:
+End-to-end tests are Go tests driving real containers through Testcontainers.
+They live in `tests/e2e/`, which is its own Go module:
 
 ```sh
-FILTER_MODE=https scripts/e2e.sh
-FILTER_MODE=dns scripts/e2e.sh
+cd tests/e2e
+E2E_FILTER_MODE=https      go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
+E2E_FILTER_MODE=dns        go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
+E2E_FILTER_MODE=dns-strict go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
 ```
+
+The images are built automatically when missing. After changing agent or
+dashboard code, rebuild them with `E2E_BUILD=force`.
+
+Select a suite with `-run`, e.g. `-run '^TestPhase09DNSStrict$'`. Always pass
+`-count=1`: these drive external container state and must never be cached.
+See `tests/e2e/README.md`.
 
 ## Conventions
 
