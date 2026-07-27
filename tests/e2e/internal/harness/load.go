@@ -35,7 +35,9 @@ type BatchResult struct {
 
 // MixedBatchRequest describes allowed and blocked requests that start together.
 type MixedBatchRequest struct {
-	AllowedURL   string
+	// AllowedURLs are used round-robin, so one degraded upstream cannot sink the
+	// whole success rate.
+	AllowedURLs  []string
 	BlockedURL   string
 	AllowedCount int
 	BlockedCount int
@@ -143,6 +145,10 @@ func (s *Stack) RunMixedBatch(t *testing.T, req MixedBatchRequest) MixedBatchRes
 		t.Fatal("mixed batch requires at least one blocked request")
 	}
 
+	if len(req.AllowedURLs) == 0 {
+		t.Fatal("mixed batch requires at least one allowed URL")
+	}
+
 	ipv4 := ""
 	if req.IPv4Only {
 		ipv4 = "-4"
@@ -151,24 +157,48 @@ func (s *Stack) RunMixedBatch(t *testing.T, req MixedBatchRequest) MixedBatchRes
 	script := `
 set -u
 out=$(mktemp -d)
-run_group() {
+blocked_url=$1
+shift
+# What remains in "$@" is the allowed URL list.
+
+fire() {
   kind=$1
-  count=$2
+  idx=$2
   url=$3
-  i=0
-  while [ "$i" -lt "$count" ]; do
-    (
-      if curl ` + ipv4 + ` -sS --max-time ` + strconv.Itoa(curlTimeoutSeconds(req.Timeout)) + ` \
-        --connect-timeout 3 -o /dev/null "$url" 2>/dev/null; then
-        : > "$out/$kind.ok.$i"
-      fi
-      : > "$out/$kind.done.$i"
-    ) &
-    i=$(( i + 1 ))
+  (
+    if curl ` + ipv4 + ` -sS --max-time ` + strconv.Itoa(curlTimeoutSeconds(req.Timeout)) + ` \
+      --connect-timeout 3 -o /dev/null "$url" 2>/dev/null; then
+      : > "$out/$kind.ok.$idx"
+    fi
+    : > "$out/$kind.done.$idx"
+  ) &
+}
+
+pick_url() {
+  idx=$1
+  shift
+  k=$(( idx % $# ))
+  j=0
+  for u in "$@"; do
+    if [ "$j" -eq "$k" ]; then
+      printf '%s' "$u"
+      return
+    fi
+    j=$(( j + 1 ))
   done
 }
-run_group allowed ` + strconv.Itoa(req.AllowedCount) + ` "$1"
-run_group blocked ` + strconv.Itoa(req.BlockedCount) + ` "$2"
+
+i=0
+while [ "$i" -lt ` + strconv.Itoa(req.AllowedCount) + ` ]; do
+  fire allowed "$i" "$(pick_url "$i" "$@")"
+  i=$(( i + 1 ))
+done
+
+i=0
+while [ "$i" -lt ` + strconv.Itoa(req.BlockedCount) + ` ]; do
+  fire blocked "$i" "$blocked_url"
+  i=$(( i + 1 ))
+done
 wait
 count_files() {
   find "$out" -name "$1" -type f 2>/dev/null | wc -l
@@ -179,7 +209,9 @@ printf '{"allowed_attempted":%d,"allowed_succeeded":%d,"blocked_attempted":%d,"b
 rm -rf "$out"
 `
 
-	res := s.ExecTester(t, "sh", "-c", script, "mixed-load", req.AllowedURL, req.BlockedURL)
+	args := append([]string{"sh", "-c", script, "mixed-load", req.BlockedURL}, req.AllowedURLs...)
+
+	res := s.ExecTester(t, args...)
 
 	var out MixedBatchResult
 

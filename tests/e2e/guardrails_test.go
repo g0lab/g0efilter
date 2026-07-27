@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -66,13 +67,15 @@ func TestPhase12Load(t *testing.T) {
 		allowedTotal   = harness.EnvInt("LOAD_ALLOWED", 25)
 		requestTimeout = time.Duration(harness.EnvInt("LOAD_MAX_TIME", 8)) * time.Second
 		maxLatency     = time.Duration(harness.EnvInt("LOAD_MAX_LATENCY_MS", 2000)) * time.Millisecond
-		maxMemoryMi    = int64(harness.EnvInt("E2E_LOAD_MAX_MEMORY_MIB",
-			harness.EnvInt("LOAD_MAX_MEMORY_MIB", 384)))
-		allowedMin = harness.EnvInt("LOAD_MIN_ALLOWED_PERCENT",
-			harness.EnvInt("LOAD_MIN_ALLOWED_PCT", 85))
+		maxMemoryMi    = int64(harness.EnvInt("E2E_LOAD_MAX_MEMORY_MIB", 384))
+		allowedMin     = harness.EnvInt("LOAD_MIN_ALLOWED_PERCENT", 100)
 		blockedURL     = harness.Env("LOAD_BLOCKED_URL", "https://google.com")
 		blockedHTTPURL = harness.Env("LOAD_BLOCKED_URL_HTTP", "http://google.com")
-		allowedURL     = harness.Env("LOAD_ALLOWED_URL", "https://github.com")
+		// Two independent providers, both already covered by BaselinePolicy
+		// (github.com by domain, 1.1.1.1 by IP), so one being degraded cannot sink
+		// the success rate on its own.
+		allowedURLs = strings.Fields(harness.Env("LOAD_ALLOWED_URLS",
+			"https://github.com https://1.1.1.1"))
 	)
 
 	mode := harness.ModeFromEnv(t)
@@ -155,8 +158,10 @@ func TestPhase12Load(t *testing.T) {
 			blockedTotal = 15
 		}
 
+		mixedMark := s.AgentLogMark(t)
+
 		mixed := s.RunMixedBatch(t, harness.MixedBatchRequest{
-			AllowedURL: allowedURL, BlockedURL: blockedURL,
+			AllowedURLs: allowedURLs, BlockedURL: blockedURL,
 			AllowedCount: allowedTotal, BlockedCount: blockedTotal,
 			Timeout: max(requestTimeout, 15*time.Second), IPv4Only: true,
 		})
@@ -170,6 +175,15 @@ func TestPhase12Load(t *testing.T) {
 		if mixed.BlockedSucceeded > 0 {
 			t.Errorf("%d/%d blocked requests connected during mixed load",
 				mixed.BlockedSucceeded, mixed.BlockedAttempted)
+		}
+
+		// The decisive check: whether the filter permitted the traffic is entirely
+		// under its control, so it takes zero tolerance. The success rate below is
+		// only a backstop, and is loose because it also measures the upstream.
+		for _, url := range allowedURLs {
+			if n := s.CountVerdictsSince(t, mixedMark, url, "BLOCKED"); n > 0 {
+				t.Errorf("filter recorded %d BLOCKED verdicts for allowed %s under load", n, url)
+			}
 		}
 
 		percent := mixed.AllowedSucceeded * 100 / max(mixed.AllowedAttempted, 1)

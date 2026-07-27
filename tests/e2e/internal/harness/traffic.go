@@ -224,22 +224,47 @@ func (s *Stack) hasVerdict(t *testing.T, mark LogMark, url string, actions ...st
 	t.Helper()
 
 	target := Target(url)
-	keys := []string{"qname", "host", "https", "http_host", "destination_ip", "dst"}
 
 	for _, e := range s.AgentEventsSince(t, mark) {
-		if !slices.Contains(actions, e.Action()) {
-			continue
-		}
-
-		for _, key := range keys {
-			value := e.Fields[key]
-			if value == target || strings.HasPrefix(value, target+":") {
-				return true, ""
-			}
+		if verdictMatches(e, target, actions) {
+			return true, ""
 		}
 	}
 
 	return false, "no " + strings.Join(actions, "/") + " decision recorded for " + target
+}
+
+// CountVerdictsSince counts decisions recorded for a URL's target. Unlike a bare
+// EventMatcher it searches every field the agent uses to name a destination, so
+// it works across the DNS, HTTP and IP paths.
+func (s *Stack) CountVerdictsSince(t *testing.T, mark LogMark, url string, actions ...string) int {
+	t.Helper()
+
+	target := Target(url)
+	n := 0
+
+	for _, e := range s.AgentEventsSince(t, mark) {
+		if verdictMatches(e, target, actions) {
+			n++
+		}
+	}
+
+	return n
+}
+
+func verdictMatches(e AgentEvent, target string, actions []string) bool {
+	if !slices.Contains(actions, e.Action()) {
+		return false
+	}
+
+	for _, key := range []string{"qname", "host", "https", "http_host", "destination_ip", "dst"} {
+		value := e.Fields[key]
+		if value == target || strings.HasPrefix(value, target+":") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // AssertIPVerdict requires an nflog decision for a destination IP, port and

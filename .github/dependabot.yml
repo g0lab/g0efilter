@@ -53,6 +53,7 @@ updates:
     directories:
       - '/'
       - '/examples/build'
+      - '/tests/e2e'
     schedule:
       interval: 'cron'
       cronjob: '0 9 * * *'

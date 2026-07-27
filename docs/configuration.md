@@ -21,7 +21,7 @@
 | `DNS_PORT` | Local DNS proxy port | `65053` |
 | `DNS_UPSTREAMS` | Upstream DNS servers (comma-separated) | `127.0.0.11:53` |
 | `DNS_HARDENING` | Anti-exfil checks in the DNS proxy: qname/label length caps, NULL and bulky-TXT answer rejection, per-source rate limiting | `true` |
-| `DNS_RATE_QPS` | Hardening rate limiter: sustained queries/sec per source. All local traffic shares one source behind the NAT redirect, so this bounds the whole host | `50` |
+| `DNS_RATE_QPS` | Hardening rate limiter: sustained queries/sec per source. Everything behind the NAT redirect shares one source address, so this is a single budget covering all redirected workloads combined, not one per workload | `50` |
 | `DNS_RATE_BURST` | Hardening rate limiter: burst allowance per source | `100` |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |

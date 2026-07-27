@@ -89,7 +89,13 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `LOAD_ALLOWED` | `25` | Allowed requests in the mixed-load check |
 | `LOAD_MAX_TIME` | `8` | Per-request timeout in seconds |
 | `LOAD_MAX_LATENCY_MS` | `2000` | Median blocked-latency ceiling |
-| `LOAD_MIN_ALLOWED_PERCENT` | `85` | Allowed success-rate floor |
+| `LOAD_MIN_ALLOWED_PERCENT` | `100` | Min % of the `LOAD_ALLOWED` requests that must connect while blocked traffic floods alongside them: every one of the default 25. Lower it if upstream flakiness proves noisy, since this measures the upstream as well as the filter. The filter's own decision is checked separately, by requiring no `BLOCKED` verdict for an allowed URL |
+| `LOAD_RECOVERY_PAUSE` | `4s` | Pause before the mixed check so the DNS rate limiter refills, otherwise it, not the filter, decides the result |
+| `LOAD_ALLOWED_URLS` | `https://github.com https://1.1.1.1` | Space-separated URLs used round-robin for allowed traffic, so one degraded upstream cannot sink the success rate. Both are covered by the baseline policy |
+| `LOAD_BLOCKED_URL` | `https://google.com` | URL used for blocked HTTPS traffic |
+| `LOAD_BLOCKED_URL_HTTP` | `http://google.com` | URL used for blocked HTTP traffic |
+| `E2E_LOAD_MAX_MEMORY_MIB` | `384` | Memory ceiling after the load phase |
+| `E2E_CPU_SAMPLE_WINDOW` | `6s` | Sampling window for the idle-CPU check |
 
 For the browser smoke test:
 

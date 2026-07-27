@@ -58,6 +58,10 @@ type Options struct {
 	DefaultAllow bool
 	Denylist     []string
 
+	// DenyIPs is the policy IP/CIDR denylist. Enforcement lives in nftables; the
+	// filter only consults it so learning never records a denied address.
+	DenyIPs []string
+
 	// AllowIPs is the policy IP/CIDR allowlist. In DNS mode it lets a domain that
 	// is not domain-allowlisted still resolve when it points at an allowlisted IP,
 	// matching HTTPS mode's connection-time IP allowance.
@@ -356,12 +360,17 @@ func hostPermittedBy(host string, allow *hostMatcher, opts Options) bool {
 		return true
 	}
 
-	deny := opts.denyMatcher
-	if deny == nil {
-		deny = newMatcher(opts.Denylist)
+	return !denyMatcherFor(opts).allows(host)
+}
+
+// denyMatcherFor prefers the matcher the Serve entrypoints prebuild, falling back
+// to one built on the spot for one-off checks and tests.
+func denyMatcherFor(opts Options) *hostMatcher {
+	if opts.denyMatcher != nil {
+		return opts.denyMatcher
 	}
 
-	return !deny.allows(host)
+	return newMatcher(opts.Denylist)
 }
 
 // hostPermitted is the []string form of hostPermittedBy, for one-off checks and tests.
@@ -375,9 +384,18 @@ func maybeLearnHostBy(host string, allow *hostMatcher, opts Options) {
 		return
 	}
 
-	if !allow.allows(host) {
-		opts.OnLearn("domain", host)
+	if allow.allows(host) {
+		return
 	}
+
+	// Learning writes into the allowlist, which overrides the denylist, so
+	// recording a denied host would silently undo the deny for good. Learning
+	// still never blocks it - it just is not written to the policy.
+	if denyMatcherFor(opts).allows(host) {
+		return
+	}
+
+	opts.OnLearn("domain", host)
 }
 
 // maybeLearnHost is the []string form of maybeLearnHostBy, for one-off checks and tests.
@@ -389,6 +407,12 @@ func maybeLearnHost(host string, allowlist []string, opts Options) {
 // domain identifier is available for the connection).
 func maybeLearnIP(destIP string, opts Options) {
 	if !opts.LearningMode || opts.OnLearn == nil || destIP == "" {
+		return
+	}
+
+	// Same reasoning as maybeLearnHostBy: never allowlist an explicitly denied
+	// address. CIDR entries mean this needs the parsed form, not a string compare.
+	if len(opts.DenyIPs) > 0 && newIPAllowlist(opts.DenyIPs).contains(net.ParseIP(destIP)) {
 		return
 	}
 
