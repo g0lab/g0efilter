@@ -4,6 +4,8 @@ const machineKey = process.env.DASHBOARD_E2E_API_KEY || 'your-secure-api-key-her
 const adminPassword = process.env.DASHBOARD_E2E_ADMIN_PASSWORD || 'e2e-password';
 
 test('session dashboard renders and updates without browser errors', async ({ page, request }) => {
+  test.skip(process.env.DASHBOARD_E2E_DEMO === '1', 'production dashboard only');
+
   const browserErrors: string[] = [];
   const runID = Date.now();
   const browserGroup = 'browser-group-' + runID;

@@ -20,7 +20,6 @@
 
   /* Unblock status per row: 'done' > 'pending' > offer, or null. */
   function unblockState(it: LogEntry): UnblockView {
-    if (DEMO) return null;
     const act = getAction(it);
     if (act !== 'BLOCKED' && act !== 'AUDIT') return null;
 
@@ -52,7 +51,9 @@
       });
       if (res.ok) {
         toast('Unblock queued: ' + value + ' (' + (targetHostname || 'all hosts') + ')', 'ok');
-        pendingUnblocks.add(value.toLowerCase() + '\0' + (targetHostname || '').toLowerCase());
+        const key = value.toLowerCase() + '\0' + (targetHostname || '').toLowerCase();
+        if (DEMO) completedUnblocks.add(key);
+        else pendingUnblocks.add(key);
       } else {
         const err = await res.json();
         toast('Failed to queue unblock: ' + (err.error || 'error'), 'err');

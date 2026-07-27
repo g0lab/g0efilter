@@ -22,6 +22,7 @@ function demoResponse(url: string, opts?: RequestInit): Response {
     case 'GET /api/v1/logs': return jsonResponse(demoLogs(p));
     case 'GET /api/v1/aggregates': return jsonResponse(demoAggregate(p));
     case 'GET /api/v1/unblocks/status': return jsonResponse({ pending: [], completed: [] });
+    case 'POST /api/v1/unblocks': return jsonResponse({ id: 'demo', status: 'completed' }, 201);
     default: return jsonResponse({ error: 'not available in demo mode' }, 404);
   }
 }
