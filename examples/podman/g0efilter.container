@@ -1,0 +1,28 @@
+[Unit]
+Description=g0efilter egress filter
+After=network-online.target
+
+[Container]
+Image=docker.io/g0lab/g0efilter:v0.8.0
+Pod=g0efilter.pod
+
+# Mount the directory, not the file: live reload follows a replaced file. :Z relabels
+# for SELinux and is required on Fedora, RHEL and derivatives.
+Volume=%h/g0efilter/policy:/app/policy:ro,Z
+
+Environment=FILTER_MODE=https
+Environment=POLICY_PATH=/app/policy/policy.yaml
+Environment=LOG_LEVEL=INFO
+
+# NET_ADMIN is the only capability needed; the image runs as uid 65534 and carries
+# it as a file capability. Works rootless.
+DropCapability=ALL
+AddCapability=NET_ADMIN
+NoNewPrivileges=true
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

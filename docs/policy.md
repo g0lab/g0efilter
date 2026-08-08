@@ -76,6 +76,14 @@ volumes:
   - ./policy/:/app/policy/
 ```
 
+The file is hashed every 5 seconds, so a rewrite with identical content never
+reloads. Send `SIGHUP` to apply the file immediately rather than waiting for the
+next check:
+
+```sh
+docker kill --signal HUP g0efilter
+```
+
 Environment variables can replace file-based lists. See
 [environment variables](configuration.md#environment-variables).
 

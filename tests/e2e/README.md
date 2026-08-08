@@ -44,6 +44,32 @@ E2E_FILTER_MODE=dns-strict go test -count=1 -v -run '^TestPhase09DNSStrict$' .
 E2E_FILTER_MODE=https      go test -count=1 -v -run '^TestPhase14Dashboard$' .
 ```
 
+## Kubernetes phases
+
+Phases 18 and 19 run against a real k3s cluster started by Testcontainers. They
+are opt-in because the cluster container is privileged and slower than the
+compose stack:
+
+```sh
+cd tests/e2e
+E2E_K8S=true E2E_FILTER_MODE=https go test -count=1 -v -p 1 \
+  -run 'TestPhase18Kubernetes|TestPhase19KubernetesWorkload' -timeout=35m .
+```
+
+They need `kubectl` and `helm` on `PATH`. Phase 18 covers the control plane: the
+CRDs, the controller Deployment and its RBAC, rendering, cluster-policy merging
+and garbage collection. Phase 19 covers a filtered workload: Pod Security
+rejecting `NET_ADMIN` under `baseline`, sidecar ordering, real egress under
+containerd, denial Events, live policy reload, a `helm install` of the example
+chart, and the mutating webhook injecting into a Deployment that names no
+sidecar. The controller image is rebuilt from source every run, so a controller
+change is never tested against a stale tag; the agent image is taken from
+`G0EFILTER_IMAGE` and loaded into the cluster.
+
+CI runs them from `.github/workflows/test.yaml` on relevant pull requests,
+nightly, and manual runs. The workflow loads the agent image; the harness builds
+the controller image from the checked-out source.
+
 `internal/harness` holds the stack lifecycle, typed container exec, traffic
 assertions, log parsing, the dashboard API client, nftables inspection and the
 load driver. `compose.test.yaml` is the test stack: no fixed container names, an
@@ -78,6 +104,7 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `E2E_LOG_TAIL` | `20` | Failure log tail; `0` dumps everything |
 | `E2E_TESTCONTAINERS_LOG` | `0` | `1` prints Testcontainers lifecycle logs |
 | `E2E_BROWSER` | `0` | `1` runs the Playwright smoke test |
+| `E2E_K8S` | `0` | `true` runs the Kubernetes phases against a k3s container |
 | `G0EFILTER_IMAGE` | `g0efilter:test` | Agent image under test |
 | `G0EFILTER_DASHBOARD_IMAGE` | `g0efilter-dashboard:test` | Dashboard image under test |
 | `E2E_MAX_MEMORY_MIB` | `256` | Memory ceiling |

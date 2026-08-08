@@ -34,6 +34,17 @@ scripts/test-action.sh
 scripts/test-ui.sh
 ```
 
+Parser and policy changes should also get a fuzz run. `scripts/test-go.sh` already
+exercises each target's seed corpus; this mutates:
+
+```sh
+FUZZTIME=1m scripts/test-fuzz.sh
+```
+
+A crash is written to `testdata/fuzz/<Target>/` next to the target. Turn it into a
+named unit test or inline fuzz seed; generated corpus files are ignored. CI runs a
+longer campaign nightly in `.github/workflows/fuzz.yaml`.
+
 Run the end-to-end tests for filtering changes. They need Docker:
 
 ```sh
@@ -45,6 +56,28 @@ E2E_FILTER_MODE=dns-strict go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./.
 
 Images build automatically when missing; use `E2E_BUILD=force` after changing
 agent or dashboard code. See `tests/e2e/README.md` for modes and suite selection.
+
+## Releasing
+
+`VERSION` is the source of truth for the g0efilter release. Release tags must
+match it and are what trigger publication:
+
+```sh
+scripts/set-version.sh 0.9.0
+git commit -am 'chore: release v0.9.0'
+git tag v0.9.0
+```
+
+`VERSION` holds plain SemVer (`0.9.0`). Image tags, Kustomize `?ref=` and the tag
+itself carry a `v`; the Helm `appVersion` and chart version do not.
+`tests/repo/version_test.go` fails when a pin drifts, and the release workflow
+fails when `VERSION` does not match the tag.
+
+Helm chart versions are independent. `Chart.yaml` `version` identifies the chart
+package and must be incremented whenever the published chart changes - including
+when only `appVersion` moves, since that is still a different package.
+`set-version.sh` bumps it, and `ct check-version-increment` enforces it for
+template changes made outside a release.
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.

@@ -55,9 +55,6 @@ services:
       - ALL
     cap_add:
       - NET_ADMIN
-      - SETUID
-      - SETGID
-      - CHOWN
     security_opt:
       - no-new-privileges
 
@@ -74,8 +71,8 @@ docker compose up -d
 ```
 
 See the [examples](examples/) for complete Compose files and policies. See
-[runtime user configuration](docs/configuration.md#running-as-a-non-root-user)
-to change the container identity.
+[the privilege model](docs/configuration.md#privileges) for how the container
+runs unprivileged with only `NET_ADMIN`.
 
 ## Filter modes
 
@@ -119,6 +116,30 @@ See [policy](docs/policy.md) for patterns and policy modes. See
 [environment variables](docs/configuration.md#environment-variables) for
 configuration.
 
+## Kubernetes
+
+g0efilter runs as a native sidecar, so it filters the whole pod and the
+application container needs no extra privileges. A Kustomize component can add it
+without changing the workload source manifests.
+
+```yaml
+components:
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+```
+
+That covers Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
+There is also a Helm library chart for charts you maintain, a Helm post-renderer
+for third-party charts you cannot edit, and a mutating webhook that injects the
+sidecar at admission for pods you do not template at all.
+
+The render-time integrations mount a policy ConfigMap directly. The webhook uses
+`EgressPolicy` custom resources and a controller that renders the matching
+ConfigMap. Denials can also be surfaced as Kubernetes Events and Prometheus
+metrics.
+
+See [Kubernetes](docs/kubernetes.md) for all four integrations, policy
+distribution, and the required namespace label.
+
 ## GitHub Actions
 
 The GitHub Action filters traffic from the runner. Add it before the steps you
@@ -140,8 +161,11 @@ jobs:
       - uses: actions/checkout@v7
 ```
 
+The loaded allowlist is logged in the workflow, and the job summary reports every
+blocked, audited, and allowed host.
+
 See [GitHub Actions](docs/github-actions.md) for inputs, built-in allow rules,
-and security limits.
+the job report, and security limits.
 
 ## Dashboard
 
@@ -160,6 +184,7 @@ See the [examples](examples/) for a complete setup. See
 
 - [Filter modes](docs/modes.md)
 - [Policy](docs/policy.md)
+- [Kubernetes](docs/kubernetes.md)
 - [Configuration and environment variables](docs/configuration.md)
 - [Dashboard API endpoints](docs/endpoints.md)
 - [GitHub Actions](docs/github-actions.md)

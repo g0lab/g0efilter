@@ -42,6 +42,24 @@ job needs.
 > only when they use host networking. Jobs that use `container:` are not
 > supported.
 
+## Job report
+
+The Action logs the allowlist it loaded under a collapsed `g0efilter allowlist`
+group in the workflow log, marking entries that came from `allowed-domains` and
+`allowed-ips` with `+` so they stand out from the always-permitted baseline.
+
+The post step then writes an egress report to the job summary:
+
+- the mode, egress policy, and image that ran;
+- a count of allowed, blocked, and audited decisions, by unique host;
+- every blocked host with its component and destination;
+- every audited host, which is reported but not blocked;
+- every allowed host that was reached, collapsed;
+- the full allowlist, split into workflow entries and the baseline.
+
+The report is written even when nothing was blocked, so a job that filters
+cleanly still records what it was allowed to reach.
+
 ## Security limits
 
 g0efilter blocks destinations outside the allowlist. It cannot stop data leaving
