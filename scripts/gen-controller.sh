@@ -18,10 +18,10 @@ echo ">>> RBAC"
 go tool controller-gen rbac:roleName=g0efilter-controller paths="./internal/..." \
 	output:rbac:artifacts:config="$ROOT/deploy/controller"
 
-# The application chart installs the same CRDs from its own templates, so they are
+# The controller chart installs the same CRDs from its own templates, so they are
 # wrapped rather than copied: deploy/crds stays the single source of truth.
 echo ">>> chart CRD templates"
-python3 "$ROOT/scripts/gen-chart-crds.py" "$ROOT"
+"$ROOT/scripts/gen-chart-crds.sh" "$ROOT"
 
 echo ">>> tidy"
 go mod tidy
