@@ -85,9 +85,10 @@ func TestUnsetOptionsRenderNoEnvironment(t *testing.T) {
 func everyOption() v1alpha1.SidecarSpec {
 	//nolint:exhaustruct // image, mode and resources are covered elsewhere
 	return v1alpha1.SidecarSpec{
-		ProcessInfo: true,
-		TenantID:    "tenant-a",
-		Events:      v1alpha1.EventsSpec{Enabled: true, MaxDenials: new(int32(3))},
+		ProcessInfo:      true,
+		TenantID:         "tenant-a",
+		Events:           true,
+		EventsMaxDenials: new(int32(3)),
 		Dashboard: v1alpha1.DashboardSpec{
 			Host:                "http://dashboard.g0efilter-system.svc:8081",
 			APIKeySecretRef:     secretKey("dashboard-key", "api-key"),

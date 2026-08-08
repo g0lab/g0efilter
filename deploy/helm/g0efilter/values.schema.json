@@ -183,14 +183,14 @@
         "startDelay": {
           "description": "A Go duration such as 5s or 1m.",
           "type": "string",
-          "pattern": "^([0-9]+(ns|us|ms|s|m|h))*$"
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))*$"
         },
         "remoteUnblock": {
           "type": "boolean"
         },
         "unblockPollInterval": {
           "type": "string",
-          "pattern": "^([0-9]+(ns|us|ms|s|m|h))*$"
+          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))*$"
         }
       }
     },

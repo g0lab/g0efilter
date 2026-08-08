@@ -60,15 +60,18 @@ func init() {
 }
 
 type options struct {
-	metricsAddr  string
-	probeAddr    string
-	leaderElect  bool
-	printVersion bool
-	webhook      bool
-	webhookPort  int
-	certDir      string
-	certSource   string
-	sidecarImage string
+	metricsAddr   string
+	probeAddr     string
+	leaderElect   bool
+	printVersion  bool
+	webhook       bool
+	webhookPort   int
+	certDir       string
+	certSource    string
+	certSecret    string
+	webhookSvc    string
+	webhookConfig string
+	sidecarImage  string
 }
 
 func parseFlags() options {
@@ -88,6 +91,12 @@ func parseFlags() options {
 		"Directory the serving certificate is read from.")
 	flag.StringVar(&opts.certSource, "webhook-cert-source", certSourceSelfSigned,
 		"Where the serving certificate comes from: self-signed, or external for cert-manager.")
+	flag.StringVar(&opts.certSecret, "webhook-cert-secret", webhookSecretName,
+		"Secret that stores the self-signed webhook certificate.")
+	flag.StringVar(&opts.webhookSvc, "webhook-service-name", webhookServiceName,
+		"Service name included in the webhook serving certificate.")
+	flag.StringVar(&opts.webhookConfig, "webhook-config-name", webhookConfigName,
+		"MutatingWebhookConfiguration whose CA bundle is updated.")
 	flag.StringVar(&opts.sidecarImage, "sidecar-image", g0webhook.DefaultImage,
 		"Image the webhook injects when a policy does not name one.")
 	flag.Parse()
@@ -197,9 +206,9 @@ func certOptions(opts options) (certs.Options, error) {
 
 	return certs.Options{
 		Namespace:   ns,
-		SecretName:  webhookSecretName,
-		ServiceName: webhookServiceName,
-		WebhookName: webhookConfigName,
+		SecretName:  opts.certSecret,
+		ServiceName: opts.webhookSvc,
+		WebhookName: opts.webhookConfig,
 		Dir:         opts.certDir,
 	}, nil
 }

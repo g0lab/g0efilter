@@ -19,7 +19,7 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  name: {{ include "g0efilter-controller.fullname" . }}-sidecar-injector
+  name: {{ include "g0efilter-controller.webhookConfigName" . }}
   labels:
     {{- include "g0efilter-controller.labels" . | nindent 4 }}
   {{- if eq .Values.webhook.certificate.source "cert-manager" }}

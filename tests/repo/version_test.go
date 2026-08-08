@@ -18,6 +18,8 @@ var taggedPins = []*regexp.Regexp{ //nolint:gochecknoglobals // the pin list is 
 	regexp.MustCompile(`g0lab/g0efilter[a-z-]*:v([0-9]+\.[0-9]+\.[0-9]+[^\s'"]*)`),
 	// github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
 	regexp.MustCompile(`\?ref=v([0-9]+\.[0-9]+\.[0-9]+[^\s'"]*)`),
+	// raw.githubusercontent.com/g0lab/g0efilter/v0.8.0/deploy/crds/...
+	regexp.MustCompile(`g0lab/g0efilter/v([0-9]+\.[0-9]+\.[0-9]+[^/\s'"]*)/deploy/`),
 	// Kustomize newTag and the Helm image tag.
 	regexp.MustCompile(`newTag:\s*'?v([0-9]+\.[0-9]+\.[0-9]+[^\s'"]*)`),
 	regexp.MustCompile(`(?m)^\s*tag:\s*'?v([0-9]+\.[0-9]+\.[0-9]+[^\s'"]*)`),

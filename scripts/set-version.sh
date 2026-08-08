@@ -38,6 +38,7 @@ while IFS= read -r file; do
   [ -f "$file" ] || continue
   sed -i \
     -e "s|\(g0lab/g0efilter[a-z-]*:\)v$OLD|\1v$NEW|g" \
+    -e "s|\(g0lab/g0efilter/v\)$OLD|\1$NEW|g" \
     -e "s|\(?ref=\)v$OLD|\1v$NEW|g" \
     -e "s|\(newTag: \)v$OLD|\1v$NEW|g" \
     -e "s|\(tag: \)v$OLD|\1v$NEW|g" \

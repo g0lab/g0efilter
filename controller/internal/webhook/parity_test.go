@@ -77,7 +77,7 @@ func TestInjectedSidecarMatchesTheKustomizeComponent(t *testing.T) {
 		Image:     want.Image,
 		Mode:      "",
 		LogLevel:  "",
-		Events:    v1alpha1.EventsSpec{Enabled: false, MaxDenials: nil},
+		Events:    false,
 		Metrics:   v1alpha1.MetricsSpec{Enabled: false, Port: 0, Annotations: false},
 		Resources: corev1.ResourceRequirements{Limits: nil, Requests: nil, Claims: nil},
 	}))

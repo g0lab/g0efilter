@@ -17,7 +17,7 @@ linters:
     rules:
       # A kubebuilder marker is one comment line by definition: controller-gen does
       # not join continuations, so a CEL rule cannot be wrapped to fit.
-      - path: controller/api/
+      - source: '^\s*// \+kubebuilder:'
         linters:
           - lll
       - path: tests/e2e

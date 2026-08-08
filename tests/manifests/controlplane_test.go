@@ -83,6 +83,59 @@ func TestControllerChartExcludesItsOwnNamespace(t *testing.T) {
 	}
 }
 
+func TestControllerFullnameOverrideReachesWebhookRuntimeAndRBAC(t *testing.T) {
+	t.Parallel()
+
+	rendered := controllerTemplate(t, "--set", "fullnameOverride=custom")
+	container := containerNamed(t, list(t, podSpec(t, rendered["Deployment"]), "containers"), "controller")
+	args := list(t, container, "args")
+
+	for _, want := range []string{
+		"--webhook-cert-secret=custom-webhook-cert",
+		"--webhook-service-name=custom-webhook",
+		"--webhook-config-name=custom-sidecar-injector",
+	} {
+		found := false
+
+		for _, arg := range args {
+			if arg == want {
+				found = true
+			}
+		}
+
+		if !found {
+			t.Errorf("controller args omit %q: %v", want, args)
+		}
+	}
+
+	for _, raw := range list(t, rendered["ClusterRole"], "rules") {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if normalise(t, rule["resources"]) == `["mutatingwebhookconfigurations"]` &&
+			normalise(t, rule["resourceNames"]) != `["custom-sidecar-injector"]` {
+			t.Errorf("webhook resourceNames = %v", rule["resourceNames"])
+		}
+	}
+}
+
+func TestControllerServiceMonitorOmitsEmptyInterval(t *testing.T) {
+	t.Parallel()
+
+	rendered := controllerTemplate(t,
+		"--set", "metrics.service.enabled=true",
+		"--set", "metrics.serviceMonitor.enabled=true",
+		"--set", "metrics.serviceMonitor.interval=")
+	endpoints := list(t, child(t, rendered["ServiceMonitor"], "spec"), "endpoints")
+	endpoint := endpoints[0].(map[string]any) //nolint:forcetypeassert // decoded YAML shape
+
+	if _, ok := endpoint["interval"]; ok {
+		t.Errorf("empty interval rendered as %v", endpoint["interval"])
+	}
+}
+
 func webhookEntry(t *testing.T, doc map[string]any) map[string]any {
 	t.Helper()
 
@@ -313,6 +366,19 @@ func TestDashboardCredentialChangeUpdatesPodTemplate(t *testing.T) {
 	}
 }
 
+func TestDashboardNamesIncludeTheRelease(t *testing.T) {
+	t.Parallel()
+	serialHelm(t)
+
+	rendered := byKind(t, decodeDocs(t, run(t, "helm", "template", "dash",
+		repoPath("deploy", "helm", "g0efilter-dashboard"))))
+	metadata := child(t, rendered["Deployment"], "metadata")
+
+	if metadata["name"] != "dash-g0efilter-dashboard" {
+		t.Errorf("deployment name = %v", metadata["name"])
+	}
+}
+
 func TestDashboardChartRejectsExistingAndInlineSecrets(t *testing.T) {
 	t.Parallel()
 	serialHelm(t)
@@ -339,6 +405,25 @@ func TestDashboardChartRejectsMultipleJWTKeySources(t *testing.T) {
 	if !strings.Contains(out, "exactly one key source") {
 		t.Errorf("error does not explain the conflict:\n%s", out)
 	}
+}
+
+func TestDashboardJWTRequiresTheDeclaredExternalKey(t *testing.T) {
+	t.Parallel()
+	serialHelm(t)
+
+	chart := repoPath("deploy", "helm", "g0efilter-dashboard")
+
+	out := runHelmExpectingFailure(t, "template", "dash", chart,
+		"--set", "auth.mode=jwt",
+		"--set", "secrets.existingSecret=managed")
+	if !strings.Contains(out, "needs a key source") {
+		t.Errorf("error does not explain the missing key:\n%s", out)
+	}
+
+	run(t, "helm", "template", "dash", chart,
+		"--set", "auth.mode=jwt",
+		"--set", "secrets.existingSecret=managed",
+		"--set", "secrets.existingSecretKeys.jwtSecret=true")
 }
 
 // Credentials given in values must never end up as literals in the pod spec.

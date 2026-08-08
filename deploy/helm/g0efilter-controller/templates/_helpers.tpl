@@ -38,11 +38,27 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | 
 {{- end -}}
 
 {{- define "g0efilter-controller.webhookServiceName" -}}
+{{- if or .Values.nameOverride .Values.fullnameOverride -}}
 {{- printf "%s-webhook" (include "g0efilter-controller.fullname" .) -}}
+{{- else -}}
+g0efilter-webhook
+{{- end -}}
 {{- end -}}
 
 {{- define "g0efilter-controller.certSecretName" -}}
+{{- if or .Values.nameOverride .Values.fullnameOverride -}}
 {{- printf "%s-webhook-cert" (include "g0efilter-controller.fullname" .) -}}
+{{- else -}}
+g0efilter-webhook-cert
+{{- end -}}
+{{- end -}}
+
+{{- define "g0efilter-controller.webhookConfigName" -}}
+{{- if or .Values.nameOverride .Values.fullnameOverride -}}
+{{- printf "%s-sidecar-injector" (include "g0efilter-controller.fullname" .) -}}
+{{- else -}}
+g0efilter-sidecar-injector
+{{- end -}}
 {{- end -}}
 
 {{- define "g0efilter-controller.validate" -}}

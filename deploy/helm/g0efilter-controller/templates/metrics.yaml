@@ -44,7 +44,9 @@ spec:
       {{- include "g0efilter-controller.selectorLabels" . | nindent 6 }}
   endpoints:
     - port: metrics
-      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      {{- with .Values.metrics.serviceMonitor.interval }}
+      interval: {{ . }}
+      {{- end }}
       {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
       scrapeTimeout: {{ . }}
       {{- end }}

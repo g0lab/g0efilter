@@ -24,7 +24,7 @@ WARNING: auth.mode is none. The UI and its sensitive endpoints - stored logs, lo
 deletion, API key management - are unauthenticated. Only do this behind a proxy that
 authenticates for it.
 {{- else if eq .Values.auth.mode "session" -}}
-{{- if not (or .Values.secrets.existingSecret .Values.secrets.adminPasswordHash) }}
+{{- if not (or .Values.secrets.adminPasswordHash (and .Values.secrets.existingSecret .Values.secrets.existingSecretKeys.adminPasswordHash)) }}
 No admin password hash was supplied, so the dashboard generated one and printed it
 once at startup. Read it now - it is not stored anywhere and not printed again:
 
@@ -39,7 +39,7 @@ WARNING: auth.cookieSecure is false, so the session cookie is sent over plain HT
 {{- end }}
 {{- end }}
 
-{{ if not (or .Values.secrets.existingSecret .Values.secrets.apiKey) -}}
+{{ if not (or .Values.secrets.apiKey (and .Values.secrets.existingSecret .Values.secrets.existingSecretKeys.apiKey)) -}}
 Sidecars need a machine API key to ship logs. One was generated and printed at
 startup when the key store was empty:
 

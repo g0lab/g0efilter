@@ -24,6 +24,7 @@ var (
 	errNoSuchPolicy    = errors.New("no matching policy")
 	errAmbiguousPolicy = errors.New("ambiguous policy")
 	errPolicyNotReady  = errors.New("policy is not ready")
+	errProcessInfoPID  = errors.New("processInfo requires shareProcessNamespace unless hostPID is enabled")
 )
 
 const (
@@ -75,7 +76,14 @@ func (i *Injector) Handle(ctx context.Context, req admission.Request) admission.
 		return admission.Denied(err.Error())
 	}
 
-	inject(pod, resolve(policy.Spec.Sidecar, i.Defaults), configMapFor(policy), policy.Name)
+	settings := resolve(policy.Spec.Sidecar, i.Defaults)
+
+	err = validateProcessInfo(pod, settings)
+	if err != nil {
+		return admission.Denied(err.Error())
+	}
+
+	inject(pod, settings, configMapFor(policy), policy.Name)
 
 	patched, err := json.Marshal(pod)
 	if err != nil {
@@ -86,6 +94,15 @@ func (i *Injector) Handle(ctx context.Context, req admission.Request) admission.
 		"namespace", namespace, "pod", pod.GenerateName+pod.Name, "policy", policy.Name)
 
 	return admission.PatchResponseFromRaw(req.Object.Raw, patched)
+}
+
+func validateProcessInfo(pod *corev1.Pod, settings sidecarSettings) error {
+	if !settings.processInfo || pod.Spec.HostPID || pod.Spec.ShareProcessNamespace == nil ||
+		*pod.Spec.ShareProcessNamespace {
+		return nil
+	}
+
+	return errProcessInfoPID
 }
 
 func (i *Injector) policyReady(
@@ -257,14 +274,14 @@ func inject(pod *corev1.Pod, settings sidecarSettings, configMapName, policyName
 
 	maps.Copy(pod.Annotations, scrapeAnnotations(settings))
 
-	if settings.events.Enabled {
+	if settings.events {
 		mount := true
 		pod.Spec.AutomountServiceAccountToken = &mount
 	}
 
-	// Process attribution reads /proc, so the sidecar has to share the pod's process
-	// namespace. That is mutual: every container can then see the others' processes.
-	if settings.processInfo {
+	// hostPID already exposes the processes; otherwise opt into the pod's shared
+	// process namespace without overriding an explicit setting.
+	if settings.processInfo && !pod.Spec.HostPID && pod.Spec.ShareProcessNamespace == nil {
 		share := true
 		pod.Spec.ShareProcessNamespace = &share
 	}

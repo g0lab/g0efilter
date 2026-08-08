@@ -141,9 +141,9 @@ helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
 kubectl label namespace <namespace> g0efilter.io/inject=enabled
 ```
 
-Matching pods in a labelled namespace get a sidecar without changes to their
-workload manifests. Start with `enforcement: audit` to see what the policy would
-deny.
+Pods also need to match an `EgressPolicy`; the namespace label alone does not
+trigger injection. See the [policy example](docs/kubernetes.md#writing-a-policy),
+and start with `enforcement: audit` to see what it would deny.
 
 Three charts are published, both as a conventional Helm repository at
 `https://g0lab.github.io/g0efilter` and as OCI artifacts under
@@ -197,6 +197,9 @@ the job report, and security limits.
 The optional dashboard shows live and saved traffic. Point g0efilter at it with
 `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. The dashboard can also manage API keys,
 fleet policy, and remote unblock requests.
+
+Its Helm chart supports externally managed credentials; declare the keys present
+under `secrets.existingSecretKeys` so validation and recovery notes stay accurate.
 
 See the [examples](examples/) for a complete setup. See
 [dashboard authentication](docs/configuration.md#dashboard-authentication),

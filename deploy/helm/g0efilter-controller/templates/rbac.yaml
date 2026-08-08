@@ -62,11 +62,11 @@ rules:
       - admissionregistration.k8s.io
     resources:
       - mutatingwebhookconfigurations
+    resourceNames:
+      - {{ include "g0efilter-controller.webhookConfigName" . }}
     verbs:
       - get
-      - list
       - update
-      - watch
   - apiGroups:
       - g0efilter.io
     resources:

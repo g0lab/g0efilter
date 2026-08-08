@@ -176,12 +176,13 @@ func TestCRDAcceptsTheFullSidecarSpec(t *testing.T) {
 
 	//nolint:exhaustruct // the fields under test
 	policy.Spec.Sidecar = v1alpha1.SidecarSpec{
-		Mode:        "dns-strict",
-		Enforcement: "audit",
-		LogLevel:    "DEBUG",
-		ProcessInfo: true,
-		TenantID:    "tenant-a",
-		Events:      v1alpha1.EventsSpec{Enabled: true, MaxDenials: &maxDenials},
+		Mode:             "dns-strict",
+		Enforcement:      "audit",
+		LogLevel:         "DEBUG",
+		ProcessInfo:      true,
+		TenantID:         "tenant-a",
+		Events:           true,
+		EventsMaxDenials: &maxDenials,
 		Dashboard: v1alpha1.DashboardSpec{
 			Host:          "http://dashboard.g0efilter-system.svc:8081",
 			QueueSize:     &queue,

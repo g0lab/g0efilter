@@ -47,7 +47,8 @@ type sidecarSettings struct {
 	logLevel      string
 	processInfo   bool
 	tenantID      string
-	events        v1alpha1.EventsSpec
+	events        bool
+	eventsMax     *int32
 	metrics       bool
 	metricsPort   int32
 	annotations   bool
@@ -73,6 +74,7 @@ func resolve(spec v1alpha1.SidecarSpec, defaults Defaults) sidecarSettings {
 		processInfo:   spec.ProcessInfo,
 		tenantID:      spec.TenantID,
 		events:        spec.Events,
+		eventsMax:     spec.EventsMaxDenials,
 		metrics:       spec.Metrics.Enabled,
 		metricsPort:   spec.Metrics.Port,
 		annotations:   spec.Metrics.Annotations,
@@ -230,13 +232,13 @@ func observabilityEnv(settings sidecarSettings) []corev1.EnvVar {
 		vars = append(vars, plain("METRICS_ADDR", ":"+strconv.Itoa(int(settings.metricsPort))))
 	}
 
-	if settings.events.Enabled {
+	if settings.events {
 		vars = append(vars,
 			plain("KUBE_EVENTS", "true"),
 			fieldRef("POD_NAME", "metadata.name"),
 			fieldRef("POD_UID", "metadata.uid"),
 		)
-		vars = appendInt32(vars, "KUBE_EVENTS_MAX", settings.events.MaxDenials)
+		vars = appendInt32(vars, "KUBE_EVENTS_MAX", settings.eventsMax)
 	}
 
 	return vars
@@ -375,7 +377,7 @@ func secretRef(name string, selector *corev1.SecretKeySelector) corev1.EnvVar {
 		Name:  name,
 		Value: "",
 		ValueFrom: &corev1.EnvVarSource{ //nolint:exhaustruct // secret reference only
-			SecretKeyRef: selector,
+			SecretKeyRef: selector.DeepCopy(),
 		},
 	}
 }

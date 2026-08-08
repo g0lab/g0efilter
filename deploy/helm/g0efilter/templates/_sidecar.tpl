@@ -8,10 +8,15 @@ a pod template's initContainers: anything ordered before it has unfiltered egres
 {{- define "g0efilter.sidecar" -}}
 {{- $c := .Values.g0efilter -}}
 {{- $metricsPort := int $c.metrics.port -}}
+{{- $httpPort := int (default 65080 $c.ports.http) -}}
+{{- $httpsPort := int (default 65443 $c.ports.https) -}}
+{{- if eq $httpPort $httpsPort -}}
+{{- fail "g0efilter.ports.http and g0efilter.ports.https must differ" -}}
+{{- end -}}
 {{- if and $c.metrics.enabled (has $c.mode (list "dns" "dns-strict")) (eq $metricsPort (int (default 65053 $c.ports.dns))) -}}
 {{- fail "g0efilter.metrics.port must differ from the active DNS proxy port" -}}
 {{- end -}}
-{{- if and $c.metrics.enabled (eq $c.mode "https") (or (eq $metricsPort (int (default 65080 $c.ports.http))) (eq $metricsPort (int (default 65443 $c.ports.https)))) -}}
+{{- if and $c.metrics.enabled (eq $c.mode "https") (or (eq $metricsPort $httpPort) (eq $metricsPort $httpsPort)) -}}
 {{- fail "g0efilter.metrics.port must differ from the active HTTP and HTTPS proxy ports" -}}
 {{- end -}}
 - name: g0efilter

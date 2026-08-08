@@ -45,6 +45,12 @@ secrets:
   # instead goes into the Helm release, which is stored in the cluster and visible to
   # anyone who can read releases.
   existingSecret: ''
+  # Declare which optional keys the external Secret contains. The chart cannot
+  # inspect it during offline rendering.
+  existingSecretKeys:
+    apiKey: false
+    adminPasswordHash: false
+    jwtSecret: false
   keys:
     apiKey: api-key
     adminPasswordHash: admin-password-hash

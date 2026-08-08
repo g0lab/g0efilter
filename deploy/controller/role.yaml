@@ -41,13 +41,13 @@ rules:
   - update
 - apiGroups:
   - admissionregistration.k8s.io
+  resourceNames:
+  - g0efilter-sidecar-injector
   resources:
   - mutatingwebhookconfigurations
   verbs:
   - get
-  - list
   - update
-  - watch
 - apiGroups:
   - g0efilter.io
   resources:

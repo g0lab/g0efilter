@@ -114,6 +114,21 @@
         "existingSecret": {
           "type": "string"
         },
+        "existingSecretKeys": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "apiKey": {
+              "type": "boolean"
+            },
+            "adminPasswordHash": {
+              "type": "boolean"
+            },
+            "jwtSecret": {
+              "type": "boolean"
+            }
+          }
+        },
         "keys": {
           "type": "object",
           "additionalProperties": false,

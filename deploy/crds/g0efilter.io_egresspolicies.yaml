@@ -311,22 +311,16 @@ spec:
                     - audit
                     type: string
                   events:
-                    description: Events records denials as Kubernetes Events.
-                    properties:
-                      enabled:
-                        description: |-
-                          Enabled records the first denials as Events on the pod. The pod's
-                          ServiceAccount needs create on events, and this policy must allow the API
-                          server: the sidecar's own egress is filtered too.
-                        type: boolean
-                      maxDenials:
-                        description: |-
-                          MaxDenials caps the distinct denials recorded per pod, so a pod hammering a
-                          blocked destination cannot flood the API server. 0 records none at all.
-                        format: int32
-                        minimum: 0
-                        type: integer
-                    type: object
+                    description: |-
+                      Events records denials as Kubernetes Events. The pod's ServiceAccount needs
+                      create on events, and this policy must allow the API server.
+                    type: boolean
+                  eventsMaxDenials:
+                    description: EventsMaxDenials caps the distinct denials recorded
+                      per pod. 0 records none.
+                    format: int32
+                    minimum: 0
+                    type: integer
                   extraEnv:
                     description: |-
                       ExtraEnv sets sidecar environment variables this API does not model yet.
@@ -643,9 +637,9 @@ spec:
                       rule: '!has(self.http) || !has(self.https) || self.http != self.https'
                   processInfo:
                     description: |-
-                      ProcessInfo adds the originating pid and process name to flow logs. It needs a
-                      shared process namespace, so enabling it makes every container in the pod able
-                      to see - and signal - the others' processes.
+                      ProcessInfo adds the originating pid and process name to flow logs. The webhook
+                      enables a shared process namespace unless the pod uses hostPID, and rejects an
+                      explicit shareProcessNamespace: false.
                     type: boolean
                   resources:
                     description: Resources overrides the sidecar's requests and limits.

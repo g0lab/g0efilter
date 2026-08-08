@@ -323,10 +323,10 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `mode` | `FILTER_MODE` | `https`, `dns` or `dns-strict`. |
 | `enforcement` | `ENFORCE` | `block` or `audit`. Always rendered, so a pod's posture is readable without knowing the default. |
 | `logLevel` | `LOG_LEVEL` | |
-| `processInfo` | `PROCESS_INFO` | Also sets `shareProcessNamespace: true` on the pod, which lets every container see and signal the others' processes. |
+| `processInfo` | `PROCESS_INFO` | Uses `hostPID` when set; otherwise the webhook enables the shared process namespace and rejects an explicit `shareProcessNamespace: false`. |
 | `tenantId` | `TENANT_ID` | Tenant identifier on netfilter log events. |
-| `events.enabled` | `KUBE_EVENTS` | Needs `create` on events for the pod's ServiceAccount. |
-| `events.maxDenials` | `KUBE_EVENTS_MAX` | Caps Events per pod. `0` records none. |
+| `events` | `KUBE_EVENTS` | Needs `create` on events for the pod's ServiceAccount. |
+| `eventsMaxDenials` | `KUBE_EVENTS_MAX` | Caps Events per pod. `0` records none. |
 | `metrics.enabled`, `metrics.port` | `METRICS_ADDR` | Also declares the container port. |
 | `metrics.annotations` | - | Adds `prometheus.io/*` to the pod. |
 | `dashboard.host` | `DASHBOARD_HOST` | Where to ship logs. |
@@ -509,7 +509,13 @@ kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
 ```yaml
 secrets:
   existingSecret: g0efilter-dashboard
+  existingSecretKeys:
+    apiKey: true
+    adminPasswordHash: true
 ```
+
+Declare only keys that are present. This lets the chart validate JWT setup and
+show recovery instructions when an optional credential is generated at startup.
 
 The API key Secret must exist in each workload namespace. Its policy must also
 allow the dashboard because the sidecar filters its own egress:

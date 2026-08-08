@@ -64,6 +64,9 @@ spec:
             - --webhook
             - --webhook-port={{ .Values.webhook.port }}
             - --webhook-cert-dir=/tmp/g0efilter-certs
+            - --webhook-cert-secret={{ include "g0efilter-controller.certSecretName" . }}
+            - --webhook-service-name={{ include "g0efilter-controller.webhookServiceName" . }}
+            - --webhook-config-name={{ include "g0efilter-controller.webhookConfigName" . }}
             {{- if eq .Values.webhook.certificate.source "cert-manager" }}
             - --webhook-cert-source=external
             {{- end }}

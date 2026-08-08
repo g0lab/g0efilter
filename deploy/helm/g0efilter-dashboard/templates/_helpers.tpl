@@ -6,7 +6,12 @@
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- include "g0efilter-dashboard.name" . | trunc 63 | trimSuffix "-" -}}
+{{- $name := include "g0efilter-dashboard.name" . -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 
@@ -77,11 +82,15 @@ true
 {{- if and $s.existingSecret (or $s.apiKey $s.adminPasswordHash $s.jwtSecret) -}}
 {{- fail "secrets.existingSecret cannot be combined with inline credentials" -}}
 {{- end -}}
-{{- $jwtSources := compact (list .Values.auth.jwt.jwksUrl .Values.auth.jwt.publicKey .Values.secrets.jwtSecret .Values.secrets.existingSecret) -}}
+{{- if and (not $s.existingSecret) (or $s.existingSecretKeys.apiKey $s.existingSecretKeys.adminPasswordHash $s.existingSecretKeys.jwtSecret) -}}
+{{- fail "secrets.existingSecretKeys requires secrets.existingSecret" -}}
+{{- end -}}
+{{- $externalJWT := ternary "existing-secret" "" (and (ne $s.existingSecret "") $s.existingSecretKeys.jwtSecret) -}}
+{{- $jwtSources := compact (list .Values.auth.jwt.jwksUrl .Values.auth.jwt.publicKey $s.jwtSecret $externalJWT) -}}
 {{- if and (eq .Values.auth.mode "jwt") (gt (len $jwtSources) 1) -}}
 {{- fail "auth.mode jwt accepts exactly one key source" -}}
 {{- end -}}
-{{- if and (eq .Values.auth.mode "jwt") (not (or .Values.auth.jwt.jwksUrl .Values.auth.jwt.publicKey .Values.secrets.jwtSecret .Values.secrets.existingSecret)) -}}
+{{- if and (eq .Values.auth.mode "jwt") (eq (len $jwtSources) 0) -}}
 {{- fail "auth.mode jwt needs a key source: auth.jwt.jwksUrl, auth.jwt.publicKey or secrets.jwtSecret" -}}
 {{- end -}}
 {{- end -}}

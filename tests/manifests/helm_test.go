@@ -201,6 +201,7 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 		{name: "root uid", set: "g0efilter.runAsUser=0", wantErr: "'/runAsUser'"},
 		{name: "relative policy mount", set: "g0efilter.policy.mountPath=app/policy", wantErr: "'/policy/mountPath'"},
 		{name: "non-boolean events flag", set: "g0efilter.events.enabled=maybe", wantErr: "'/events/enabled'"},
+		{name: "proxy port collision", set: "g0efilter.ports.http=15000,g0efilter.ports.https=15000", wantErr: "must differ"},
 	}
 
 	for _, tc := range tests {
@@ -214,6 +215,18 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHelmAcceptsFractionalDurations(t *testing.T) {
+	t.Parallel()
+	serialHelm(t)
+
+	chart := repoPath("examples", "helm", "demo")
+	run(t, "helm", "dependency", "update", chart)
+
+	run(t, "helm", "template", "release", chart,
+		"--set", "g0efilter.dashboard.startDelay=1.5s",
+		"--set", "g0efilter.dashboard.unblockPollInterval=0.5m")
 }
 
 // The library chart's own values.yaml supplies the defaults through Helm's subchart

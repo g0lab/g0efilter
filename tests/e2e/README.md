@@ -29,6 +29,7 @@ step. It will not rebuild an existing image, so rebuild explicitly after
 changing agent or dashboard code:
 
 ```sh
+cd tests/e2e
 E2E_BUILD=force go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
 ```
 

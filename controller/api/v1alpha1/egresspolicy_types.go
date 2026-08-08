@@ -61,9 +61,9 @@ type SidecarSpec struct {
 	// +optional
 	LogLevel string `json:"logLevel,omitempty"`
 
-	// ProcessInfo adds the originating pid and process name to flow logs. It needs a
-	// shared process namespace, so enabling it makes every container in the pod able
-	// to see - and signal - the others' processes.
+	// ProcessInfo adds the originating pid and process name to flow logs. The webhook
+	// enables a shared process namespace unless the pod uses hostPID, and rejects an
+	// explicit shareProcessNamespace: false.
 	// +optional
 	ProcessInfo bool `json:"processInfo,omitempty"`
 
@@ -72,9 +72,15 @@ type SidecarSpec struct {
 	// +optional
 	TenantID string `json:"tenantId,omitempty"`
 
-	// Events records denials as Kubernetes Events.
+	// Events records denials as Kubernetes Events. The pod's ServiceAccount needs
+	// create on events, and this policy must allow the API server.
 	// +optional
-	Events EventsSpec `json:"events,omitempty"`
+	Events bool `json:"events,omitempty"`
+
+	// EventsMaxDenials caps the distinct denials recorded per pod. 0 records none.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	EventsMaxDenials *int32 `json:"eventsMaxDenials,omitempty"`
 
 	// Metrics serves Prometheus metrics from the sidecar.
 	// +optional
@@ -133,21 +139,6 @@ type SidecarSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['ALLOWLIST_IPS','ALLOWLIST_DOMAINS','DENYLIST_IPS','DENYLIST_DOMAINS','DEFAULT_ACTION','LEARNING_MODE','POLICY_PATH','POLICY_CONFIGMAP']))",message="extraEnv must not set ALLOWLIST_*, DENYLIST_*, DEFAULT_ACTION, LEARNING_MODE, POLICY_PATH or POLICY_CONFIGMAP: they would stop the sidecar enforcing this policy"
 	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','PROCESS_INFO','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_HOST','NOTIFICATION_KEY','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))",message="extraEnv must not set a variable this spec already controls; use the matching field instead"
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
-}
-
-// EventsSpec configures Kubernetes Events for denials.
-type EventsSpec struct {
-	// Enabled records the first denials as Events on the pod. The pod's
-	// ServiceAccount needs create on events, and this policy must allow the API
-	// server: the sidecar's own egress is filtered too.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
-
-	// MaxDenials caps the distinct denials recorded per pod, so a pod hammering a
-	// blocked destination cannot flood the API server. 0 records none at all.
-	// +kubebuilder:validation:Minimum=0
-	// +optional
-	MaxDenials *int32 `json:"maxDenials,omitempty"`
 }
 
 // MetricsSpec configures the sidecar's Prometheus endpoint.
