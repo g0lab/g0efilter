@@ -1,7 +1,7 @@
 ---
 services:
   g0efilter:
-    image: docker.io/g0lab/g0efilter:latest
+    image: docker.io/g0lab/g0efilter:v0
     container_name: g0efilter
     volumes:
       # Mount the directory so live reload keeps working after file replacement.
@@ -22,13 +22,8 @@ services:
       - .env
 
   g0efilter-dashboard:
-    image: docker.io/g0lab/g0efilter-dashboard:latest
+    image: docker.io/g0lab/g0efilter-dashboard:v0
     container_name: g0efilter-dashboard
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges
-    read_only: true
     volumes:
       - g0efilter-dashboard-data:/app/data
     env_file:
@@ -40,6 +35,11 @@ services:
     image: docker.io/alpine/curl:latest
     command: 'sh -c "sleep infinity"'
     network_mode: 'service:g0efilter'
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
 
 volumes:
   g0efilter-dashboard-data:

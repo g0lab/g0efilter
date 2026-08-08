@@ -3,7 +3,7 @@ Description=g0efilter egress filter
 After=network-online.target
 
 [Container]
-Image=docker.io/g0lab/g0efilter:v0.8.0
+Image=docker.io/g0lab/g0efilter:v0
 Pod=g0efilter.pod
 
 # Mount the directory, not the file: live reload follows a replaced file. :Z relabels

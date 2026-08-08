@@ -20,3 +20,7 @@ equivalents under `g0efilter.events`, `g0efilter.learning` and
 
 `tests/manifests/` renders all three and fails if the sidecar they produce
 diverges. See [docs/kubernetes.md](../docs/kubernetes.md) for usage.
+
+Released library charts are available from the Helm repository at
+`https://g0lab.github.io/g0efilter` and from the OCI registry at
+`oci://ghcr.io/g0lab/helm/g0efilter`.
