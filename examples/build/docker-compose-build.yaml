@@ -9,7 +9,7 @@ services:
   g0efilter:
     build:
       context: ../..
-      dockerfile: examples/build/Dockerfile
+      dockerfile: examples/build/Containerfile
     image: g0efilter:latest
     container_name: g0efilter
     ports:
@@ -44,7 +44,7 @@ services:
   g0efilter-dashboard:
     build:
       context: ../..
-      dockerfile: examples/build/Dockerfile.dashboard
+      dockerfile: examples/build/Containerfile.dashboard
     image: g0efilter-dashboard:latest
     container_name: g0efilter-dashboard
     cap_drop:
@@ -62,6 +62,16 @@ services:
     # The dashboard shares the agent's network namespace, so it is reached on the
     # port the agent publishes above.
     network_mode: 'service:g0efilter'
+
+  # The controller talks to a Kubernetes API server, so it cannot run under Compose.
+  # It is here so the image can be built from source alongside the others:
+  #   docker compose -f examples/build/docker-compose-build.yaml --profile build-only build
+  g0efilter-controller:
+    profiles: ['build-only']
+    build:
+      context: ../..
+      dockerfile: examples/build/Containerfile.controller
+    image: g0efilter-controller:latest
 
 volumes:
   dashboard-data:

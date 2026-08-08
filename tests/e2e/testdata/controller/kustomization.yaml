@@ -1,0 +1,25 @@
+---
+# Deploys the control plane with the image built locally and loaded into k3s.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../../deploy/controller
+
+images:
+  - name: docker.io/g0lab/g0efilter-controller
+    newName: g0efilter-controller
+    newTag: e2e
+
+patches:
+  - target:
+      kind: Deployment
+      name: g0efilter-controller
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: g0efilter-controller
+      spec:
+        # One replica: leader election would otherwise delay the first reconcile.
+        replicas: 1

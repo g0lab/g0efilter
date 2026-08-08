@@ -1,0 +1,10 @@
+[Unit]
+Description=g0efilter egress-filtering pod
+
+# A pod shares one network namespace between its containers, which is what lets
+# g0efilter filter the workload beside it - the same model as a Kubernetes pod.
+[Pod]
+PublishPort=127.0.0.1:8081:8081
+
+[Install]
+WantedBy=default.target

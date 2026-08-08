@@ -44,6 +44,18 @@ func Version(ctx context.Context) (string, error) {
 	return version, nil
 }
 
+// Probe runs a read-only nftables command to confirm a child `nft` process can
+// reach netlink. The parent's capabilities do not carry across execve, so this
+// exercises the file capabilities on the nft binary itself.
+func Probe(ctx context.Context) error {
+	out, err := exec.CommandContext(ctx, "nft", "list", "ruleset").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("nft list ruleset: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	return nil
+}
+
 func parseProxyPorts(httpsStr, httpStr, dnsStr string) (int, int, int, error) {
 	httpsPort, err := parsePort(httpsStr, "HTTPS")
 	if err != nil {

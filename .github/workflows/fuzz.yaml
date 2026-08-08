@@ -1,0 +1,74 @@
+---
+name: Fuzz
+
+# Seed corpora run as ordinary Go tests. This workflow also mutates them: pull
+# requests get a short smoke run, while nightly runs are longer.
+on:
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: 'Duration per fuzz target, e.g. 2m'
+        required: false
+        default: '2m'
+
+  schedule:
+    - cron: '0 4 * * *'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'agent/filter/**'
+      - 'agent/policy/**'
+      - 'controller/internal/render/**'
+      - 'scripts/test-fuzz.sh'
+      - '.github/workflows/fuzz.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.26'
+          cache: true
+
+      # The corpus Go grows during a run lives in the build cache, so restoring it
+      # carries progress between nightly runs instead of restarting from the seeds.
+      - name: Restore the fuzz corpus
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: fuzz-corpus-
+
+      - name: Fuzz
+        env:
+          FUZZTIME: >-
+            ${{ inputs.fuzztime ||
+                (github.event_name == 'pull_request' && '20s' || '2m') }}
+        run: scripts/test-fuzz.sh
+
+      # Preserve a crash so it can be converted into a named test or inline seed.
+      - name: Upload failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-failures
+          path: '**/testdata/fuzz/**'
+          if-no-files-found: ignore
+          retention-days: 14

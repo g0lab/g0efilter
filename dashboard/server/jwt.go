@@ -171,7 +171,7 @@ func pemKeyOption(pemOrPath string) (jwt.ParseOption, error) {
 }
 
 // inferSignatureAlg derives the verification algorithm from a PEM-loaded public
-// key: RSA→RS256, Ed25519(OKP)→EdDSA, and EC by curve (P-256→ES256, etc.).
+// key: RSA->RS256, Ed25519(OKP)->EdDSA, and EC by curve (P-256->ES256, etc.).
 func inferSignatureAlg(key jwk.Key) (jwa.SignatureAlgorithm, error) {
 	switch key.KeyType() {
 	case jwa.RSA():

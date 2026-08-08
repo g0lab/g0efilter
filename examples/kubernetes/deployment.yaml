@@ -1,0 +1,36 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/name: demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo
+    spec:
+      # Nothing here mentions g0efilter: the component adds the sidecar, and the
+      # application container needs no extra privileges of its own.
+      containers:
+        - name: app
+          image: docker.io/alpine/curl:latest
+          command: ['sh', '-c', 'sleep infinity']
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi

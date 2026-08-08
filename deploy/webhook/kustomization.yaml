@@ -1,0 +1,23 @@
+---
+# The sidecar-injecting mutating webhook. Apply on top of deploy/controller:
+#
+#   kubectl apply --server-side -f deploy/crds/
+#   kubectl apply -k deploy/webhook
+#
+# Then label the namespaces to filter:
+#
+#   kubectl label namespace <ns> g0efilter.io/inject=enabled
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: g0efilter-system
+
+resources:
+  - ../controller
+  - webhook.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: g0efilter-controller
+    path: deployment-patch.yaml

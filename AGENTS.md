@@ -1,69 +1,76 @@
 # AGENTS.md
 
-g0efilter is a Go egress-filtering sidecar plus a small GitHub Action wrapper.
+g0efilter is a Go egress-filtering sidecar with a dashboard, Kubernetes packaging, controller, and GitHub Action.
 
-## Layout
+## Repository
 
-The repository is component-first: binaries and their packages live under
-`agent/` and `dashboard/`, with `main.go` at each component root. Shared Go
-packages live under `shared/`. The GitHub Action is under `action/` with its
-metadata in `action.yml`.
+* `agent/` and `dashboard/` contain the main Go binaries; shared packages are in `shared/`.
+* `controller/` is a separate Go module to keep `controller-runtime` out of the agent and dashboard dependencies.
+* `dashboard/ui/` contains the frontend. Its generated `dist/` is embedded by Go but is not committed.
+* `deploy/` contains the Kustomize, Helm, and Helm post-renderer implementations. They must inject the same sidecar configuration.
+* `tests/e2e/` is a separate Go module containing container-based end-to-end tests.
 
-Other top-level areas are self-describing: `docs/`, `examples/`, `scripts/`, and
-`tests/e2e/`. Prefer inspecting the current tree over maintaining package lists
-here.
+Prefer inspecting the repository tree over maintaining detailed package lists here.
 
-The dashboard frontend is under `dashboard/ui/`. Its generated `dist/` is
-embedded by Go but is not committed; build it with `pnpm build`. Shared UI types
-in `dashboard/ui/src/lib/types.ts` mirror the Go dashboard model.
+## Build and Test
 
-## Build, Test, Lint
-
-Run the repository scripts that match the files changed; they are the canonical
-source for the checks CI performs. Tool versions live in the relevant repository
-configuration.
+Run the canonical script for the files you changed:
 
 ```sh
-scripts/test-go.sh       # Go generation, migrations, tests, vet, and lint
+scripts/test-go.sh       # Go generation, migrations, tests, vet, lint
 scripts/test-action.sh   # GitHub Action
 scripts/test-ui.sh       # dashboard UI
+scripts/test-fuzz.sh     # every Go fuzz target, FUZZTIME per target
 ```
 
-For a database schema change, edit `dashboard/store/ent/schema/`, then run
-`scripts/gen-migration.sh <name>`. Commit both the generated Ent client and the
-migration.
+`VERSION` pins the release referenced by every manifest, doc and the injected
+sidecar image. It holds plain SemVer; tags carry a `v`. Change it only with
+`scripts/set-version.sh X.Y.Z`, which also bumps the Helm chart version.
 
-Use `scripts/dev.sh` for local dashboard development; add `--traffic` for live
-synthetic traffic. The `.devcontainer/` contains the supported full toolchain.
+Use `scripts/dev.sh` for local dashboard development; add `--traffic` for synthetic traffic. The `.devcontainer/` contains the supported full toolchain.
 
-End-to-end tests are Go tests driving real containers through Testcontainers.
-They live in `tests/e2e/`, which is its own Go module:
+## Generated Files
+
+For database schema changes:
+
+1. Edit `dashboard/store/ent/schema/`.
+2. Run `scripts/gen-migration.sh <name>`.
+3. Commit the generated Ent client and migration.
+
+After changing `controller/api/`, run:
 
 ```sh
-cd tests/e2e
-E2E_FILTER_MODE=https      go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
-E2E_FILTER_MODE=dns        go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
-E2E_FILTER_MODE=dns-strict go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
+scripts/gen-controller.sh
 ```
 
-The images are built automatically when missing. After changing agent or
-dashboard code, rebuild them with `E2E_BUILD=force`.
+Commit both `controller/api/.../zz_generated.deepcopy.go` and the regenerated CRDs in `deploy/crds/`.
 
-Select a suite with `-run`, e.g. `-run '^TestPhase09DNSStrict$'`. Always pass
-`-count=1`: these drive external container state and must never be cached.
-See `tests/e2e/README.md`.
+After frontend changes, run `pnpm build` in `dashboard/ui/`. Do not commit `dist/`.
 
-## Conventions
+## End-to-End Tests
 
-- Keep shared synthetic fixtures canonical in `dashboard/demo/scenarios.json`.
-- Keep README front-door content and detailed `docs/` pages in sync when
-  changing user-facing behavior, configuration, or Action inputs.
-- Cover DNS source-port, conntrack, and nftables changes with end-to-end tests.
+Run E2E tests from `tests/e2e/`:
 
-## Style
+```sh
+E2E_FILTER_MODE=https go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
+```
 
-- Use clear code and test names for routine intent and behavior.
-- Add comments only for non-obvious constraints, security rationale, or
-  workarounds.
-- Use plain ASCII unless a file, test fixture, or domain-specific term requires
-  unicode.
+Also test `dns` or `dns-strict` when relevant.
+
+Always use `-count=1`; these tests use external container state and must not be cached.
+
+After changing agent or dashboard code, rebuild test images with:
+
+```sh
+E2E_BUILD=force
+```
+
+Use `-run` to select a suite when appropriate. See `tests/e2e/README.md` for details.
+
+## Project Rules
+
+* Always update both README and `docs/` when changing user-facing behavior, configuration, or Action inputs.
+* Always add E2E coverage for significant changes to runtime, networking, security, or cross-component behavior.
+* Always keep sidecar configuration identical in `deploy/kustomize`, `deploy/helm` and the controller's injecting webhook; `tests/manifests/` and `controller/internal/webhook/parity_test.go` check this.
+* Never add comments for obvious behavior; comment only on non-obvious constraints, security decisions, or workarounds.
+* Never use Unicode unless required by the file, fixture, or domain; use ASCII.

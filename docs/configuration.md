@@ -37,34 +37,66 @@
 | `NOTIFICATION_KEY` | Gotify application key | unset |
 | `NOTIFICATION_BACKOFF_SECONDS` | Duplicate-alert backoff | `60` |
 | `NOTIFICATION_IGNORE_DOMAINS` | Domains to skip for notifications (wildcards ok) | unset |
+| `METRICS_ADDR` | Serve Prometheus metrics on this address, e.g. `:9095` (unset = disabled) | unset |
+| `KUBE_EVENTS` | Record the first denials as Kubernetes Events on the pod (needs a mounted ServiceAccount token and `create` on `events`) | `false` |
+| `KUBE_EVENTS_MAX` | Maximum distinct denials recorded as Events per pod | `10` |
 | `NFLOG_BUFSIZE` | Netfilter log buffer size | `96` |
 | `NFLOG_QTHRESH` | Netfilter log queue threshold | `50` |
 | `MAX_CONNECTIONS` | Max concurrent connections per listener; excess is held via backpressure (`0` = unlimited) | `4096` |
 | `CONN_MAX_LIFETIME_MS` | Max connection lifetime in ms (a single deadline, not an idle timeout; `0` = none) | `600000` |
-| `PUID` | Drop to this uid at startup (`0` = run as root) | `65534` (nobody) |
-| `PGID` | Drop to this gid at startup | `65534` |
-| `ALLOW_ROOT_FALLBACK` | Fall back to running as root when the privilege drop fails; set `false` to fail closed instead | `true` |
 
-#### Running as a non-root user
+The four allowlist/denylist environment variables are a convenience for short,
+static lists. They are comma-delimited, so they cannot represent a regex that
+contains a comma, such as `/cache-[0-9]{1,3}\.example\.com/`. Use a policy file
+for the full policy language and for dynamically delivered policy. Kubernetes
+packaging always uses a ConfigMap-backed file.
 
-The container starts as root, prepares `/app/policy` and `/app/data`, then runs
-as uid/gid 65534 (`nobody`). Set `PUID` and `PGID` to use another identity, or
-set `PUID=0` to stay root.
+#### Privileges
 
-- `NET_ADMIN` is required while running. Startup fails without it.
-- `SETUID` and `SETGID` allow the startup privilege drop.
-- `CHOWN` makes the writable directories available to the runtime user.
-- Only `NET_ADMIN` is retained after startup.
+The agent runs as uid/gid 65534 (`nobody`) from the first instruction and never
+runs as root. `NET_ADMIN` is the only capability it needs, and it is the only one
+the container should be granted:
 
-If the drop capabilities (`SETUID`/`SETGID`) are missing, the container falls
-back to running as root by default (with a warning). Set
-`ALLOW_ROOT_FALLBACK=false` to fail closed instead - more secure, but it stops
-containers that do not grant those capabilities from starting. `NET_ADMIN` is
-always required regardless of this setting.
+```yaml
+cap_drop: [ALL]
+cap_add: [NET_ADMIN]
+```
 
-The image supports `read_only: true` and `no-new-privileges`. The dashboard
-image runs as uid 65532; its `/app/data` volume must be writable by that user.
-The supplied Compose example handles this.
+`NET_ADMIN` is carried as a file capability on `/app/g0efilter` and on the `nft`
+binary, so no startup privilege drop is involved. Both binaries need it because
+capabilities do not survive `execve` into a child process, and the Go runtime
+execs `nft` from an arbitrary thread.
+
+Grant `NET_ADMIN` to the container even so: file capabilities are limited by the
+container's bounding set, so without it the kernel refuses to execute the binary
+and the container fails to start with `exec /app/g0efilter: operation not
+permitted`. That is fail-closed - no container means no unfiltered traffic - but
+the message does not name the cause, so check the capability first.
+
+`read_only: true`, `no-new-privileges` and Kubernetes'
+`allowPrivilegeEscalation: false` are all supported and recommended. None of them
+interfere with file capabilities.
+
+Pod Security Standards note: `NET_ADMIN` is outside the `baseline` capability
+allow-list, so a namespace running the sidecar needs the `privileged` label. That
+is a property of `NET_ADMIN` itself, not of how g0efilter uses it.
+
+`g0efilter policy [path]` prints the active policy as a Kubernetes ConfigMap,
+validating it first. `POLICY_CONFIGMAP` and `POD_NAMESPACE` set the emitted name and
+namespace. The summary goes to stderr so stdout can be piped into `kubectl apply`.
+
+To check a deployment's privileges without starting the filter:
+
+```sh
+docker run --rm --cap-drop=ALL --cap-add=NET_ADMIN docker.io/g0lab/g0efilter caps
+kubectl exec <pod> -c g0efilter -- /app/g0efilter caps
+```
+
+It prints the capability state, verifies a child `nft` process can reach netlink,
+and exits non-zero with a remediation hint if not.
+
+The dashboard image runs as uid 65532; its `/app/data` volume must be writable by
+that user. The supplied Compose example handles this.
 
 ### g0efilter-dashboard
 

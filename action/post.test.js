@@ -4,15 +4,35 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
 const {
   parseLine,
   collectDecisions,
   escapeCell,
   buildSummary,
+  readManifest,
   teardown,
   maybeTeardown,
 } = require("./post.js");
+
+const MANIFEST = {
+  mode: "https",
+  policy: "block",
+  image: "docker.io/g0lab/g0efilter:v1.0.0",
+  baseDomains: ["github.com", "api.github.com"],
+  inputDomains: ["example.org"],
+  baseIPs: ["168.63.129.16"],
+  inputIPs: ["10.0.0.0/8"],
+};
+
+function writeManifest(contents) {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "g0e-")), "policy-manifest.json");
+  fs.writeFileSync(file, contents);
+  return file;
+}
 
 test("parseLine extracts a blocked HTTPS decision", () => {
   const line =
@@ -51,7 +71,7 @@ test("parseLine ignores lines without an action field", () => {
   assert.equal(parseLine("action=DENIED something"), null);
 });
 
-test("collectDecisions dedups repeats and tallies allowed separately", () => {
+test("collectDecisions splits the three outcomes and dedups repeats", () => {
   const raw = [
     "action=BLOCKED component=https https=example.com dst=1.2.3.4:443",
     "action=BLOCKED component=https https=example.com dst=1.2.3.4:443",
@@ -61,13 +81,42 @@ test("collectDecisions dedups repeats and tallies allowed separately", () => {
     "noise line, no action",
   ].join("\n");
 
-  const { decisions, allowed } = collectDecisions(raw);
-  assert.equal(allowed, 2);
-  assert.equal(decisions.length, 2);
+  const { blocked, audited, allowed, totals } = collectDecisions(raw);
 
-  const blocked = decisions.find((d) => d.action === "BLOCKED");
-  assert.equal(blocked.count, 2);
-  assert.equal(decisions.find((d) => d.action === "AUDIT").count, 1);
+  assert.equal(blocked.length, 1);
+  assert.equal(blocked[0].count, 2);
+  assert.equal(audited.length, 1);
+  assert.equal(allowed.length, 1);
+  assert.deepEqual(totals, { BLOCKED: 2, AUDIT: 1, ALLOWED: 2 });
+});
+
+test("collectDecisions groups allowed hosts across destination IPs", () => {
+  const raw = [
+    "action=ALLOWED component=https https=example.org dst=1.1.1.1:443",
+    "action=ALLOWED component=https https=example.org dst=2.2.2.2:443",
+    "action=BLOCKED component=https https=blocked.test dst=1.1.1.1:443",
+    "action=BLOCKED component=https https=blocked.test dst=2.2.2.2:443",
+  ].join("\n");
+
+  const { allowed, blocked } = collectDecisions(raw);
+
+  assert.equal(allowed.length, 1);
+  assert.equal(allowed[0].count, 2);
+  // Blocked entries keep the destination: it is the detail needed to debug a denial.
+  assert.equal(blocked.length, 2);
+});
+
+test("collectDecisions sorts each list by count", () => {
+  const raw = [
+    "action=BLOCKED component=https https=rare.test dst=1.1.1.1:443",
+    "action=BLOCKED component=https https=common.test dst=2.2.2.2:443",
+    "action=BLOCKED component=https https=common.test dst=2.2.2.2:443",
+  ].join("\n");
+
+  assert.deepEqual(
+    collectDecisions(raw).blocked.map((d) => d.host),
+    ["common.test", "rare.test"],
+  );
 });
 
 test("escapeCell neutralises markdown-table-breaking characters", () => {
@@ -79,15 +128,57 @@ test("escapeCell neutralises markdown-table-breaking characters", () => {
   assert.equal(escapeCell("&|"), "&amp;&#124;");
 });
 
+test("readManifest returns null when the file is missing or malformed", () => {
+  assert.equal(readManifest(path.join(os.tmpdir(), "g0efilter-absent.json")), null);
+  assert.equal(readManifest(writeManifest("{not json")), null);
+});
+
+test("readManifest keeps only string entries and defaults missing fields", () => {
+  const file = writeManifest(JSON.stringify({ mode: "dns", baseDomains: ["a.test", 7, null] }));
+  const m = readManifest(file);
+
+  assert.equal(m.mode, "dns");
+  assert.equal(m.image, "");
+  assert.deepEqual(m.baseDomains, ["a.test"]);
+  assert.deepEqual(m.inputDomains, []);
+});
+
+test("readManifest reads a manifest written by setup.sh, escapes included", () => {
+  const file = writeManifest(
+    '{"mode":"https","policy":"block","image":"i","baseDomains":["github.com"],' +
+      '"inputDomains":["/^cache-[0-9]+\\\\.example\\\\.com$/"],"baseIPs":[],"inputIPs":[]}',
+  );
+
+  assert.deepEqual(readManifest(file).inputDomains, ["/^cache-[0-9]+\\.example\\.com$/"]);
+});
+
 test("buildSummary reports when no logs were captured", () => {
   const md = buildSummary("");
   assert.match(md, /## g0efilter egress report/);
   assert.match(md, /filter may have failed to start/);
 });
 
+test("buildSummary still lists the loaded allowlist when no logs were captured", () => {
+  const md = buildSummary("", { manifest: MANIFEST });
+  assert.match(md, /Loaded allowlist/);
+  assert.match(md, /example\.org/);
+});
+
 test("buildSummary reports a clean run with only allowed decisions", () => {
   const md = buildSummary("action=ALLOWED component=https https=example.org");
-  assert.match(md, /No blocked or audited connections \(1 allowed decisions logged\)/);
+  assert.match(md, /No connections were blocked or audited/);
+  assert.match(md, /### Allowed/);
+});
+
+test("buildSummary falls back to the policy input when there is no manifest", () => {
+  const prev = process.env["INPUT_EGRESS-POLICY"];
+  process.env["INPUT_EGRESS-POLICY"] = "audit";
+  try {
+    assert.match(buildSummary("action=ALLOWED https=a.test"), /\*\*Egress policy:\*\* `audit`/);
+  } finally {
+    if (prev === undefined) delete process.env["INPUT_EGRESS-POLICY"];
+    else process.env["INPUT_EGRESS-POLICY"] = prev;
+  }
 });
 
 test("teardown removes the container and deletes each managed nft table", () => {
@@ -130,21 +221,47 @@ test("buildSummary notes lockdown when no logs were captured", () => {
   assert.match(md, /Docker access was locked down/);
 });
 
-test("buildSummary renders a decision table and honours the policy env var", () => {
-  const prev = process.env["INPUT_EGRESS-POLICY"];
-  process.env["INPUT_EGRESS-POLICY"] = "audit";
-  try {
-    const raw = [
-      "action=ALLOWED component=https https=example.org",
-      "action=AUDIT component=https https=example.com dst=1.2.3.4:443",
-    ].join("\n");
-    const md = buildSummary(raw);
-    assert.match(md, /Egress policy: `audit`/);
-    assert.match(md, /\| Action \| Component \| Domain \/ Host \| Destination \| Count \|/);
-    assert.match(md, /⚠️ AUDIT/);
-    assert.match(md, /example\.com/);
-  } finally {
-    if (prev === undefined) delete process.env["INPUT_EGRESS-POLICY"];
-    else process.env["INPUT_EGRESS-POLICY"] = prev;
-  }
+test("buildSummary renders the full report", () => {
+  const raw = [
+    "action=ALLOWED component=https https=example.org dst=1.1.1.1:443",
+    "action=ALLOWED component=https https=github.com dst=1.1.1.2:443",
+    "action=BLOCKED component=https https=evil.test dst=9.9.9.9:443",
+    "action=AUDIT component=dns qname=watched.test destination_ip=8.8.8.8",
+  ].join("\n");
+
+  const md = buildSummary(raw, { manifest: MANIFEST });
+
+  assert.match(md, /\*\*Mode:\*\* `https`/);
+  assert.match(md, /\*\*Image:\*\* `docker\.io\/g0lab\/g0efilter:v1\.0\.0`/);
+
+  assert.match(md, /\| Allowed \| 2 \| 2 \|/);
+  assert.match(md, /\| Blocked \| 1 \| 1 \|/);
+  assert.match(md, /\| Audited \| 1 \| 1 \|/);
+
+  assert.match(md, /### Blocked \(1\)[\s\S]*evil\.test/);
+  assert.match(md, /### Audited \(1\)[\s\S]*watched\.test/);
+  assert.match(md, /2 hosts were reached[\s\S]*example\.org/);
+
+  assert.match(md, /\*\*Domains from this workflow \(1\)\*\*/);
+  assert.match(md, /\*\*Baseline domains \(2\)\*\*/);
+  assert.match(md, /\*\*IPs from this workflow \(1\)\*\*[\s\S]*10\.0\.0\.0\/8/);
+  assert.doesNotMatch(md, /No connections were blocked or audited/);
+});
+
+test("buildSummary renders empty allowlist groups as none rather than omitting them", () => {
+  const md = buildSummary("action=ALLOWED https=a.test", {
+    manifest: { ...MANIFEST, inputDomains: [], inputIPs: [] },
+  });
+
+  assert.match(md, /\*\*Domains from this workflow \(0\)\*\*\n\n_none_/);
+});
+
+test("buildSummary escapes hostnames into the decision table", () => {
+  const md = buildSummary("action=BLOCKED component=https https=a|b<c>");
+  assert.match(md, /a&#124;b&lt;c&gt;/);
+});
+
+test("buildSummary shows a placeholder for missing fields", () => {
+  const md = buildSummary("action=BLOCKED https=a.test");
+  assert.match(md, /\| a\.test \| - \| - \| 1 \|/);
 });

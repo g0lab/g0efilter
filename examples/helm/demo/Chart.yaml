@@ -1,0 +1,11 @@
+---
+apiVersion: v2
+name: demo
+description: Example chart that filters its own egress with the g0efilter library chart.
+type: application
+version: 0.1.0
+appVersion: '1.0.0'
+dependencies:
+  - name: g0efilter
+    version: 0.1.0
+    repository: file://../../../deploy/helm/g0efilter

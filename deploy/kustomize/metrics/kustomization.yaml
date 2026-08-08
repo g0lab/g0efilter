@@ -1,0 +1,65 @@
+---
+# Optional add-on to the sidecar component: exposes Prometheus metrics on port 9095
+# and annotates the pod for scrape discovery.
+#
+#   components:
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+#     - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.0
+#
+# Label cardinality is bounded by design: series are keyed on component, verdict and
+# reason, never on destination, so a port scan cannot grow the series count.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: (Deployment|StatefulSet|DaemonSet|ReplicaSet|Job)
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        template:
+          metadata:
+            annotations:
+              prometheus.io/scrape: 'true'
+              prometheus.io/port: '9095'
+              prometheus.io/path: /metrics
+          spec:
+            initContainers:
+              - name: g0efilter
+                env:
+                  - name: METRICS_ADDR
+                    value: ':9095'
+                ports:
+                  - name: metrics
+                    containerPort: 9095
+                    protocol: TCP
+
+  - target:
+      kind: CronJob
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              metadata:
+                annotations:
+                  prometheus.io/scrape: 'true'
+                  prometheus.io/port: '9095'
+                  prometheus.io/path: /metrics
+              spec:
+                initContainers:
+                  - name: g0efilter
+                    env:
+                      - name: METRICS_ADDR
+                        value: ':9095'
+                    ports:
+                      - name: metrics
+                        containerPort: 9095
+                        protocol: TCP

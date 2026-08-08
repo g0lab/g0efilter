@@ -228,7 +228,7 @@ func TestNewFromEnvNilWhenUnconfigured(t *testing.T) {
 	t.Setenv("NOTIFICATION_HOST", "")
 	t.Setenv("NOTIFICATION_KEY", "")
 
-	if h := NewFromEnv(context.Background(), io.Discard, slog.LevelInfo, ""); h != nil {
+	if h, _ := NewFromEnv(context.Background(), io.Discard, slog.LevelInfo, ""); h != nil {
 		t.Fatalf("expected nil hook when unconfigured, got %T", h)
 	}
 }
@@ -260,7 +260,7 @@ func TestNewFromEnvShipsBlocked(t *testing.T) {
 	t.Setenv("DASHBOARD_HOST", srv.URL)
 	t.Setenv("DASHBOARD_START_DELAY", "0")
 
-	hook := NewFromEnv(context.Background(), io.Discard, slog.LevelInfo, "v-test")
+	hook, _ := NewFromEnv(context.Background(), io.Discard, slog.LevelInfo, "v-test")
 	if hook == nil {
 		t.Fatal("expected a hook with DASHBOARD_HOST set")
 	}

@@ -1,0 +1,134 @@
+---
+# Reusable component that bakes the g0efilter egress-filter sidecar into every
+# workload of an overlay that references it:
+#
+#   components:
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+#
+# The sidecar is rendered into the manifest at build time, so filtering has no
+# runtime dependency: no webhook, no controller, no separate Service. Consumers
+# also need a `g0efilter-policy` ConfigMap in the same namespace, and a namespace
+# that permits NET_ADMIN (Pod Security `privileged`).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+images:
+  - name: docker.io/g0lab/g0efilter
+    newTag: v0.8.0
+
+patches:
+  # Every workload whose pod template lives at spec.template.
+  - target:
+      kind: (Deployment|StatefulSet|DaemonSet|ReplicaSet|Job)
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: g0efilter
+                image: docker.io/g0lab/g0efilter
+                restartPolicy: Always
+                env:
+                  - name: FILTER_MODE
+                    value: https
+                  - name: POLICY_PATH
+                    value: /app/policy/policy.yaml
+                  - name: POLICY_CONFIGMAP
+                    value: g0efilter-policy
+                  - name: LOG_LEVEL
+                    value: INFO
+                  - name: POD_NAMESPACE
+                    valueFrom:
+                      fieldRef:
+                        fieldPath: metadata.namespace
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 65534
+                  runAsGroup: 65534
+                  readOnlyRootFilesystem: true
+                  allowPrivilegeEscalation: false
+                  seccompProfile:
+                    type: RuntimeDefault
+                  capabilities:
+                    drop:
+                      - ALL
+                    add:
+                      # The only capability g0efilter needs. It is carried as a file
+                      # capability on the binary, so the container never runs as root.
+                      - NET_ADMIN
+                volumeMounts:
+                  - name: g0efilter-policy
+                    mountPath: /app/policy
+                    readOnly: true
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    memory: 64Mi
+            volumes:
+              - name: g0efilter-policy
+                configMap:
+                  name: g0efilter-policy
+
+  # CronJob nests its pod template one level deeper.
+  - target:
+      kind: CronJob
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                initContainers:
+                  - name: g0efilter
+                    image: docker.io/g0lab/g0efilter
+                    restartPolicy: Always
+                    env:
+                      - name: FILTER_MODE
+                        value: https
+                      - name: POLICY_PATH
+                        value: /app/policy/policy.yaml
+                      - name: POLICY_CONFIGMAP
+                        value: g0efilter-policy
+                      - name: LOG_LEVEL
+                        value: INFO
+                      - name: POD_NAMESPACE
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.namespace
+                    securityContext:
+                      runAsNonRoot: true
+                      runAsUser: 65534
+                      runAsGroup: 65534
+                      readOnlyRootFilesystem: true
+                      allowPrivilegeEscalation: false
+                      seccompProfile:
+                        type: RuntimeDefault
+                      capabilities:
+                        drop:
+                          - ALL
+                        add:
+                          - NET_ADMIN
+                    volumeMounts:
+                      - name: g0efilter-policy
+                        mountPath: /app/policy
+                        readOnly: true
+                    resources:
+                      requests:
+                        cpu: 25m
+                        memory: 32Mi
+                      limits:
+                        memory: 64Mi
+                volumes:
+                  - name: g0efilter-policy
+                    configMap:
+                      name: g0efilter-policy

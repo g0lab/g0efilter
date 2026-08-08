@@ -1,0 +1,8 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: g0efilter-system
+  labels:
+    # The controller needs no capabilities at all, unlike the sidecar.
+    pod-security.kubernetes.io/enforce: restricted

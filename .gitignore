@@ -45,3 +45,13 @@ eslint.config.mjs
 
 # Local planning scratch (not part of the repo)
 /test/
+
+# Helm resolves local library-chart dependencies at build time.
+examples/helm/*/charts/
+examples/helm/*/Chart.lock
+tests/manifests/testdata/*/charts/
+tests/manifests/testdata/*/Chart.lock
+
+# Go fuzz discoveries are local artifacts. Preserve regressions as named unit
+# tests or inline fuzz seeds instead of opaque hash files.
+**/testdata/fuzz/

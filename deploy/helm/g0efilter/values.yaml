@@ -1,0 +1,53 @@
+---
+# Defaults for the g0efilter library chart. Helm coalesces these into
+# `.Values.g0efilter` in the consuming chart, so a consumer sets only the keys it
+# wants to change under a `g0efilter:` key and these fill in the rest.
+image:
+  repository: docker.io/g0lab/g0efilter
+  # Must be v0.8.0 or later: earlier images start as root and need more capabilities.
+  tag: v0.8.0
+  pullPolicy: IfNotPresent
+
+# https, dns or dns-strict.
+mode: https
+
+logLevel: INFO
+
+policy:
+  configMapName: g0efilter-policy
+  mountPath: /app/policy
+  fileName: policy.yaml
+
+# Record the first denials as Kubernetes Events on the pod. Off by default: it is
+# the only thing that gives the pod Kubernetes API access, and the permission has
+# to go to the workload's ServiceAccount because a pod has only one.
+events:
+  enabled: false
+  serviceAccountName: default
+
+# Run in learning mode: nothing is blocked and observed destinations are appended to
+# the policy file. Replaces the read-only ConfigMap mount with an emptyDir, so the
+# learned policy is lost when the pod goes away - capture it with
+# `kubectl exec <pod> -c g0efilter -- /app/g0efilter policy` before then.
+learning:
+  enabled: false
+
+# Expose Prometheus metrics. Series are keyed on component, verdict and reason -
+# never on destination - so cardinality stays bounded.
+metrics:
+  enabled: false
+  port: 9095
+  # Add prometheus.io/* scrape annotations to the pod template.
+  annotations: true
+
+runAsUser: 65534
+runAsGroup: 65534
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    memory: 64Mi
+
+extraEnv: []

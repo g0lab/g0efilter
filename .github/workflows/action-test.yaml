@@ -8,9 +8,16 @@ on:
     branches:
       - main
     paths:
+      - 'agent/**'
+      - 'shared/**'
       - 'action.yml'
       - 'action/**'
+      - '.github/actions/**'
       - '.github/test-actions/**'
+      - 'tests/e2e/Containerfile.agent'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/test-action.sh'
       - '.github/workflows/action-test.yaml'
 
 permissions:
@@ -21,6 +28,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build:
+    name: Build agent image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build agent image
+        uses: docker/bake-action@v7
+        with:
+          source: tests/e2e
+          files: compose.build.yaml
+          targets: g0efilter
+          load: true
+          set: |
+            g0efilter.tags=g0efilter:action-test
+            g0efilter.cache-from=type=gha,scope=action-agent
+            g0efilter.cache-to=type=gha,scope=action-agent,mode=max
+
+      - name: Save agent image
+        run: docker save g0efilter:action-test | gzip -1 > g0efilter-action-test.tar.gz
+
+      - name: Upload agent image
+        uses: actions/upload-artifact@v7
+        with:
+          name: action-agent-image
+          path: g0efilter-action-test.tar.gz
+          compression-level: 0
+          retention-days: 1
+
   unit:
     name: Scripts
     runs-on: ubuntu-latest
@@ -40,6 +82,7 @@ jobs:
 
   block:
     name: Block policy
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -47,9 +90,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       - name: Allowed HTTPS domain works
@@ -76,6 +122,7 @@ jobs:
 
   post-egress:
     name: Post hook filtering
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -83,9 +130,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       # Its post hook runs before g0efilter tears down.
@@ -94,6 +144,7 @@ jobs:
 
   domain-patterns:
     name: Domain patterns
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -101,9 +152,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: |
             *.example.com
             /^example\.org$/
@@ -124,6 +178,7 @@ jobs:
 
   dns:
     name: DNS mode
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -131,9 +186,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           mode: dns
           allowed-domains: api.github.com
 
@@ -150,12 +208,15 @@ jobs:
 
   docker-host-network:
     name: Docker host network
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - uses: ./.github/actions/load-agent-image
 
       # Pull before the filter starts: the registry is not allowlisted.
       - name: Pre-pull curl image
@@ -164,6 +225,7 @@ jobs:
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       - name: Allowed domain works over host network
@@ -184,6 +246,7 @@ jobs:
 
   ipv6:
     name: IPv6
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -191,9 +254,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       - name: IPv6 filter tables are installed
@@ -212,6 +278,7 @@ jobs:
 
   non-web-ports:
     name: Non-web ports
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -219,9 +286,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       # 8.8.8.8:53 is otherwise reachable, so failure confirms filtering.
@@ -235,6 +305,7 @@ jobs:
 
   fail-closed:
     name: Fail closed
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -242,9 +313,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           allowed-domains: api.github.com
 
       - name: Baseline - non-allowlisted domain is blocked
@@ -269,6 +343,7 @@ jobs:
 
   dns-strict:
     name: DNS strict mode
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -276,9 +351,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           mode: dns-strict
           allowed-domains: api.github.com
 
@@ -304,6 +382,7 @@ jobs:
 
   lockdown:
     name: Runner lockdown
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -311,9 +390,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter
         uses: ./
         with:
+          image: g0efilter:action-test
           lockdown-runner: 'true'
           allowed-domains: api.github.com
 
@@ -325,6 +407,7 @@ jobs:
 
   audit:
     name: Audit policy
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -332,9 +415,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/load-agent-image
+
       - name: Start g0efilter (audit)
         uses: ./
         with:
+          image: g0efilter:action-test
           egress-policy: audit
 
       - name: Non-allowlisted domain passes in audit mode

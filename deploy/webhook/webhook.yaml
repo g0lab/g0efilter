@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: g0efilter-webhook
+  labels:
+    app.kubernetes.io/name: g0efilter-controller
+spec:
+  selector:
+    app.kubernetes.io/name: g0efilter-controller
+  ports:
+    - name: https
+      port: 443
+      targetPort: webhook
+      protocol: TCP
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: g0efilter-sidecar-injector
+webhooks:
+  - name: sidecar.g0efilter.io
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    # The controller writes its own CA here at startup, so no cert-manager is needed.
+    clientConfig:
+      service:
+        name: g0efilter-webhook
+        namespace: g0efilter-system
+        path: /inject-sidecar
+        port: 443
+    rules:
+      - operations: ['CREATE']
+        apiGroups: ['']
+        apiVersions: ['v1']
+        resources: ['pods']
+        scope: Namespaced
+    # Fails closed: an unreachable webhook blocks pod creation in opted-in
+    # namespaces rather than admitting unfiltered pods. Switch to Ignore only if
+    # availability matters more than the guarantee.
+    failurePolicy: Fail
+    timeoutSeconds: 10
+    # Only namespaces that opt in are seen at all, and never the control plane's
+    # own: a failing webhook must not stop the controller being rescheduled.
+    namespaceSelector:
+      matchExpressions:
+        - key: g0efilter.io/inject
+          operator: In
+          values: ['enabled']
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: ['g0efilter-system', 'kube-system']
+    objectSelector:
+      matchExpressions:
+        - key: g0efilter.io/inject
+          operator: NotIn
+          values: ['false']

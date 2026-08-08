@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: g0efilter-demo
+  labels:
+    # NET_ADMIN is outside the baseline capability allow-list, so the namespace
+    # holding a filtered workload has to permit it. The sidecar itself still runs
+    # non-root with everything else dropped.
+    pod-security.kubernetes.io/enforce: privileged

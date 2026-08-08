@@ -1,0 +1,30 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: g0efilter-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          args:
+            - --leader-elect
+            - --metrics-bind-address=:8080
+            - --health-probe-bind-address=:8081
+            - --webhook
+            - --webhook-port=9443
+            - --webhook-cert-dir=/tmp/g0efilter-certs
+          ports:
+            - name: metrics
+              containerPort: 8080
+            - name: webhook
+              containerPort: 9443
+          volumeMounts:
+            # The generated certificate is written at startup, and the root
+            # filesystem is read-only.
+            - name: certs
+              mountPath: /tmp/g0efilter-certs
+      volumes:
+        - name: certs
+          emptyDir: {}

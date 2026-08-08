@@ -1,0 +1,20 @@
+[Unit]
+Description=Example workload filtered by g0efilter
+# Ordered after the filter so the workload never has a window of unfiltered egress.
+Requires=g0efilter.service
+After=g0efilter.service
+
+[Container]
+Image=docker.io/alpine/curl:latest
+Pod=g0efilter.pod
+Exec=sh -c "sleep infinity"
+
+DropCapability=ALL
+NoNewPrivileges=true
+ReadOnly=true
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,11 @@
+---
+apiVersion: v2
+name: minimal-consumer
+description: Sets no g0efilter values, so every default must come from the library chart.
+type: application
+version: 0.1.0
+appVersion: '1.0.0'
+dependencies:
+  - name: g0efilter
+    version: 0.1.0
+    repository: file://../../../../deploy/helm/g0efilter

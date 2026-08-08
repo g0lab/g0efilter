@@ -1,0 +1,22 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      initContainers:
+        {{- include "g0efilter.sidecar" . | nindent 8 }}
+      containers:
+        - name: app
+          image: nginx
+      volumes:
+        {{- include "g0efilter.policyVolume" . | nindent 8 }}
+{{- include "g0efilter.eventsRBAC" . }}

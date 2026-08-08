@@ -1,0 +1,12 @@
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /
+
+ARG TARGETPLATFORM
+
+COPY ${TARGETPLATFORM}/g0efilter-controller /g0efilter-controller
+
+# distroless/static:nonroot has no shell and defaults to uid 65532.
+USER 65532:65532
+
+ENTRYPOINT ["/g0efilter-controller"]

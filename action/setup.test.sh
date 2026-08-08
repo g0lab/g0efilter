@@ -114,6 +114,71 @@ else
   fail=$((fail + 1))
 fi
 
+# check <condition-description> <name>: records a pass or a failure.
+check() {
+  if [ "$1" = "0" ]; then
+    echo "ok: $2"
+    pass=$((pass + 1))
+  else
+    echo "FAIL: $2"
+    fail=$((fail + 1))
+  fi
+}
+
+# The manifest feeds the job summary; a regex entry must survive JSON encoding
+# intact or the report misreports the policy that was actually loaded.
+rm -rf "$WORK/tmp"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  ALLOWED_DOMAINS=$'example.org\n/^cache-[0-9]+\\.example\\.com$/\n\n*.wild.test' \
+  ALLOWED_IPS=$'10.0.0.0/8\n' \
+  bash "$SETUP" > "$WORK/setup.out" 2>&1
+
+MANIFEST="$WORK/tmp/g0efilter/policy-manifest.json"
+[ -f "$MANIFEST" ]
+check $? "setup.sh writes a policy manifest"
+
+NODE="$(command -v node || true)"
+if [ -n "$NODE" ]; then
+  "$NODE" -e '
+    const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const eq = (got, want, what) => {
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        console.error(what + ": got " + JSON.stringify(got) + ", want " + JSON.stringify(want));
+        process.exit(1);
+      }
+    };
+    eq(m.inputDomains, ["example.org", "/^cache-[0-9]+\\.example\\.com$/", "*.wild.test"], "inputDomains");
+    eq(m.inputIPs, ["10.0.0.0/8"], "inputIPs");
+    eq(m.mode, "https", "mode");
+    eq(m.policy, "block", "policy");
+    if (!m.baseDomains.includes("github.com")) { console.error("baseDomains missing github.com"); process.exit(1); }
+    if (m.baseDomains.some((d) => m.inputDomains.includes(d))) { console.error("baseline and input overlap"); process.exit(1); }
+  ' "$MANIFEST"
+  check $? "manifest records the workflow and baseline entries separately"
+else
+  echo "skip: node not installed, manifest contents not checked"
+fi
+
+grep -q "::group::g0efilter allowlist" "$WORK/setup.out"
+check $? "setup.sh logs the loaded allowlist as a workflow group"
+
+grep -q "  + example.org" "$WORK/setup.out"
+check $? "workflow domains are marked in the logged allowlist"
+
+# Every manifest entry must also be in the policy the filter actually loads.
+POLICY_YAML="$WORK/tmp/g0efilter/policy/policy.yaml"
+grep -q "'/\^cache-\[0-9\]+\\\\.example\\\\.com\$/'" "$POLICY_YAML" \
+  && grep -q "'10.0.0.0/8'" "$POLICY_YAML" \
+  && grep -q "'github.com'" "$POLICY_YAML"
+check $? "policy.yaml carries the same entries verbatim"
+
+# An empty allowlist input must not produce a blank YAML entry, which would
+# widen the policy to an empty-string domain.
+rm -rf "$WORK/tmp"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" bash "$SETUP" > /dev/null 2>&1
+! grep -q "^    - ''$" "$WORK/tmp/g0efilter/policy/policy.yaml"
+check $? "no empty allowlist entries with no inputs"
+
 echo "---"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

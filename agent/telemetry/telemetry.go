@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/alerting"
+	"github.com/g0lab/g0efilter/agent/kubeevents"
+	"github.com/g0lab/g0efilter/agent/metrics"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/safeio"
 	"github.com/g0lab/g0efilter/shared/actions"
@@ -50,20 +52,29 @@ const (
 var errProbeStatus = errors.New("probe unexpected status")
 
 // Shipper implements logging.Hook: it forwards decision events to the dashboard
-// poster and raises alerts for alert-flagged events.
+// poster, raises alerts, and records Kubernetes Events for alert-flagged events.
 type Shipper struct {
-	poster   *poster
-	notifier *alerting.Notifier
-	hostname string
-	version  string
+	poster    *poster
+	notifier  *alerting.Notifier
+	kubeevent *kubeevents.Recorder
+	metrics   *metrics.Metrics
+	hostname  string
+	version   string
 }
 
 // NewFromEnv builds the agent telemetry hook: it ships to the dashboard when
-// DASHBOARD_HOST is set and alerts when NOTIFICATION_HOST/KEY are. A nil result
-// means neither is configured (terminal-only logging).
+// DASHBOARD_HOST is set, alerts when NOTIFICATION_HOST/KEY are, records Kubernetes
+// Events when KUBE_EVENTS is, and counts verdicts when METRICS_ADDR is. A nil hook
+// means none are configured (terminal-only logging). The returned registry is nil
+// unless metrics are enabled, and is what the caller serves.
 //
 //nolint:ireturn // deliberate seam: a nil Hook means terminal-only logging.
-func NewFromEnv(ctx context.Context, out io.Writer, level slog.Level, version string) logging.Hook {
+func NewFromEnv(
+	ctx context.Context,
+	out io.Writer,
+	level slog.Level,
+	version string,
+) (logging.Hook, *metrics.Metrics) {
 	cw := zerolog.ConsoleWriter{Out: out, TimeFormat: time.RFC3339}
 	zl := zerolog.New(cw).With().Timestamp().Logger()
 
@@ -83,16 +94,26 @@ func NewFromEnv(ctx context.Context, out io.Writer, level slog.Level, version st
 
 	notifier := alerting.NewNotifier() // nil unless NOTIFICATION_HOST/KEY are set
 
-	if p == nil && notifier == nil {
-		return nil // nothing to ship or alert; terminal-only logging
+	recorder := kubeevents.NewFromEnv(slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})))
+
+	var registry *metrics.Metrics
+
+	if strings.TrimSpace(os.Getenv("METRICS_ADDR")) != "" {
+		registry = metrics.New()
+	}
+
+	if p == nil && notifier == nil && recorder == nil && registry == nil {
+		return nil, nil // nothing to ship, alert, record or count; terminal-only logging
 	}
 
 	return &Shipper{
-		poster:   p,
-		notifier: notifier,
-		hostname: hostname,
-		version:  version,
-	}
+		poster:    p,
+		notifier:  notifier,
+		kubeevent: recorder,
+		metrics:   registry,
+		hostname:  hostname,
+		version:   version,
+	}, registry
 }
 
 // Handle ships the record to the dashboard and alerts as configured.
@@ -103,9 +124,35 @@ func (s *Shipper) Handle(ctx context.Context, recordTime time.Time, msg string, 
 		s.ship(recordTime, msg, act, attrs)
 	}
 
-	if s.notifier != nil && shouldAlert(attrs) {
+	if act != "" {
+		s.metrics.RecordConnection(extractStringAttr(attrs, keyComponent), act)
+	}
+
+	if !shouldAlert(attrs) {
+		return
+	}
+
+	s.metrics.RecordDenial(extractStringAttr(attrs, keyComponent), blockReason(attrs))
+
+	if s.notifier != nil {
 		handleBlockedAlert(ctx, s.notifier, attrs)
 	}
+
+	s.kubeevent.RecordBlock(ctx, kubeevents.Denial{
+		Component:   extractStringAttr(attrs, keyComponent),
+		Destination: buildDestinationString(attrs),
+		Reason:      blockReason(attrs),
+		SourceIP:    extractStringAttr(attrs, "source_ip"),
+	})
+}
+
+// RecordPolicyError reports a rejected policy reload as a Kubernetes Event.
+func (s *Shipper) RecordPolicyError(ctx context.Context, cause error) {
+	if s == nil {
+		return
+	}
+
+	s.kubeevent.RecordPolicyError(ctx, cause)
 }
 
 // Stop drains and stops the dashboard poster.
@@ -263,20 +310,26 @@ func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs 
 		Component:       extractStringAttr(attrs, keyComponent),
 	}
 
-	info.Reason = extractStringAttr(attrs, "reason")
-	if info.Reason == "" {
-		info.Reason = extractStringAttr(attrs, "note")
-	}
-
-	if info.Reason == "" {
-		info.Reason = "blocked by policy"
-	}
+	info.Reason = blockReason(attrs)
 
 	if info.Component == "" {
 		info.Component = "filter"
 	}
 
 	notifier.NotifyBlock(ctx, info)
+}
+
+// blockReason prefers an explicit reason, then a note, then a generic fallback.
+func blockReason(attrs map[string]any) string {
+	if reason := extractStringAttr(attrs, "reason"); reason != "" {
+		return reason
+	}
+
+	if note := extractStringAttr(attrs, "note"); note != "" {
+		return note
+	}
+
+	return "blocked by policy"
 }
 
 func extractStringAttr(attrs map[string]any, key string) string {

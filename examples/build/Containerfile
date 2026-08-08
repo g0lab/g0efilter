@@ -1,0 +1,44 @@
+# Build the agent.
+FROM golang:1.26.5-alpine3.23 AS builder
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG DATE=unknown
+
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    -o /build/g0efilter ./agent
+
+# Create the runtime image.
+FROM alpine:3.24.1
+
+RUN apk add --no-cache nftables ca-certificates \
+    && update-ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /build/g0efilter /app/g0efilter
+
+# File capabilities let the agent program nftables without ever running as root. The
+# nft binary needs its own: capabilities do not survive execve into a child process.
+RUN apk add --no-cache --virtual .setcap libcap \
+    && setcap cap_net_admin=eip /app/g0efilter \
+    && setcap cap_net_admin=ep "$(command -v nft)" \
+    && getcap /app/g0efilter | grep -q cap_net_admin \
+    && getcap "$(command -v nft)" | grep -q cap_net_admin \
+    && apk del .setcap
+
+USER 65534:65534
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/g0efilter", "healthcheck"]
+
+ENTRYPOINT ["/app/g0efilter"]

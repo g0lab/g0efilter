@@ -16,8 +16,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/g0lab/g0efilter/agent/metrics"
 	"github.com/g0lab/g0efilter/agent/policy"
 )
+
+type telemetryHook struct {
+	recordedError
+}
+
+func (*telemetryHook) Handle(context.Context, time.Time, string, map[string]any) {}
+
+func (*telemetryHook) Stop(time.Duration) {}
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.DiscardHandler)
@@ -173,6 +182,22 @@ func TestShouldWatchPolicy(t *testing.T) {
 	//nolint:exhaustruct
 	if shouldWatchPolicy(config{learningMode: true}) {
 		t.Error("policy watcher should be disabled in learning mode (reloads have no effect)")
+	}
+}
+
+func TestWithTelemetryWiresRuntimeSinks(t *testing.T) {
+	t.Parallel()
+
+	hook := &telemetryHook{}
+	registry := metrics.New()
+
+	cfg := withTelemetry(config{}, hook, registry)
+	if cfg.metrics != registry {
+		t.Error("metrics registry was not attached")
+	}
+
+	if cfg.policyErrors != hook {
+		t.Error("policy error reporter was not attached")
 	}
 }
 

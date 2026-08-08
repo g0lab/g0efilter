@@ -1,0 +1,24 @@
+FROM alpine:3.24.1
+
+RUN apk add --no-cache nftables ca-certificates \
+ && update-ca-certificates
+
+WORKDIR /app
+
+ARG TARGETPLATFORM
+
+COPY ${TARGETPLATFORM}/g0efilter /app/g0efilter
+
+RUN apk add --no-cache --virtual .setcap libcap \
+ && setcap cap_net_admin=eip /app/g0efilter \
+ && setcap cap_net_admin=ep "$(command -v nft)" \
+ && getcap /app/g0efilter | grep -q cap_net_admin \
+ && getcap "$(command -v nft)" | grep -q cap_net_admin \
+ && apk del .setcap
+
+USER 65534:65534
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/app/g0efilter", "healthcheck"]
+
+ENTRYPOINT ["/app/g0efilter"]

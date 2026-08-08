@@ -31,6 +31,7 @@ test/
 *.coverprofile
 coverage.*
 profile.cov
+**/testdata/fuzz/
 
 # Workspace/tooling
 go.work

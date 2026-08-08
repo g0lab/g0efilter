@@ -1,0 +1,15 @@
+---
+name: Load agent test image
+description: Load the agent image built from the current checkout
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: action-agent-image
+        path: ${{ runner.temp }}/g0efilter-action-image
+
+    - name: Load agent image
+      shell: bash
+      run: docker load -i "$RUNNER_TEMP/g0efilter-action-image/g0efilter-action-test.tar.gz"
