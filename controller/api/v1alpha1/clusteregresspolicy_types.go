@@ -44,8 +44,3 @@ type ClusterEgressPolicyList struct {
 
 	Items []ClusterEgressPolicy `json:"items"`
 }
-
-//nolint:gochecknoinits // the scheme builder registration pattern
-func init() {
-	SchemeBuilder.Register(&ClusterEgressPolicy{}, &ClusterEgressPolicyList{})
-}
