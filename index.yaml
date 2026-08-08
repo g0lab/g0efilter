@@ -1,0 +1,25 @@
+apiVersion: v1
+entries:
+  g0efilter:
+  - annotations:
+      org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+    apiVersion: v2
+    appVersion: 0.8.0
+    created: "2026-08-08T07:24:34.985766435Z"
+    description: Library chart that injects the g0efilter egress-filter sidecar into
+      a pod template.
+    digest: 0e20c8a68f8422c962bd479516654d15317333c6da5b273019ebeaba1c223d21
+    home: https://github.com/g0lab/g0efilter
+    keywords:
+    - egress
+    - network
+    - security
+    - sidecar
+    name: g0efilter
+    sources:
+    - https://github.com/g0lab/g0efilter
+    type: library
+    urls:
+    - https://github.com/g0lab/g0efilter/releases/download/g0efilter-0.8.0/g0efilter-0.8.0.tgz
+    version: 0.8.0
+generated: "2026-08-08T07:24:34.985772386Z"
