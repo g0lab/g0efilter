@@ -246,6 +246,32 @@ func TestRulesRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestRulesValidateWildcardDomains(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{"*.example.com", "api-*.example.com", "sub.*.example.com"}
+	for _, domain := range valid {
+		policy, err := Rules([]v1alpha1.EgressRule{domainRule("wildcard", domain)})
+		if err != nil {
+			t.Errorf("valid wildcard %q rejected: %v", domain, err)
+
+			continue
+		}
+
+		if len(policy.Domains) != 1 || policy.Domains[0] != domain {
+			t.Errorf("wildcard %q rendered as %v", domain, policy.Domains)
+		}
+	}
+
+	invalid := []string{"sub.**.example.com", "example*", "sub.*.example!.com"}
+	for _, domain := range invalid {
+		_, err := Rules([]v1alpha1.EgressRule{domainRule("wildcard", domain)})
+		if !errors.Is(err, ErrInvalidDomain) {
+			t.Errorf("invalid wildcard %q returned %v", domain, err)
+		}
+	}
+}
+
 func TestPortValidation(t *testing.T) {
 	t.Parallel()
 

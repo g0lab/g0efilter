@@ -433,3 +433,28 @@ func TestPoliciesInNamespaceEnqueuesOnlyThatNamespace(t *testing.T) {
 		}
 	}
 }
+
+func TestClusterPolicyChangeEnqueuesEveryPolicy(t *testing.T) {
+	t.Parallel()
+
+	other := egressPolicy("worker")
+	other.Namespace = "elsewhere"
+
+	r, _ := newReconciler(t, egressPolicy("web"), egressPolicy("batch"), other)
+	requests := r.allPolicies(context.Background(), clusterPolicy("baseline", nil))
+
+	want := map[types.NamespacedName]bool{
+		{Namespace: testNS, Name: "web"}:         true,
+		{Namespace: testNS, Name: "batch"}:       true,
+		{Namespace: "elsewhere", Name: "worker"}: true,
+	}
+	if len(requests) != len(want) {
+		t.Fatalf("requests = %v, want all policies", requests)
+	}
+
+	for _, request := range requests {
+		if !want[request.NamespacedName] {
+			t.Errorf("unexpected request %v", request.NamespacedName)
+		}
+	}
+}
