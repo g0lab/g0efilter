@@ -29,7 +29,7 @@ services:
   # Gives the dashboard's non-root user ownership of its data volume before it
   # starts. Runs once and exits.
   dashboard-data-init:
-    image: alpine:3.23
+    image: alpine:3.24
     command: ['chown', '-R', '65532:65532', '/app/data']
     user: '0:0'
     cap_drop:
