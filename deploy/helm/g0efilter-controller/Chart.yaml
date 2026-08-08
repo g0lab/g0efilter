@@ -1,0 +1,17 @@
+---
+apiVersion: v2
+name: g0efilter-controller
+description: Installs the g0efilter control plane - the EgressPolicy controller and the sidecar-injecting mutating webhook.
+type: application
+version: 0.8.1
+appVersion: '0.8.1'
+home: https://github.com/g0lab/g0efilter
+sources:
+  - https://github.com/g0lab/g0efilter
+annotations:
+  org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+keywords:
+  - egress
+  - network
+  - security
+  - kubernetes-operator

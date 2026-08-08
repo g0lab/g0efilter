@@ -124,7 +124,7 @@ without changing the workload source manifests.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.1
 ```
 
 That covers Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
@@ -132,17 +132,36 @@ There is also a Helm library chart for charts you maintain, a Helm post-renderer
 for third-party charts you cannot edit, and a mutating webhook that injects the
 sidecar at admission for pods you do not template at all.
 
-The library chart is published both as a conventional Helm repository at
-`https://g0lab.github.io/g0efilter` and as an OCI artifact under
-`oci://ghcr.io/g0lab/helm/g0efilter`.
+To run it cluster-wide, install the control plane and label the namespaces to
+filter:
 
-The render-time integrations mount a policy ConfigMap directly. The webhook uses
-`EgressPolicy` custom resources and a controller that renders the matching
-ConfigMap. Denials can also be surfaced as Kubernetes Events and Prometheus
-metrics.
+```sh
+helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
+  --namespace g0efilter-system --create-namespace
+kubectl label namespace <namespace> g0efilter.io/inject=enabled
+```
 
-See [Kubernetes](docs/kubernetes.md) for all four integrations, policy
-distribution, and the required namespace label.
+Pods also need to match an `EgressPolicy`; the namespace label alone does not
+trigger injection. See the [policy example](docs/kubernetes.md#writing-a-policy),
+and start with `enforcement: audit` to see what it would deny.
+
+Three charts are published, both as a conventional Helm repository at
+`https://g0lab.github.io/g0efilter` and as OCI artifacts under
+`oci://ghcr.io/g0lab/helm`:
+
+| Chart | Type | Use |
+| --- | --- | --- |
+| `g0efilter-controller` | application | the control plane: controller, webhook and CRDs |
+| `g0efilter-dashboard` | application | the dashboard the sidecars ship logs to |
+| `g0efilter` | library | sidecar templates for a chart you maintain |
+
+Render-time integrations mount a policy ConfigMap directly. The webhook uses a
+controller to render one from each `EgressPolicy`. Kubernetes Events and
+Prometheus metrics are optional.
+
+See [Kubernetes](docs/kubernetes.md) for all four integrations, the full
+`EgressPolicy` sidecar options, policy distribution, and the required namespace
+label.
 
 ## GitHub Actions
 
@@ -178,6 +197,9 @@ the job report, and security limits.
 The optional dashboard shows live and saved traffic. Point g0efilter at it with
 `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. The dashboard can also manage API keys,
 fleet policy, and remote unblock requests.
+
+Its Helm chart supports externally managed credentials; declare the keys present
+under `secrets.existingSecretKeys` so validation and recovery notes stay accurate.
 
 See the [examples](examples/) for a complete setup. See
 [dashboard authentication](docs/configuration.md#dashboard-authentication),

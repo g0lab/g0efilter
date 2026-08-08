@@ -100,7 +100,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Release
         uses: goreleaser/goreleaser-action@v7
@@ -153,20 +153,24 @@ jobs:
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish OCI chart
+      - name: Publish OCI charts
         env:
           G0EFILTER_GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          chart_version="$(awk '/^version:/ { print $2; exit }' deploy/helm/g0efilter/Chart.yaml)"
-          chart_package=".cr-release-packages/g0efilter-${chart_version}.tgz"
-          test -f "$chart_package"
           printf '%s' "$G0EFILTER_GHCR_TOKEN" | helm registry login ghcr.io \
             --username "$GITHUB_ACTOR" --password-stdin
-          helm push "$chart_package" oci://ghcr.io/g0lab/helm
+          # chart-releaser packages every chart into .cr-release-packages.
+          for chart in deploy/helm/*/Chart.yaml; do
+            name="$(awk '/^name:/ { print $2; exit }' "$chart")"
+            version="$(awk '/^version:/ { print $2; exit }' "$chart")"
+            package=".cr-release-packages/${name}-${version}.tgz"
+            test -f "$package"
+            helm push "$package" oci://ghcr.io/g0lab/helm
+          done
 
   update-major-tag:
     name: Move major version tag
-    needs: release
+    needs: [release, release-chart]
     runs-on: ubuntu-latest
     # Do not move the rolling tag for prereleases.
     if: ${{ !contains(github.ref_name, '-') }}

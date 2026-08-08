@@ -1,0 +1,159 @@
+---
+# The g0efilter dashboard. Sidecars ship their logs to it with a machine API key;
+# point them at it with the EgressPolicy's `sidecar.dashboard` block, or the library
+# chart's `dashboard` values.
+#
+# A sidecar filters its own egress, so the policy of every workload that ships logs
+# has to allow this dashboard's address.
+image:
+  repository: docker.io/g0lab/g0efilter-dashboard
+  tag: v0.8.1
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ''
+fullnameOverride: ''
+
+# Port the UI and API are served on.
+port: 8081
+
+logLevel: INFO
+
+auth:
+  # session: built-in login with server-side sessions.
+  # none: no authentication - only safe behind a reverse proxy that provides it.
+  # forward: trust an identity header set by a proxy.
+  # jwt: validate a bearer token.
+  mode: session
+  adminUsername: admin
+  sessionTtl: 24h
+  # Marks the session cookie Secure, so a browser only sends it over HTTPS.
+  # localhost is exempt. Set false only for a plain-HTTP trial.
+  cookieSecure: true
+  forwardAuthHeader: X-Forwarded-User
+  jwt:
+    usernameClaim: sub
+    issuer: ''
+    audience: ''
+    # Exactly one key source in jwt mode: jwksUrl, publicKey, or secret.jwtSecret.
+    jwksUrl: ''
+    publicKey: ''
+
+secrets:
+  # Read the credentials from a Secret you manage. Recommended: anything set below
+  # instead goes into the Helm release, which is stored in the cluster and visible to
+  # anyone who can read releases.
+  existingSecret: ''
+  # Declare which optional keys the external Secret contains. The chart cannot
+  # inspect it during offline rendering.
+  existingSecretKeys:
+    apiKey: false
+    adminPasswordHash: false
+    jwtSecret: false
+  keys:
+    apiKey: api-key
+    adminPasswordHash: admin-password-hash
+    jwtSecret: jwt-secret
+
+  # Used only when existingSecret is empty, and only if non-empty: the chart then
+  # creates the Secret from them.
+  #
+  # Leaving apiKey and adminPasswordHash empty is supported - the dashboard generates
+  # each once and prints it to its log on first start. Generate a hash yourself with:
+  #   docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.1 hash-password
+  apiKey: ''
+  adminPasswordHash: ''
+  jwtSecret: ''
+
+# The dashboard keeps its state in SQLite, so it has a single writer and the chart
+# runs exactly one replica with the Recreate strategy. Scaling out needs more than a
+# replica count and is not supported.
+persistence:
+  enabled: true
+  existingClaim: ''
+  storageClass: ''
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+# Keep all state in memory and reset it on restart. Mutually exclusive with
+# persistence, and incompatible with fleet management.
+ephemeral: false
+
+dbPath: /app/data/dashboard.db
+
+# Persisted log rows kept before the oldest are pruned.
+logRetention: 100000
+
+fleet:
+  enabled: false
+
+limits:
+  # In-memory event buffer; the oldest are dropped when it fills.
+  bufferSize: 5000
+  readLimit: 5000
+  sseRetryMs: 2000
+  # HTTP write timeout in seconds. 0 means none, which is what server-sent events
+  # need: a streaming response outlives any finite write deadline.
+  writeTimeout: 0
+  rateRps: 50
+  rateBurst: 100
+
+# Browser origins allowed to call the API, for a UI served from another host.
+# Credentials are enabled, so `*` is rejected. Empty means same-origin only.
+cors:
+  allowedOrigins: []
+
+service:
+  type: ClusterIP
+  port: 8081
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ''
+  annotations: {}
+  host: ''
+  path: /
+  pathType: Prefix
+  tls: []
+
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# The image runs as uid 65532 and needs no capabilities. fsGroup makes the mounted
+# volume writable by that user.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+priorityClassName: ''
+
+extraEnv: []

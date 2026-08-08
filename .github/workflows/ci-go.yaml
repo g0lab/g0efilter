@@ -19,6 +19,8 @@ on:
       - 'deploy/**'
       - 'examples/kubernetes/**'
       - 'examples/helm/**'
+      - 'scripts/gen-chart-crds.sh'
+      - 'scripts/gen-controller.sh'
       - 'scripts/test-go.sh'
       - '.github/workflows/ci-go.yaml'
 
@@ -111,7 +113,8 @@ jobs:
       - name: Generated CRDs are up to date
         run: |
           scripts/gen-controller.sh
-          git diff --exit-code -- deploy/crds controller/api
+          git diff --exit-code -- deploy/crds controller/api deploy/controller \
+            deploy/helm/g0efilter-controller/templates
 
       # Fails when a chart changed without a Chart.yaml version bump.
       - name: Lint charts

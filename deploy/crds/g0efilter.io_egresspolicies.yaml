@@ -183,15 +183,330 @@ spec:
                   Sidecar tunes the container the mutating webhook injects. The Kustomize
                   component and Helm library chart carry their own settings and ignore this.
                 properties:
+                  connections:
+                    description: Connections caps the sidecar's proxied connections.
+                    properties:
+                      max:
+                        description: |-
+                          Max is the concurrent connection ceiling per listener. Excess is held with
+                          backpressure rather than refused. 0 is unlimited.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                      maxLifetime:
+                        description: |-
+                          MaxLifetime is a single absolute deadline on a proxied connection, not an idle
+                          timeout: a long-lived stream is cut when it expires. 0 disables it.
+                        type: string
+                        x-kubernetes-validations:
+                        - message: maxLifetime must be 0 or at least 1ms
+                          rule: duration(self) == duration('0s') || duration(self)
+                            >= duration('1ms')
+                    type: object
+                  dashboard:
+                    description: Dashboard ships this sidecar's logs to a g0efilter
+                      dashboard.
+                    properties:
+                      apiKeySecretRef:
+                        description: |-
+                          APIKeySecretRef reads the dashboard machine API key from a Secret in the pod's
+                          own namespace. The controller never reads the Secret; kubelet resolves it, so a
+                          missing key surfaces as the pod failing to start.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      host:
+                        description: |-
+                          Host is the dashboard's URL, such as
+                          `http://g0efilter-dashboard.g0efilter-system.svc:8080`. Shipping is off while
+                          this is empty. The Egress rules have to allow it.
+                        maxLength: 253
+                        type: string
+                      queueSize:
+                        description: |-
+                          QueueSize buffers log entries while shipping. The oldest are dropped when it
+                          fills, so the sidecar never blocks the traffic it is filtering.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      remoteUnblock:
+                        description: RemoteUnblock polls the dashboard for operator-approved
+                          unblock requests.
+                        type: boolean
+                      startDelay:
+                        description: |-
+                          StartDelay waits before the first shipment, giving the dashboard time to come
+                          up alongside the pod.
+                        type: string
+                        x-kubernetes-validations:
+                        - message: startDelay must not be negative
+                          rule: duration(self) >= duration('0s')
+                      unblockPollInterval:
+                        description: UnblockPollInterval is how often the dashboard
+                          is polled for unblock requests.
+                        type: string
+                        x-kubernetes-validations:
+                        - message: unblockPollInterval must be positive
+                          rule: duration(self) > duration('0s')
+                    type: object
+                  dns:
+                    description: |-
+                      DNS tunes the sidecar's DNS proxy. It only has an effect in `dns` and
+                      `dns-strict` mode.
+                    properties:
+                      hardening:
+                        description: |-
+                          Hardening applies the anti-exfiltration checks: qname and label length caps,
+                          NULL and bulky-TXT answer rejection, and per-source rate limiting. On unless
+                          explicitly set to false.
+                        type: boolean
+                      rateBurst:
+                        description: RateBurst is the hardening rate limiter's burst
+                          allowance.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      rateQps:
+                        description: |-
+                          RateQPS is the hardening rate limiter's sustained queries per second. Every
+                          workload behind the redirect shares one source address, so this is a single
+                          budget for the whole pod rather than one per client.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      upstreams:
+                        description: |-
+                          Upstreams are the resolvers the proxy forwards to, as `host:port`. Defaults to
+                          the container runtime's own resolver.
+                        items:
+                          type: string
+                        type: array
+                        x-kubernetes-list-type: atomic
+                    type: object
+                  enforcement:
+                    description: |-
+                      Enforcement decides what happens to traffic no rule allows. `block` drops it;
+                      `audit` logs it and allows it through.
+                    enum:
+                    - block
+                    - audit
+                    type: string
                   events:
                     description: |-
                       Events records denials as Kubernetes Events. The pod's ServiceAccount needs
-                      create on events, and this policy must allow the API server: the sidecar's own
-                      egress is filtered too.
+                      create on events, and this policy must allow the API server.
                     type: boolean
+                  eventsMaxDenials:
+                    description: EventsMaxDenials caps the distinct denials recorded
+                      per pod. 0 records none.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  extraEnv:
+                    description: |-
+                      ExtraEnv sets sidecar environment variables this API does not model yet.
+
+                      It cannot set anything the injector already derives from this spec, and it
+                      cannot set the inline allow/deny lists, DEFAULT_ACTION or LEARNING_MODE: each of
+                      those makes the sidecar stop enforcing the policy the controller rendered, so a
+                      pod would silently pass traffic this EgressPolicy does not allow.
+                    items:
+                      description: EnvVar represents an environment variable present
+                        in a Container.
+                      properties:
+                        name:
+                          description: |-
+                            Name of the environment variable.
+                            May consist of any printable ASCII characters except '='.
+                          type: string
+                        value:
+                          description: |-
+                            Variable references $(VAR_NAME) are expanded
+                            using the previously defined environment variables in the container and
+                            any service environment variables. If a variable cannot be resolved,
+                            the reference in the input string will be unchanged. Double $$ are reduced
+                            to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                            "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                            Escaped references will never be expanded, regardless of whether the variable
+                            exists or not.
+                            Defaults to "".
+                          type: string
+                        valueFrom:
+                          description: Source for the environment variable's value.
+                            Cannot be used if value is not empty.
+                          properties:
+                            configMapKeyRef:
+                              description: Selects a key of a ConfigMap.
+                              properties:
+                                key:
+                                  description: The key to select.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the ConfigMap or its
+                                    key must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fieldRef:
+                              description: |-
+                                Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                              properties:
+                                apiVersion:
+                                  description: Version of the schema the FieldPath
+                                    is written in terms of, defaults to "v1".
+                                  type: string
+                                fieldPath:
+                                  description: Path of the field to select in the
+                                    specified API version.
+                                  type: string
+                              required:
+                              - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              description: |-
+                                FileKeyRef selects a key of the env file.
+                                Requires the EnvFiles feature gate to be enabled.
+                              properties:
+                                key:
+                                  description: |-
+                                    The key within the env file. An invalid key will prevent the pod from starting.
+                                    The keys defined within a source may consist of any printable ASCII characters except '='.
+                                    During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                  type: string
+                                optional:
+                                  default: false
+                                  description: |-
+                                    Specify whether the file or its key must be defined. If the file or key
+                                    does not exist, then the env var is not published.
+                                    If optional is set to true and the specified key does not exist,
+                                    the environment variable will not be set in the Pod's containers.
+
+                                    If optional is set to false and the specified key does not exist,
+                                    an error will be returned during Pod creation.
+                                  type: boolean
+                                path:
+                                  description: |-
+                                    The path within the volume from which to select the file.
+                                    Must be relative and may not contain the '..' path or start with '..'.
+                                  type: string
+                                volumeName:
+                                  description: The name of the volume mount containing
+                                    the env file.
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            resourceFieldRef:
+                              description: |-
+                                Selects a resource of the container: only resources limits and requests
+                                (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                              properties:
+                                containerName:
+                                  description: 'Container name: required for volumes,
+                                    optional for env vars'
+                                  type: string
+                                divisor:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  description: Specifies the output format of the
+                                    exposed resources, defaults to "1"
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                resource:
+                                  description: 'Required: resource to select'
+                                  type: string
+                              required:
+                              - resource
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            secretKeyRef:
+                              description: Selects a key of a secret in the pod's
+                                namespace
+                              properties:
+                                key:
+                                  description: The key of the secret to select from.  Must
+                                    be a valid secret key.
+                                  type: string
+                                name:
+                                  default: ""
+                                  description: |-
+                                    Name of the referent.
+                                    This field is effectively required, but due to backwards compatibility is
+                                    allowed to be empty. Instances of this type with an empty value here are
+                                    almost certainly wrong.
+                                    More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                  type: string
+                                optional:
+                                  description: Specify whether the Secret or its key
+                                    must be defined
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                          type: object
+                      required:
+                      - name
+                      type: object
+                    maxItems: 32
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                    x-kubernetes-validations:
+                    - message: 'extraEnv must not set ALLOWLIST_*, DENYLIST_*, DEFAULT_ACTION,
+                        LEARNING_MODE, POLICY_PATH or POLICY_CONFIGMAP: they would
+                        stop the sidecar enforcing this policy'
+                      rule: self.all(e, !(e.name in ['ALLOWLIST_IPS','ALLOWLIST_DOMAINS','DENYLIST_IPS','DENYLIST_DOMAINS','DEFAULT_ACTION','LEARNING_MODE','POLICY_PATH','POLICY_CONFIGMAP']))
+                    - message: extraEnv must not set a variable this spec already
+                        controls; use the matching field instead
+                      rule: self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','PROCESS_INFO','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_HOST','NOTIFICATION_KEY','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))
                   image:
                     description: Image overrides the sidecar image, including the
                       tag.
+                    type: string
+                  imagePullPolicy:
+                    description: ImagePullPolicy overrides the sidecar's pull policy.
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
                     type: string
                   logLevel:
                     description: LogLevel is the sidecar's log level.
@@ -221,12 +536,111 @@ spec:
                         type: integer
                     type: object
                   mode:
-                    description: Mode is the filtering mode.
+                    description: |-
+                      Mode is the filtering mode. It selects the data path, not how strictly a
+                      verdict is applied: see Enforcement for that.
                     enum:
                     - https
                     - dns
                     - dns-strict
                     type: string
+                  nflog:
+                    description: NFLog tunes the netfilter log socket used for denials.
+                    properties:
+                      bufSize:
+                        description: BufSize is the netfilter log buffer size.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      qthresh:
+                        description: QThresh is the netfilter log queue threshold.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                    type: object
+                  notifications:
+                    description: Notifications sends blocked-traffic alerts to a Gotify
+                      server.
+                    properties:
+                      backoffSeconds:
+                        description: BackoffSeconds suppresses repeat alerts for the
+                          same destination.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      host:
+                        description: |-
+                          Host is the Gotify server URL. Alerting is off while this is empty, and the
+                          Egress rules have to allow it.
+                        maxLength: 253
+                        type: string
+                      ignoreDomains:
+                        description: |-
+                          IgnoreDomains are destinations that never raise an alert, even when blocked.
+                          Wildcards such as `*.telemetry.example.com` are accepted.
+                        items:
+                          type: string
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      keySecretRef:
+                        description: |-
+                          KeySecretRef reads the Gotify application token from a Secret in the pod's own
+                          namespace.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    type: object
+                  ports:
+                    description: Ports moves the sidecar's internal proxy listeners.
+                    properties:
+                      dns:
+                        description: DNS is the local DNS proxy port.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      http:
+                        description: HTTP is the local transparent HTTP proxy port.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      https:
+                        description: HTTPS is the local transparent TLS proxy port,
+                          where SNI is read.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                    type: object
+                    x-kubernetes-validations:
+                    - message: http and https must differ
+                      rule: '!has(self.http) || !has(self.https) || self.http != self.https'
+                  processInfo:
+                    description: |-
+                      ProcessInfo adds the originating pid and process name to flow logs. The webhook
+                      enables a shared process namespace unless the pod uses hostPID, and rejects an
+                      explicit shareProcessNamespace: false.
+                    type: boolean
                   resources:
                     description: Resources overrides the sidecar's requests and limits.
                     properties:
@@ -286,7 +700,34 @@ spec:
                           More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
                         type: object
                     type: object
+                  runAsGroup:
+                    description: RunAsGroup is the gid the sidecar runs as.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  runAsUser:
+                    description: |-
+                      RunAsUser is the uid the sidecar runs as. It must not be 0: the image is built
+                      to filter unprivileged, carrying NET_ADMIN as a file capability.
+                    format: int64
+                    minimum: 1
+                    type: integer
+                  tenantId:
+                    description: TenantID labels this sidecar's netfilter log events
+                      with a tenant identifier.
+                    maxLength: 253
+                    type: string
                 type: object
+                x-kubernetes-validations:
+                - message: metrics port must differ from the active proxy ports
+                  rule: '!has(self.metrics) || !self.metrics.enabled || (has(self.mode)
+                    && self.mode in [''dns'',''dns-strict''] ? (has(self.ports) &&
+                    has(self.ports.dns) ? self.ports.dns : 65053) != (has(self.metrics.port)
+                    && self.metrics.port != 0 ? self.metrics.port : 9095) : ((has(self.ports)
+                    && has(self.ports.http) ? self.ports.http : 65080) != (has(self.metrics.port)
+                    && self.metrics.port != 0 ? self.metrics.port : 9095) && (has(self.ports)
+                    && has(self.ports.https) ? self.ports.https : 65443) != (has(self.metrics.port)
+                    && self.metrics.port != 0 ? self.metrics.port : 9095)))'
             type: object
           status:
             description: EgressPolicyStatus reports what the controller rendered.

@@ -164,11 +164,11 @@ func TestPostRendererInjectsIntoAnUnmodifiedChart(t *testing.T) {
 	assertAppUntouched(t, injected)
 }
 
-// runExpectingFailure returns the combined output of a command that must fail.
-func runExpectingFailure(t *testing.T, name string, args ...string) string {
+// runHelmExpectingFailure returns the output of a Helm command that must fail.
+func runHelmExpectingFailure(t *testing.T, args ...string) string {
 	t.Helper()
 
-	bin := requireBinary(t, name)
+	bin := requireBinary(t, "helm")
 
 	ctx, cancel := context.WithTimeout(t.Context(), toolTimeout)
 	defer cancel()
@@ -176,7 +176,7 @@ func runExpectingFailure(t *testing.T, name string, args ...string) string {
 	//nolint:gosec // fixed tool names resolved through LookPath, with literal arguments
 	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 	if err == nil {
-		t.Fatalf("%s %v unexpectedly succeeded:\n%s", name, args, out)
+		t.Fatalf("helm %v unexpectedly succeeded:\n%s", args, out)
 	}
 
 	return string(out)
@@ -201,6 +201,7 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 		{name: "root uid", set: "g0efilter.runAsUser=0", wantErr: "'/runAsUser'"},
 		{name: "relative policy mount", set: "g0efilter.policy.mountPath=app/policy", wantErr: "'/policy/mountPath'"},
 		{name: "non-boolean events flag", set: "g0efilter.events.enabled=maybe", wantErr: "'/events/enabled'"},
+		{name: "proxy port collision", set: "g0efilter.ports.http=15000,g0efilter.ports.https=15000", wantErr: "must differ"},
 	}
 
 	for _, tc := range tests {
@@ -208,12 +209,24 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 			t.Parallel()
 			serialHelm(t)
 
-			out := runExpectingFailure(t, "helm", "template", "release", chart, "--set", tc.set)
+			out := runHelmExpectingFailure(t, "template", "release", chart, "--set", tc.set)
 			if !strings.Contains(out, tc.wantErr) {
 				t.Errorf("error did not mention %q:\n%s", tc.wantErr, out)
 			}
 		})
 	}
+}
+
+func TestHelmAcceptsFractionalDurations(t *testing.T) {
+	t.Parallel()
+	serialHelm(t)
+
+	chart := repoPath("examples", "helm", "demo")
+	run(t, "helm", "dependency", "update", chart)
+
+	run(t, "helm", "template", "release", chart,
+		"--set", "g0efilter.dashboard.startDelay=1.5s",
+		"--set", "g0efilter.dashboard.unblockPollInterval=0.5m")
 }
 
 // The library chart's own values.yaml supplies the defaults through Helm's subchart

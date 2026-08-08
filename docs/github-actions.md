@@ -48,9 +48,8 @@ job needs.
 
 ## Job report
 
-The Action logs the allowlist it loaded under a collapsed `g0efilter allowlist`
-group in the workflow log, marking entries that came from `allowed-domains` and
-`allowed-ips` with `+` so they stand out from the always-permitted baseline.
+The Action logs its allowlist in a collapsed `g0efilter allowlist` group. A `+`
+marks workflow entries rather than the always-permitted baseline.
 
 The post step then writes an egress report to the job summary:
 
@@ -61,14 +60,12 @@ The post step then writes an egress report to the job summary:
 - every allowed host that was reached, collapsed;
 - the full allowlist, split into workflow entries and the baseline.
 
-The report is written even when nothing was blocked, so a job that filters
-cleanly still records what it was allowed to reach.
+The report is written even when nothing was blocked.
 
 ## Security limits
 
-g0efilter blocks destinations outside the allowlist. It cannot stop data leaving
-through allowed destinations, including GitHub services needed by the runner.
-Logs, artifacts, caches, releases, and the GitHub API may still carry data.
+Filtering cannot stop data leaving through allowed destinations, including
+GitHub services, logs, artifacts, caches, releases, and the API.
 
 Keep custom allow rules small and use restrictive job
 [`permissions:`](https://docs.github.com/actions/tutorials/authenticate-with-github_token#modifying-the-permissions-for-the-github_token).

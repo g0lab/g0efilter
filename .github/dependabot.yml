@@ -70,3 +70,30 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
+
+  - package-ecosystem: 'docker-compose'
+    directories:
+      - '/examples'
+      - '/examples/build'
+      - '/tests/e2e'
+    schedule:
+      interval: 'cron'
+      cronjob: '0 9 * * *'
+    labels: ['dependencies', 'docker']
+    commit-message:
+      prefix: 'chore'
+    groups:
+      docker-compose:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  - package-ecosystem: 'devcontainers'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    labels: ['dependencies', 'devcontainer']
+    commit-message:
+      prefix: 'chore'

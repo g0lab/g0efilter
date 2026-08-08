@@ -1,7 +1,7 @@
 # Remote unblock
 
-Remote unblock lets dashboard users add a domain or IP to an instance's policy.
-The instance polls for approved requests and applies them through live reload.
+Remote unblock lets dashboard users add a domain or IP to an instance policy.
+The instance polls for approved requests and live-reloads them.
 
 > [!WARNING]
 > Remote unblock is disabled by default. Keep the dashboard UI authenticated.

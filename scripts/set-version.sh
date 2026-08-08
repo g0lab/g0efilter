@@ -9,7 +9,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-CHART="deploy/helm/g0efilter/Chart.yaml"
+# Every chart under deploy/helm is released.
+CHARTS=(deploy/helm/*/Chart.yaml)
 
 NEW="${1:-}"
 if [ -z "$NEW" ]; then
@@ -37,6 +38,7 @@ while IFS= read -r file; do
   [ -f "$file" ] || continue
   sed -i \
     -e "s|\(g0lab/g0efilter[a-z-]*:\)v$OLD|\1v$NEW|g" \
+    -e "s|\(g0lab/g0efilter/v\)$OLD|\1$NEW|g" \
     -e "s|\(?ref=\)v$OLD|\1v$NEW|g" \
     -e "s|\(newTag: \)v$OLD|\1v$NEW|g" \
     -e "s|\(tag: \)v$OLD|\1v$NEW|g" \
@@ -44,17 +46,17 @@ while IFS= read -r file; do
     "$file"
 done < <(git ls-files 'deploy/**' 'docs/**' 'examples/**' 'controller/**' README.md)
 
-# Keep the chart and application release aligned. ct still verifies that a chart
+# Keep the charts and application release aligned. ct still verifies that a chart
 # change is accompanied by a version change.
-chart_old="$(sed -n 's|^version: *||p' "$CHART")"
-sed -i "s|^version: $chart_old\$|version: $NEW|" "$CHART"
-for consumer in \
-  examples/helm/demo/Chart.yaml \
-  tests/manifests/testdata/minimal-consumer/Chart.yaml; do
+for chart in "${CHARTS[@]}"; do
+  chart_old="$(sed -n 's|^version: *||p' "$chart")"
+  sed -i "s|^version: $chart_old\$|version: $NEW|" "$chart"
+done
+while IFS= read -r consumer; do
   sed -i "/^[[:space:]]*- name: g0efilter\$/,/^[[:space:]]*repository:/ {
     s|^\([[:space:]]*version: \).*$|\1$NEW|
   }" "$consumer"
-done
+done < <(git ls-files '**/Chart.yaml')
 
-echo "set $OLD -> $NEW, chart $chart_old -> $NEW"
+echo "set $OLD -> $NEW across ${#CHARTS[@]} charts"
 git --no-pager diff --stat

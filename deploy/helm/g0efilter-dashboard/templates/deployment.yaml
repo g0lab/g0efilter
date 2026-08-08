@@ -1,0 +1,196 @@
+{{- include "g0efilter-dashboard.validate" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "g0efilter-dashboard.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-dashboard.labels" . | nindent 4 }}
+spec:
+  # SQLite has a single writer and the volume is ReadWriteOnce, so a second pod could
+  # neither start nor safely share the database.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "g0efilter-dashboard.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "g0efilter-dashboard.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- if or .Values.podAnnotations (include "g0efilter-dashboard.createSecret" .) }}
+      annotations:
+        {{- if include "g0efilter-dashboard.createSecret" . }}
+        checksum/credentials: {{ include "g0efilter-dashboard.secretData" . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "g0efilter-dashboard.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: dashboard
+          image: {{ printf "%s:%s" .Values.image.repository .Values.image.tag | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: PORT
+              value: {{ printf ":%v" .Values.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+            - name: AUTH_MODE
+              value: {{ .Values.auth.mode | quote }}
+            - name: BUFFER_SIZE
+              value: {{ .Values.limits.bufferSize | quote }}
+            - name: READ_LIMIT
+              value: {{ .Values.limits.readLimit | quote }}
+            - name: SSE_RETRY_MS
+              value: {{ .Values.limits.sseRetryMs | quote }}
+            - name: WRITE_TIMEOUT
+              value: {{ .Values.limits.writeTimeout | quote }}
+            - name: RATE_RPS
+              value: {{ .Values.limits.rateRps | quote }}
+            - name: RATE_BURST
+              value: {{ .Values.limits.rateBurst | quote }}
+            - name: LOG_RETENTION
+              value: {{ .Values.logRetention | quote }}
+            - name: FLEET_ENABLED
+              value: {{ .Values.fleet.enabled | quote }}
+            {{- if .Values.ephemeral }}
+            - name: EPHEMERAL
+              value: "true"
+            {{- else }}
+            - name: DB_PATH
+              value: {{ .Values.dbPath | quote }}
+            {{- end }}
+            {{- if eq .Values.auth.mode "session" }}
+            - name: ADMIN_USERNAME
+              value: {{ .Values.auth.adminUsername | quote }}
+            - name: SESSION_TTL
+              value: {{ .Values.auth.sessionTtl | quote }}
+            - name: COOKIE_SECURE
+              value: {{ .Values.auth.cookieSecure | quote }}
+            {{- end }}
+            {{- if eq .Values.auth.mode "forward" }}
+            - name: FORWARD_AUTH_HEADER
+              value: {{ .Values.auth.forwardAuthHeader | quote }}
+            {{- end }}
+            {{- if eq .Values.auth.mode "jwt" }}
+            - name: JWT_USERNAME_CLAIM
+              value: {{ .Values.auth.jwt.usernameClaim | quote }}
+            {{- with .Values.auth.jwt.issuer }}
+            - name: JWT_ISSUER
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.auth.jwt.audience }}
+            - name: JWT_AUDIENCE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.auth.jwt.jwksUrl }}
+            - name: JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.auth.jwt.publicKey }}
+            - name: JWT_PUBLIC_KEY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.cors.allowedOrigins }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- $secret := include "g0efilter-dashboard.secretName" . }}
+            {{- if or .Values.secrets.existingSecret (include "g0efilter-dashboard.createSecret" .) }}
+            {{- /* optional, so an unset key leaves the dashboard to generate its own. */}}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secrets.keys.apiKey }}
+                  optional: true
+            {{- if eq .Values.auth.mode "session" }}
+            - name: ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secrets.keys.adminPasswordHash }}
+                  optional: true
+            {{- end }}
+            {{- if eq .Values.auth.mode "jwt" }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ .Values.secrets.keys.jwtSecret }}
+                  optional: true
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+              protocol: TCP
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if not .Values.ephemeral }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ dir .Values.dbPath }}
+          {{- end }}
+      {{- if not .Values.ephemeral }}
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "g0efilter-dashboard.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}

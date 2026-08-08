@@ -1,0 +1,66 @@
+g0efilter control plane {{ .Chart.AppVersion }} installed in {{ .Release.Namespace }}.
+
+Rollback uses Helm's stored revisions:
+
+  helm history {{ .Release.Name }} -n {{ .Release.Namespace }}
+  helm rollback {{ .Release.Name }} <revision> -n {{ .Release.Namespace }} --wait
+
+{{ if not .Values.webhook.enabled -}}
+The webhook is disabled, so nothing is injected. The controller only renders an
+EgressPolicy into a ConfigMap; mount it yourself with the Kustomize component or the
+g0efilter library chart.
+{{- else -}}
+Nothing is filtered yet. Opt a namespace in:
+
+  kubectl label namespace <namespace> {{ .Values.webhook.namespaceLabel }}={{ .Values.webhook.namespaceLabelValue }}
+
+The sidecar needs NET_ADMIN, which the baseline Pod Security Standard rejects, so
+that namespace also has to allow it:
+
+  kubectl label namespace <namespace> pod-security.kubernetes.io/enforce=privileged
+
+Then write a policy selecting the pods to filter, and wait for it before creating
+their workloads - admission denies a pod whose policy has not rendered yet:
+
+  kubectl -n <namespace> apply -f - <<'EOF'
+  apiVersion: g0efilter.io/v1alpha1
+  kind: EgressPolicy
+  metadata:
+    name: web
+  spec:
+    podSelector:
+      matchLabels:
+        app: web
+    sidecar:
+      # Start by observing. Traffic no rule allows is logged and allowed through.
+      enforcement: audit
+    egress:
+      - name: apis
+        to:
+          - domainNames: ['api.example.com']
+  EOF
+
+  kubectl -n <namespace> wait --for=condition=Ready egresspolicy/web --timeout=2m
+
+Check what a policy would have blocked, then switch enforcement to block:
+
+  kubectl -n <namespace> logs <pod> -c g0efilter | grep audit
+{{- end }}
+
+{{ if and .Values.webhook.enabled (eq .Values.webhook.certificate.source "cert-manager") -}}
+cert-manager issues the serving certificate. Confirm it was issued:
+
+  kubectl -n {{ .Release.Namespace }} get certificate {{ include "g0efilter-controller.fullname" . }}
+{{- end }}
+
+{{ if not .Values.crds.install -}}
+crds.install is false, so apply them yourself:
+
+  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.io_egresspolicies.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.io_clusteregresspolicies.yaml
+{{- else -}}
+The CRDs are annotated helm.sh/resource-policy: keep, so `helm uninstall` leaves them
+and the policies they hold. Remove them deliberately when you mean to:
+
+  kubectl delete crd egresspolicies.g0efilter.io clusteregresspolicies.g0efilter.io
+{{- end }}
