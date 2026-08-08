@@ -56,6 +56,7 @@ apply_lockdown() {
 WORKDIR="${RUNNER_TEMP:-/tmp}/g0efilter"
 mkdir -p "$WORKDIR/policy"
 POLICY_FILE="$WORKDIR/policy/policy.yaml"
+MANIFEST_FILE="$WORKDIR/policy-manifest.json"
 
 # GitHub's documented runner communication domains
 # (https://docs.github.com/actions/reference/runners/self-hosted-runners).
@@ -95,6 +96,16 @@ while read -r ip; do
   BASE_IPS+=("$ip")
 done < <(awk '/^nameserver/ {print $2}' "$RESOLV_SRC" 2>/dev/null || true)
 
+INPUT_DOMAINS=()
+while read -r d; do
+  [ -n "$d" ] && INPUT_DOMAINS+=("$d")
+done <<< "${ALLOWED_DOMAINS:-}"
+
+INPUT_IPS=()
+while read -r ip; do
+  [ -n "$ip" ] && INPUT_IPS+=("$ip")
+done <<< "${ALLOWED_IPS:-}"
+
 # YAML single-quoted so regex/wildcard entries survive verbatim.
 yaml_entry() {
   local v="${1//\'/\'\'}"
@@ -105,16 +116,48 @@ yaml_entry() {
   echo "---"
   echo "allowlist:"
   echo "  domains:"
-  for d in "${BASE_DOMAINS[@]}"; do yaml_entry "$d"; done
-  while read -r d; do
-    [ -n "$d" ] && yaml_entry "$d"
-  done <<< "${ALLOWED_DOMAINS:-}"
+  for d in "${BASE_DOMAINS[@]}" "${INPUT_DOMAINS[@]}"; do yaml_entry "$d"; done
   echo "  ips:"
-  for ip in "${BASE_IPS[@]}"; do yaml_entry "$ip"; done
-  while read -r ip; do
-    [ -n "$ip" ] && yaml_entry "$ip"
-  done <<< "${ALLOWED_IPS:-}"
+  for ip in "${BASE_IPS[@]}" "${INPUT_IPS[@]}"; do yaml_entry "$ip"; done
 } > "$POLICY_FILE"
+
+json_escape() {
+  local v="${1//\\/\\\\}"
+  printf '%s' "${v//\"/\\\"}"
+}
+
+json_array() {
+  local sep="" v
+  printf '['
+  for v in "$@"; do
+    printf '%s"%s"' "$sep" "$(json_escape "$v")"
+    sep=","
+  done
+  printf ']'
+}
+
+# The post step reports the exact allowlist that was loaded; it reads this rather
+# than re-parsing the YAML, so baseline and workflow entries stay distinguishable.
+{
+  printf '{"mode":"%s",' "$(json_escape "$MODE")"
+  printf '"policy":"%s",' "$(json_escape "$POLICY")"
+  printf '"image":"%s",' "$(json_escape "$IMAGE")"
+  printf '"baseDomains":%s,' "$(json_array "${BASE_DOMAINS[@]}")"
+  printf '"inputDomains":%s,' "$(json_array "${INPUT_DOMAINS[@]}")"
+  printf '"baseIPs":%s,' "$(json_array "${BASE_IPS[@]}")"
+  printf '"inputIPs":%s}\n' "$(json_array "${INPUT_IPS[@]}")"
+} > "$MANIFEST_FILE"
+
+echo "::group::g0efilter allowlist (${#BASE_DOMAINS[@]}+${#INPUT_DOMAINS[@]} domains, ${#BASE_IPS[@]}+${#INPUT_IPS[@]} IPs)"
+echo "Domains from this workflow (${#INPUT_DOMAINS[@]}):"
+for d in "${INPUT_DOMAINS[@]}"; do echo "  + $d"; done
+echo "Baseline domains (${#BASE_DOMAINS[@]}):"
+for d in "${BASE_DOMAINS[@]}"; do echo "    $d"; done
+echo "IPs from this workflow (${#INPUT_IPS[@]}):"
+for ip in "${INPUT_IPS[@]}"; do echo "  + $ip"; done
+echo "Baseline IPs (${#BASE_IPS[@]}):"
+for ip in "${BASE_IPS[@]}"; do echo "    $ip"; done
+echo "::endgroup::"
 
 ENFORCE="block"
 [ "$POLICY" = "audit" ] && ENFORCE="audit"

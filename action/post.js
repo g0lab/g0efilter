@@ -7,6 +7,7 @@
 
 const { execSync, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const path = require("node:path");
 
 const ANSI = /\x1b\[[0-9;]*m/g;
 
@@ -18,6 +19,43 @@ function containerLogs() {
     });
   } catch {
     return "";
+  }
+}
+
+function manifestPath() {
+  return (
+    process.env.G0EFILTER_MANIFEST ||
+    path.join(process.env.RUNNER_TEMP || "/tmp", "g0efilter", "policy-manifest.json")
+  );
+}
+
+function strings(value) {
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
+
+// The manifest is written by setup.sh. Its absence is not an error: the filter may
+// have failed before writing it, and the decision report still stands alone.
+function readManifest(file = manifestPath()) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+
+  try {
+    const m = JSON.parse(raw);
+    return {
+      mode: String(m.mode || ""),
+      policy: String(m.policy || ""),
+      image: String(m.image || ""),
+      baseDomains: strings(m.baseDomains),
+      inputDomains: strings(m.inputDomains),
+      baseIPs: strings(m.baseIPs),
+      inputIPs: strings(m.inputIPs),
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -39,30 +77,45 @@ function parseLine(rawLine) {
   };
 }
 
+// Allowed traffic is grouped by host alone: one allowed domain fans out across many
+// destination IPs, and listing each one buries the hosts an operator came to read.
+function groupKey(entry) {
+  return entry.action === "ALLOWED"
+    ? [entry.action, entry.host].join("|")
+    : [entry.action, entry.component, entry.host, entry.dest].join("|");
+}
+
 function collectDecisions(raw) {
-  const decisions = new Map();
-  let allowed = 0;
+  const groups = new Map();
+  const totals = { BLOCKED: 0, AUDIT: 0, ALLOWED: 0 };
 
   for (const rawLine of raw.split("\n")) {
     const entry = parseLine(rawLine);
     if (!entry) continue;
 
-    if (entry.action === "ALLOWED") {
-      allowed++;
-      continue;
-    }
+    totals[entry.action]++;
 
-    const key = [entry.action, entry.component, entry.host, entry.dest].join("|");
-    const seen = decisions.get(key);
+    const key = groupKey(entry);
+    const seen = groups.get(key);
 
     if (seen) {
       seen.count++;
     } else {
-      decisions.set(key, { ...entry, count: 1 });
+      groups.set(key, { ...entry, count: 1 });
     }
   }
 
-  return { decisions: [...decisions.values()], allowed };
+  const of = (action) =>
+    [...groups.values()]
+      .filter((d) => d.action === action)
+      .sort((a, b) => b.count - a.count || a.host.localeCompare(b.host));
+
+  return {
+    blocked: of("BLOCKED"),
+    audited: of("AUDIT"),
+    allowed: of("ALLOWED"),
+    totals,
+  };
 }
 
 function escapeCell(v) {
@@ -74,36 +127,125 @@ function escapeCell(v) {
     .replace(/[\r\n]+/g, " ");
 }
 
-function buildSummary(raw, { lockdown = false } = {}) {
+function cell(v) {
+  const s = escapeCell(v).trim();
+  return s === "" ? "-" : s;
+}
+
+function decisionTable(rows, { destination = true } = {}) {
+  let md = destination
+    ? "| Domain / Host | Component | Destination | Count |\n|---|---|---|---:|\n"
+    : "| Domain / Host | Component | Count |\n|---|---|---:|\n";
+
+  for (const d of rows) {
+    md += destination
+      ? `| ${cell(d.host)} | ${cell(d.component)} | ${cell(d.dest)} | ${d.count} |\n`
+      : `| ${cell(d.host)} | ${cell(d.component)} | ${d.count} |\n`;
+  }
+
+  return md + "\n";
+}
+
+function collapsible(title, body) {
+  return `<details>\n<summary>${title}</summary>\n\n${body}</details>\n\n`;
+}
+
+function bullets(title, values) {
+  let md = `**${title} (${values.length})**\n\n`;
+  if (values.length === 0) return md + "_none_\n\n";
+
+  for (const v of values) md += `- \`${v.replace(/`/g, "'")}\`\n`;
+
+  return md + "\n";
+}
+
+function overview({ blocked, audited, allowed, totals }) {
+  return (
+    "| Outcome | Unique hosts | Decisions |\n|---|---:|---:|\n" +
+    `| Allowed | ${allowed.length} | ${totals.ALLOWED} |\n` +
+    `| Blocked | ${blocked.length} | ${totals.BLOCKED} |\n` +
+    `| Audited | ${audited.length} | ${totals.AUDIT} |\n\n`
+  );
+}
+
+function policySection(manifest) {
+  if (!manifest) return "";
+
+  const domains = manifest.baseDomains.length + manifest.inputDomains.length;
+  const ips = manifest.baseIPs.length + manifest.inputIPs.length;
+
+  const body =
+    bullets("Domains from this workflow", manifest.inputDomains) +
+    bullets("Baseline domains", manifest.baseDomains) +
+    bullets("IPs from this workflow", manifest.inputIPs) +
+    bullets("Baseline IPs", manifest.baseIPs);
+
+  return (
+    "### Loaded allowlist\n\n" +
+    collapsible(`${domains} domains and ${ips} IPs were allowed`, body)
+  );
+}
+
+function heading(manifest, lockdown) {
   let md = "## g0efilter egress report\n\n";
+
+  if (manifest) {
+    md +=
+      `**Mode:** \`${manifest.mode}\` &nbsp; **Egress policy:** \`${manifest.policy}\`` +
+      ` &nbsp; **Image:** \`${manifest.image}\`\n\n`;
+  } else {
+    md += `**Egress policy:** \`${process.env["INPUT_EGRESS-POLICY"] || "block"}\`\n\n`;
+  }
 
   if (lockdown) {
     md += "> Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.\n\n";
   }
 
-  if (!raw.trim()) {
-    return md + (lockdown
-      ? "No logs captured - Docker access was locked down after startup.\n"
-      : "No g0efilter logs found - the filter may have failed to start.\n");
-  }
-
-  const { decisions, allowed } = collectDecisions(raw);
-  if (decisions.length === 0) {
-    return md + `No blocked or audited connections (${allowed} allowed decisions logged).\n`;
-  }
-
-  const policy = process.env["INPUT_EGRESS-POLICY"] || "block";
-  md += `Egress policy: \`${policy}\` - ${allowed} allowed decisions logged.\n\n`;
-  md += "| Action | Component | Domain / Host | Destination | Count |\n";
-  md += "|---|---|---|---|---|\n";
-
-  decisions.sort((a, b) => b.count - a.count);
-  for (const d of decisions) {
-    const icon = d.action === "BLOCKED" ? "🚫 BLOCKED" : "⚠️ AUDIT";
-    md += `| ${icon} | ${escapeCell(d.component)} | ${escapeCell(d.host)} | ${escapeCell(d.dest)} | ${d.count} |\n`;
-  }
-
   return md;
+}
+
+function buildSummary(raw, { lockdown = false, manifest = null } = {}) {
+  const md = heading(manifest, lockdown);
+
+  if (!raw.trim()) {
+    return (
+      md +
+      (lockdown
+        ? "No logs captured - Docker access was locked down after startup.\n"
+        : "No g0efilter logs found - the filter may have failed to start.\n") +
+      "\n" +
+      policySection(manifest)
+    );
+  }
+
+  const decisions = collectDecisions(raw);
+  let report = md + overview(decisions);
+
+  if (decisions.blocked.length === 0 && decisions.audited.length === 0) {
+    report += "No connections were blocked or audited.\n\n";
+  }
+
+  if (decisions.blocked.length > 0) {
+    report += `### Blocked (${decisions.blocked.length})\n\n` + decisionTable(decisions.blocked);
+  }
+
+  if (decisions.audited.length > 0) {
+    report +=
+      `### Audited (${decisions.audited.length})\n\n` +
+      "Reported only; these connections were not blocked.\n\n" +
+      decisionTable(decisions.audited);
+  }
+
+  if (decisions.allowed.length > 0) {
+    report +=
+      "### Allowed\n\n" +
+      collapsible(
+        `${decisions.allowed.length} hosts were reached`,
+        decisionTable(decisions.allowed, { destination: false }),
+      );
+  }
+
+  return report + policySection(manifest);
 }
 
 function run(cmd, args) {
@@ -141,7 +283,7 @@ function maybeTeardown(lockdown, exec = run) {
 
 function main() {
   const lockdown = process.env["INPUT_LOCKDOWN-RUNNER"] === "true";
-  const summary = buildSummary(containerLogs(), { lockdown });
+  const summary = buildSummary(containerLogs(), { lockdown, manifest: readManifest() });
 
   maybeTeardown(lockdown);
 
@@ -156,4 +298,12 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { parseLine, collectDecisions, escapeCell, buildSummary, teardown, maybeTeardown };
+module.exports = {
+  parseLine,
+  collectDecisions,
+  escapeCell,
+  buildSummary,
+  readManifest,
+  teardown,
+  maybeTeardown,
+};
