@@ -43,6 +43,37 @@ func oracleSNI(data []byte) (string, bool) {
 	return hello.ServerName, true
 }
 
+// fragmentRecord re-frames a handshake record as two, which is how a client can
+// split the SNI across TCP segments to evade a parser that reads one record.
+func fragmentRecord(tb testing.TB, record []byte, at int) []byte {
+	tb.Helper()
+
+	const headerLen = 5
+
+	body := record[headerLen:]
+	if at <= 0 || at >= len(body) {
+		tb.Fatalf("split point %d is outside a %d-byte body", at, len(body))
+	}
+
+	out := make([]byte, 0, len(record)+headerLen)
+
+	for _, part := range [][]byte{body[:at], body[at:]} {
+		out = append(out, recordHeader(record[:headerLen], len(part))...)
+		out = append(out, part...)
+	}
+
+	return out
+}
+
+// recordHeader copies a record header with the length field set to n.
+func recordHeader(template []byte, n int) []byte {
+	header := append([]byte(nil), template...)
+	header[3] = byte(uint16(n) >> 8) //nolint:gosec // a record body is at most 2^14 bytes
+	header[4] = byte(uint16(n))      //nolint:gosec // as above
+
+	return header
+}
+
 func FuzzReadClientHelloSNI(f *testing.F) {
 	f.Add(clientHelloBytes(f, "api.example.com"))
 	f.Add(clientHelloBytes(f, ""))

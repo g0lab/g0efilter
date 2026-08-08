@@ -389,6 +389,13 @@ func Read(file string) (*Policy, error) {
 		return loadFromEnv(lg, envAllowIPs, envAllowDomains, envDenyIPs, envDenyDomains)
 	}
 
+	return ReadFile(file)
+}
+
+// ReadFile loads only the policy file, ignoring the environment policy override.
+func ReadFile(file string) (*Policy, error) {
+	lg := slog.Default()
+
 	lg.Debug("policy.read_start", "component", "policy", "source", "file", "file", strings.TrimSpace(file))
 
 	cfg, err := loadConfig(file)

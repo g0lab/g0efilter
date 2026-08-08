@@ -50,6 +50,13 @@ func ParseIPPortRule(entry string) (IPPortRule, error) {
 		return IPPortRule{}, err
 	}
 
+	// validateIP trims before checking, so "[:: ]" would validate and then be
+	// silently dropped by every consumer that re-parses Addr. Reject it instead of
+	// normalising: a typo should fail loudly, not quietly change what is allowed.
+	if strings.TrimSpace(addr) != addr {
+		return IPPortRule{}, fmt.Errorf("%w (contains whitespace): %s", errInvalidIP, entry)
+	}
+
 	proto, err = resolveProtoPort(proto, port, entry)
 	if err != nil {
 		return IPPortRule{}, err

@@ -1,0 +1,7 @@
+---
+apiVersion: v2
+name: unfiltered
+description: Stands in for a third-party chart that knows nothing about g0efilter.
+type: application
+version: 0.1.0
+appVersion: '1.0.0'

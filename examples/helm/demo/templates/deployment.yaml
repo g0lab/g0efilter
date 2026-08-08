@@ -1,0 +1,37 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}
+      {{- $annotations := include "g0efilter.podAnnotations" . | trim }}
+      {{- if $annotations }}
+      annotations:
+        {{- $annotations | nindent 8 }}
+      {{- end }}
+    spec:
+      # Required when g0efilter.events.enabled: the sidecar needs a token to post.
+      automountServiceAccountToken: {{ .Values.g0efilter.events.enabled }}
+      initContainers:
+        {{- include "g0efilter.sidecar" . | nindent 8 }}
+      containers:
+        - name: app
+          image: {{ .Values.image | quote }}
+          command: ['sh', '-c', 'sleep infinity']
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']
+      volumes:
+        {{- include "g0efilter.policyVolume" . | nindent 8 }}

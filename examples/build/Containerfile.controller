@@ -1,0 +1,30 @@
+# Build the Kubernetes controller. It is a separate Go module, so the build runs
+# from the controller directory.
+FROM golang:1.26.5-alpine3.23 AS builder
+
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG DATE=unknown
+
+WORKDIR /build
+
+COPY controller/go.mod controller/go.sum ./controller/
+WORKDIR /build/controller
+RUN go mod download
+
+WORKDIR /build
+COPY . .
+
+WORKDIR /build/controller
+ENV CGO_ENABLED=0 GOOS=linux
+RUN go build -trimpath \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    -o /build/g0efilter-controller .
+
+FROM gcr.io/distroless/static:nonroot
+
+COPY --from=builder /build/g0efilter-controller /g0efilter-controller
+
+USER 65532:65532
+
+ENTRYPOINT ["/g0efilter-controller"]

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/filter"
+	"github.com/g0lab/g0efilter/agent/metrics"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/nftables"
 	"github.com/g0lab/g0efilter/agent/policy"
@@ -68,7 +69,9 @@ type policyUpdate struct {
 func Run(version, date, commit string) error {
 	cfg := loadConfig()
 
-	hook := telemetry.NewFromEnv(context.Background(), os.Stdout, logging.ParseLevel(cfg.logLevel), version)
+	hook, registry := telemetry.NewFromEnv(context.Background(), os.Stdout, logging.ParseLevel(cfg.logLevel), version)
+	cfg = withTelemetry(cfg, hook, registry)
+
 	lg := logging.New(cfg.logLevel, os.Stdout, logging.WithHook(hook))
 	slog.SetDefault(lg)
 
@@ -79,20 +82,16 @@ func Run(version, date, commit string) error {
 	logDashboardInfo(lg, cfg)
 	logNotificationInfo(lg, cfg)
 
-	err := validatePorts(cfg, lg)
+	err := preflight(cfg, lg)
 	if err != nil {
-		lg.Error("config.port_validation_failed", "err", err)
-
 		return err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sigCh := make(chan os.Signal, 1)
-
-	signal.Notify(sigCh, os.Interrupt, unix.SIGTERM)
-	defer signal.Stop(sigCh)
+	sigCh, hupCh, stopSignals := notifySignals()
+	defer stopSignals()
 
 	cfg = setupLearning(ctx, cfg, lg)
 	cfg = setupProcInfo(cfg, lg)
@@ -111,9 +110,10 @@ func Run(version, date, commit string) error {
 	}()
 
 	startNflogStream(ctx, lg)
+	startMetricsServer(ctx, registry, lg)
 
 	reloadCh := make(chan policyUpdate, 1)
-	startPolicyWatcher(ctx, cfg, lg, initialHash, reloadCh)
+	startPolicyWatcher(ctx, cfg, lg, initialHash, reloadCh, hupCh)
 
 	startRemoteUnblockPolling(ctx, cfg, lg)
 
@@ -164,6 +164,41 @@ type config struct {
 	unblockPollInterval time.Duration
 	notificationHost    string
 	notificationKey     string
+	metrics             *metrics.Metrics
+	policyErrors        policyErrorReporter
+}
+
+// notifySignals separates shutdown from SIGHUP, which asks for a reload rather
+// than an exit.
+func notifySignals() (chan os.Signal, chan os.Signal, func()) {
+	shutdown := make(chan os.Signal, 1)
+	reload := make(chan os.Signal, 1)
+
+	signal.Notify(shutdown, os.Interrupt, unix.SIGTERM)
+	signal.Notify(reload, unix.SIGHUP)
+
+	return shutdown, reload, func() {
+		signal.Stop(shutdown)
+		signal.Stop(reload)
+	}
+}
+
+// withTelemetry attaches the metrics registry and, when the hook records
+// Kubernetes Events, the reporter for a rejected policy.
+func withTelemetry(cfg config, hook logging.Hook, registry *metrics.Metrics) config {
+	cfg.metrics = registry
+
+	if reporter, ok := hook.(policyErrorReporter); ok {
+		cfg.policyErrors = reporter
+	}
+
+	return cfg
+}
+
+// policyErrorReporter reports a rejected policy reload. telemetry.Shipper
+// implements it; an interface keeps the reload path independent of it.
+type policyErrorReporter interface {
+	RecordPolicyError(ctx context.Context, cause error)
 }
 
 func loadConfig() config {
@@ -239,6 +274,8 @@ func setupLearning(ctx context.Context, cfg config, lg *slog.Logger) config {
 		return cfg
 	}
 
+	seedLearningPolicy(cfg.policyPath, lg)
+
 	cfg.learner = newLearner(cfg.policyPath, lg)
 
 	go cfg.learner.run(ctx)
@@ -249,6 +286,27 @@ func setupLearning(ctx context.Context, cfg config, lg *slog.Logger) config {
 	)
 
 	return cfg
+}
+
+// seedLearningPolicy creates an empty allowlist when the policy file is missing.
+// Enforcing modes stay fail-closed on a missing policy, but learning mode has
+// nothing to enforce and this is what lets it run against an empty writable volume.
+func seedLearningPolicy(path string, lg *slog.Logger) {
+	if fileExists(path) {
+		return
+	}
+
+	err := os.WriteFile(path, []byte("allowlist:\n  ips: []\n  domains: []\n"), 0o600)
+	if err != nil {
+		lg.Warn("learning.seed_failed",
+			"path", path,
+			"err", err,
+			"hint", "learning mode needs a writable policy file; mount an emptyDir at its directory")
+
+		return
+	}
+
+	lg.Info("learning.seeded", "path", path)
 }
 
 // effectiveDefaultAllow resolves the policy stance: the policy file's default_action
@@ -297,6 +355,7 @@ func supervise(
 			)
 
 			restartServices(ctx, cfg, upd.pol, lg, svcCancel)
+			cfg.metrics.RecordReload("success")
 			lg.Info("policy.applied", "mode", cfg.mode, "filter_count", len(upd.pol.AllowDomains))
 
 		case <-ctx.Done():
@@ -792,6 +851,7 @@ func startPolicyWatcher(
 	lg *slog.Logger,
 	initialHash string,
 	reloadCh chan policyUpdate,
+	hupCh <-chan os.Signal,
 ) {
 	if !shouldWatchPolicy(cfg) {
 		lg.Info("policy.watcher_disabled",
@@ -802,7 +862,7 @@ func startPolicyWatcher(
 
 	lg.Info("policy.watcher_started", "path", cfg.policyPath, "interval", policyPollInterval.String())
 
-	go pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh)
+	go pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh, hupCh)
 }
 
 func pollPolicyChanges(
@@ -812,6 +872,7 @@ func pollPolicyChanges(
 	initialHash string,
 	interval time.Duration,
 	reloadCh chan policyUpdate,
+	hupCh <-chan os.Signal,
 ) {
 	lastHash := initialHash
 
@@ -825,6 +886,14 @@ func pollPolicyChanges(
 
 		case <-t.C:
 			lastHash = checkPolicyTick(ctx, cfg, lg, lastHash, reloadCh)
+
+		// SIGHUP reloads now rather than waiting out the poll. In Kubernetes the
+		// wait is kubelet's ConfigMap sync, not this ticker, so it does not help
+		// there; it is for an operator who has just edited a mounted file.
+		case <-hupCh:
+			lg.Info("policy.reload_requested", "signal", "SIGHUP")
+
+			lastHash = forceReload(ctx, cfg, lg, lastHash, reloadCh)
 		}
 	}
 }
@@ -842,6 +911,7 @@ func checkPolicyTick(
 	newHash, err := fileSHA256Hex(cfg.policyPath)
 	if err != nil {
 		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
+		cfg.metrics.RecordReload("failure")
 
 		return lastHash
 	}
@@ -869,9 +939,46 @@ func checkPolicyTick(
 
 	lg.Info("policy.change_detected", "old_hash", lastHash, "new_hash", newHash)
 
+	return applyPolicyChange(ctx, cfg, lg, lastHash, newHash, reloadCh)
+}
+
+// forceReload applies the policy on disk whatever its hash, for SIGHUP.
+func forceReload(
+	ctx context.Context,
+	cfg config,
+	lg *slog.Logger,
+	lastHash string,
+	reloadCh chan policyUpdate,
+) string {
+	newHash, err := fileSHA256Hex(cfg.policyPath)
+	if err != nil {
+		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
+		cfg.metrics.RecordReload("failure")
+
+		return lastHash
+	}
+
+	return applyPolicyChange(ctx, cfg, lg, lastHash, newHash, reloadCh)
+}
+
+// applyPolicyChange loads and applies the policy, keeping the previous one when the
+// new one is rejected: replacing a working policy with nothing would open egress.
+func applyPolicyChange(
+	ctx context.Context,
+	cfg config,
+	lg *slog.Logger,
+	lastHash, newHash string,
+	reloadCh chan policyUpdate,
+) string {
 	pol, err := loadAndApplyPolicy(ctx, cfg, lg)
 	if err != nil {
 		lg.Error("policy.reload_failed", "err", err)
+		cfg.metrics.RecordReload("failure")
+
+		// The pod keeps enforcing the previous policy, which is otherwise invisible.
+		if cfg.policyErrors != nil {
+			cfg.policyErrors.RecordPolicyError(ctx, err)
+		}
 
 		return lastHash
 	}

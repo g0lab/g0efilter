@@ -1,0 +1,331 @@
+package harness
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/testcontainers/testcontainers-go/modules/k3s"
+)
+
+const (
+	// k3sImage is pinned so a cluster upgrade is a deliberate change.
+	k3sImage = "docker.io/rancher/k3s:v1.34.1-k3s1"
+
+	controllerImage = "g0efilter-controller:e2e"
+
+	podsResource = "pods"
+
+	k3sStartTimeout  = 5 * time.Minute
+	kubectlTimeout   = 2 * time.Minute
+	pollInterval     = 2 * time.Second
+	readinessTimeout = 3 * time.Minute
+)
+
+var errKubectlFailed = errors.New("kubectl failed")
+
+// K8sEnabled reports whether the Kubernetes phase should run. It is opt-in: it starts
+// a privileged k3s container, which is far heavier than the compose stack.
+func K8sEnabled() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("E2E_K8S")), "true")
+}
+
+// RepoPath resolves a path relative to the repository root.
+func RepoPath(parts ...string) string {
+	return filepath.Join(append([]string{"..", ".."}, parts...)...)
+}
+
+// K3sCluster is a running k3s container plus the kubeconfig to reach it.
+type K3sCluster struct {
+	container  *k3s.K3sContainer
+	kubeconfig string
+}
+
+// StartK3s builds and loads the controller image, then starts a cluster.
+func StartK3s(t *testing.T) *K3sCluster {
+	t.Helper()
+
+	buildControllerImage(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), k3sStartTimeout)
+	defer cancel()
+
+	container, err := k3s.Run(ctx, k3sImage)
+	if err != nil {
+		t.Fatalf("start k3s: %v", err)
+	}
+
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cleanupCancel()
+
+		_ = container.Terminate(cleanupCtx)
+	})
+
+	raw, err := container.GetKubeConfig(ctx)
+	if err != nil {
+		t.Fatalf("get kubeconfig: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "kubeconfig")
+
+	err = os.WriteFile(path, raw, 0o600)
+	if err != nil {
+		t.Fatalf("write kubeconfig: %v", err)
+	}
+
+	// Loading beats pulling: the image only exists on this machine.
+	err = container.LoadImages(ctx, controllerImage)
+	if err != nil {
+		t.Fatalf("load %s into k3s: %v", controllerImage, err)
+	}
+
+	cluster := &K3sCluster{container: container, kubeconfig: path}
+	cluster.WaitForNode(t)
+
+	return cluster
+}
+
+// buildControllerImage builds the controller from source every run. E2E_BUILD is
+// deliberately ignored: nothing pre-loads this image, so skipping the build only
+// ever means testing the previous controller against the current tree.
+func buildControllerImage(t *testing.T) {
+	t.Helper()
+
+	t.Logf("building %s", controllerImage)
+
+	run(t, dockerTimeout, "docker", "build",
+		"-f", RepoPath("examples", "build", "Containerfile.controller"),
+		"-t", controllerImage, RepoPath())
+}
+
+const dockerTimeout = 10 * time.Minute
+
+// run executes a command and fails the test with its combined output.
+func run(t *testing.T, timeout time.Duration, name string, args ...string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	//nolint:gosec // fixed tool names with literal arguments
+	cmd := exec.CommandContext(ctx, name, args...)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s %s: %v\n%s", name, strings.Join(args, " "), err, out)
+	}
+}
+
+// Kubectl runs kubectl against the cluster and returns its output.
+func (c *K3sCluster) Kubectl(t *testing.T, args ...string) string {
+	t.Helper()
+
+	return c.kubectl(t, kubectlTimeout, args...)
+}
+
+// Apply applies manifests from paths or flags.
+func (c *K3sCluster) Apply(t *testing.T, args ...string) {
+	t.Helper()
+
+	c.Kubectl(t, append([]string{"apply"}, args...)...)
+}
+
+// ApplyKustomize builds an overlay and applies it.
+func (c *K3sCluster) ApplyKustomize(t *testing.T, dir string) {
+	t.Helper()
+
+	c.Kubectl(t, "apply", "--server-side", "-k", dir)
+}
+
+// ApplyManifest applies inline YAML.
+func (c *K3sCluster) ApplyManifest(t *testing.T, manifest string) {
+	t.Helper()
+
+	c.Kubectl(t, "apply", "-f", writeTemp(t, "manifest.yaml", manifest))
+}
+
+// writeTemp writes contents to a per-test temporary file and returns its path.
+func writeTemp(t *testing.T, name, contents string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), name)
+
+	err := os.WriteFile(path, []byte(contents), 0o600)
+	if err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+
+	return path
+}
+
+// Get returns a single field via a jsonpath expression.
+func (c *K3sCluster) Get(t *testing.T, namespace, kind, name, jsonpath string) string {
+	t.Helper()
+
+	out := c.Kubectl(t, "get", "-n", namespace, kind, name, "-o", "jsonpath="+jsonpath)
+
+	return strings.TrimSpace(out)
+}
+
+// WaitForNode blocks until the single k3s node is ready.
+func (c *K3sCluster) WaitForNode(t *testing.T) {
+	t.Helper()
+
+	c.kubectl(t, readinessTimeout, "wait", "--for=condition=Ready", "nodes", "--all",
+		"--timeout="+readinessTimeout.String())
+}
+
+// WaitForCRDs blocks until each CRD is established, which is what makes its API
+// usable; applying a custom resource before that fails with "no matches for kind".
+func (c *K3sCluster) WaitForCRDs(t *testing.T, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		c.kubectl(t, readinessTimeout, "wait", "--for=condition=Established",
+			"crd/"+name, "--timeout="+readinessTimeout.String())
+	}
+}
+
+// WaitForDeployment blocks until a deployment reports Available.
+func (c *K3sCluster) WaitForDeployment(t *testing.T, namespace, name string) {
+	t.Helper()
+
+	_, err := c.tryKubectl("wait", "--for=condition=Available", "-n", namespace,
+		"deployment/"+name, "--timeout="+readinessTimeout.String())
+	if err != nil {
+		t.Fatalf("%s/%s never became available: %v\n%s", namespace, name, err,
+			c.describeFailure(namespace, name))
+	}
+}
+
+// WaitForConfigMapKey blocks until a ConfigMap key exists and returns its value.
+func (c *K3sCluster) WaitForConfigMapKey(t *testing.T, namespace, name, key string) string {
+	t.Helper()
+
+	jsonpath := "jsonpath={.data['" + strings.ReplaceAll(key, ".", `\.`) + "']}"
+
+	var last string
+
+	deadline := time.Now().Add(readinessTimeout)
+
+	for time.Now().Before(deadline) {
+		out, err := c.tryKubectl("get", "-n", namespace, "configmap", name, "-o", jsonpath)
+		if err == nil && strings.TrimSpace(out) != "" {
+			return out
+		}
+
+		last = out
+
+		time.Sleep(pollInterval)
+	}
+
+	t.Fatalf("ConfigMap %s/%s never gained key %s: %s", namespace, name, key, last)
+
+	return ""
+}
+
+// WaitForConfigMapContains blocks until a rendered key contains a substring, which is
+// how a re-reconcile triggered by another object is observed.
+func (c *K3sCluster) WaitForConfigMapContains(t *testing.T, namespace, name, key, want string) {
+	t.Helper()
+
+	jsonpath := "jsonpath={.data['" + strings.ReplaceAll(key, ".", `\.`) + "']}"
+
+	var last string
+
+	deadline := time.Now().Add(readinessTimeout)
+
+	for time.Now().Before(deadline) {
+		out, err := c.tryKubectl("get", "-n", namespace, "configmap", name, "-o", jsonpath)
+		if err == nil && strings.Contains(out, want) {
+			return
+		}
+
+		last = out
+
+		time.Sleep(pollInterval)
+	}
+
+	t.Fatalf("ConfigMap %s/%s key %s never contained %q:\n%s", namespace, name, key, want, last)
+}
+
+// WaitForAbsent blocks until an object is gone.
+func (c *K3sCluster) WaitForAbsent(t *testing.T, namespace, kind, name string) {
+	t.Helper()
+
+	deadline := time.Now().Add(readinessTimeout)
+
+	for time.Now().Before(deadline) {
+		_, err := c.tryKubectl("get", "-n", namespace, kind, name)
+		if err != nil {
+			return
+		}
+
+		time.Sleep(pollInterval)
+	}
+
+	t.Fatalf("%s %s/%s still exists", kind, namespace, name)
+}
+
+func (c *K3sCluster) kubectl(t *testing.T, timeout time.Duration, args ...string) string {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	//nolint:gosec // literal arguments supplied by the tests
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+c.kubeconfig)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("kubectl %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+
+	return string(out)
+}
+
+// tryKubectl is the polling variant: it reports failure instead of ending the test.
+func (c *K3sCluster) tryKubectl(args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	//nolint:gosec // literal arguments supplied by the tests
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+c.kubeconfig)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("%w: %s", errKubectlFailed, strings.TrimSpace(string(out)))
+	}
+
+	return string(out), nil
+}
+
+// describeFailure gathers the context needed to diagnose a deployment that never
+// came up, since the wait error alone says nothing about why.
+func (c *K3sCluster) describeFailure(namespace, name string) string {
+	var b strings.Builder
+
+	for _, args := range [][]string{
+		{"describe", "-n", namespace, "deployment/" + name},
+		{"get", "-n", namespace, podsResource, "-o", "wide"},
+		{"logs", "-n", namespace, "deployment/" + name, "--all-containers", "--tail=50"},
+	} {
+		out, _ := c.tryKubectl(args...)
+
+		b.WriteString("\n$ kubectl " + strings.Join(args, " ") + "\n")
+		b.WriteString(out)
+	}
+
+	return b.String()
+}

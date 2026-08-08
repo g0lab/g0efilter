@@ -348,6 +348,8 @@ github.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0
 github.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=
 github.com/testcontainers/testcontainers-go/modules/compose v0.43.0 h1:cosFjQN1yHPnb82c/Lhk5gmG5jeeYKIJqWtbcOXohdU=
 github.com/testcontainers/testcontainers-go/modules/compose v0.43.0/go.mod h1:1pjOp7RAWBXOeSQ3y+oaQyxoizm54/UYfc4SLCbB8LU=
+github.com/testcontainers/testcontainers-go/modules/k3s v0.43.0 h1:hT/Yc1Na3cA0iiXJB0OxdIwQUd9Mj8DFFmKeqjjUycA=
+github.com/testcontainers/testcontainers-go/modules/k3s v0.43.0/go.mod h1:fRCROXI12PmqMU5uCd3oA8agsU6dozrIKcXkOIPphE8=
 github.com/theupdateframework/go-tuf v0.7.0 h1:CqbQFrWo1ae3/I0UCblSbczevCCbS31Qvs5LdxRWqRI=
 github.com/theupdateframework/go-tuf/v2 v2.4.2-0.20260407074541-7e8f69f906ef h1:jJac5InhEfD0Z46/d5RayZjoavf/se7bPZpOgg8GLrM=
 github.com/theupdateframework/go-tuf/v2 v2.4.2-0.20260407074541-7e8f69f906ef/go.mod h1:cLUSJ2cgR194lNWfp+TJT4P8PX7qGleCXdudqlCMtOE=

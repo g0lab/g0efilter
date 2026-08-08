@@ -1,0 +1,25 @@
+---
+# The control plane with the sidecar-injecting webhook, built from the local images.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../../deploy/webhook
+
+images:
+  - name: docker.io/g0lab/g0efilter-controller
+    newName: g0efilter-controller
+    newTag: e2e
+
+patches:
+  - target:
+      kind: Deployment
+      name: g0efilter-controller
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: g0efilter-controller
+      spec:
+        # One replica: leader election would otherwise delay the first reconcile.
+        replicas: 1

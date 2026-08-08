@@ -17,7 +17,7 @@ import (
 const oneShotTimeout = 60 * time.Second
 
 // OneShot describes a container run directly from a production image, outside
-// the compose stack - the entrypoint and CLI tests exercise the real image with
+// the compose stack - the capability and CLI tests exercise the real image with
 // capability sets that compose cannot express per-case.
 type OneShot struct {
 	Image string
@@ -29,6 +29,8 @@ type OneShot struct {
 	User string
 	// Binds are host:container mounts.
 	Binds []string
+	// SecurityOpt holds docker --security-opt values, e.g. "no-new-privileges".
+	SecurityOpt []string
 }
 
 // OneShotResult is the outcome of a one-shot run.
@@ -61,6 +63,7 @@ func RunOneShot(t *testing.T, spec OneShot) OneShotResult {
 			hc.CapDrop = []string{"ALL"}
 			hc.CapAdd = spec.CapAdd
 			hc.Binds = spec.Binds
+			hc.SecurityOpt = spec.SecurityOpt
 			hc.AutoRemove = false
 		},
 	}

@@ -19,6 +19,7 @@ updates:
     directories:
       - '/'
       - '/tests/e2e'
+      - '/controller'
     groups:
       gomod:
         patterns:
@@ -51,7 +52,9 @@ updates:
 
   - package-ecosystem: 'docker'
     directories:
-      - '/'
+      - '/agent'
+      - '/dashboard'
+      - '/controller'
       - '/examples/build'
       - '/tests/e2e'
     schedule:

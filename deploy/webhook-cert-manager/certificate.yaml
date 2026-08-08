@@ -1,0 +1,22 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: g0efilter-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: g0efilter-webhook
+spec:
+  secretName: g0efilter-webhook-cert
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    name: g0efilter-selfsigned
+    kind: Issuer
+  dnsNames:
+    - g0efilter-webhook.g0efilter-system.svc
+    - g0efilter-webhook.g0efilter-system.svc.cluster.local

@@ -50,7 +50,7 @@ func TestMidNameWildcardOriginalFeatureRequest(t *testing.T) {
 	}
 }
 
-// Leading-only '*.” keeps the existing suffix-match fast path; a pattern with both
+// Leading-only '*.' keeps the existing suffix-match fast path; a pattern with both
 // a leading and a mid '*' must go through the wildcard compiler instead.
 func TestLeadingAndMidWildcardCombined(t *testing.T) {
 	t.Parallel()

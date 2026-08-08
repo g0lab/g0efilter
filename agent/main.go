@@ -39,6 +39,14 @@ func main() {
 		os.Exit(code)
 	}
 
+	if handled, code := g0efilter.HandleCaps(os.Args); handled {
+		os.Exit(code)
+	}
+
+	if handled, code := g0efilter.HandlePolicy(os.Args); handled {
+		os.Exit(code)
+	}
+
 	err := g0efilter.Run(version, date, commit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

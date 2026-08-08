@@ -1,0 +1,35 @@
+---
+# The webhook with cert-manager issuing and rotating the serving certificate,
+# for clusters whose policy requires a managed issuer:
+#
+#   kubectl apply --server-side -f deploy/crds/
+#   kubectl apply -k deploy/webhook-cert-manager
+#
+# Needs cert-manager with cainjector already installed and ready. Without that
+# requirement, deploy/webhook issues its own certificate and needs no dependency.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: g0efilter-system
+
+resources:
+  - ../webhook
+  - certificate.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: g0efilter-controller
+    path: deployment-patch.yaml
+
+  # cainjector fills the caBundle from the issued Secret.
+  - target:
+      kind: MutatingWebhookConfiguration
+      name: g0efilter-sidecar-injector
+    patch: |-
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: MutatingWebhookConfiguration
+      metadata:
+        name: g0efilter-sidecar-injector
+        annotations:
+          cert-manager.io/inject-ca-from: g0efilter-system/g0efilter-webhook

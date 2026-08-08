@@ -1,0 +1,15 @@
+---
+# The g0efilter control plane. CRDs are applied separately from deploy/crds so that
+# Argo CD and Helm do not fight over their ordering:
+#
+#   kubectl apply --server-side -f deploy/crds/
+#   kubectl apply -k deploy/controller
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: g0efilter-system
+
+resources:
+  - namespace.yaml
+  - role.yaml
+  - deployment.yaml

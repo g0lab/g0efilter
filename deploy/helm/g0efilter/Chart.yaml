@@ -1,0 +1,15 @@
+---
+apiVersion: v2
+name: g0efilter
+description: Library chart that injects the g0efilter egress-filter sidecar into a pod template.
+type: library
+version: 0.1.0
+appVersion: '0.8.0'
+home: https://github.com/g0lab/g0efilter
+sources:
+  - https://github.com/g0lab/g0efilter
+keywords:
+  - egress
+  - network
+  - security
+  - sidecar

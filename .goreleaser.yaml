@@ -39,16 +39,28 @@ builds:
       - -X main.commit={{ .Commit }}
       - -X main.date={{ .Date }}
 
+  - id: g0efilter-controller
+    dir: ./controller
+    main: .
+    binary: g0efilter-controller
+    env: ['CGO_ENABLED=0']
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ['-trimpath']
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
 checksum:
   name_template: 'checksums.txt'
 
 dockers_v2:
   - id: g0efilter
-    dockerfile: ./Dockerfile
+    dockerfile: ./agent/Containerfile
     ids:
       - g0efilter
-    extra_files:
-      - scripts/docker/agent-entrypoint.sh
     images:
       - docker.io/g0lab/g0efilter
     tags:
@@ -70,7 +82,7 @@ dockers_v2:
       org.opencontainers.image.created: '{{ .Date }}'
 
   - id: g0efilter-dashboard
-    dockerfile: ./Dockerfile.dashboard
+    dockerfile: ./dashboard/Containerfile
     ids:
       - g0efilter-dashboard
     images:
@@ -88,6 +100,29 @@ dockers_v2:
     labels:
       org.opencontainers.image.source: 'https://github.com/g0lab/g0efilter'
       org.opencontainers.image.title: 'g0efilter-dashboard'
+      org.opencontainers.image.version: '{{ .Version }}'
+      org.opencontainers.image.revision: '{{ .Commit }}'
+      org.opencontainers.image.created: '{{ .Date }}'
+
+  - id: g0efilter-controller
+    dockerfile: ./controller/Containerfile
+    ids:
+      - g0efilter-controller
+    images:
+      - docker.io/g0lab/g0efilter-controller
+    tags:
+      - '{{ .Tag }}'
+      - '{{ if not .Prerelease }}v{{ .Major }}{{ end }}'
+      - '{{ if not .Prerelease }}latest{{ end }}'
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    sbom: 'true'
+    flags:
+      - '--provenance=mode=max'
+    labels:
+      org.opencontainers.image.source: 'https://github.com/g0lab/g0efilter'
+      org.opencontainers.image.title: 'g0efilter-controller'
       org.opencontainers.image.version: '{{ .Version }}'
       org.opencontainers.image.revision: '{{ .Commit }}'
       org.opencontainers.image.created: '{{ .Date }}'

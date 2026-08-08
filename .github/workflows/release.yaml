@@ -18,20 +18,37 @@ jobs:
     permissions:
       contents: write  # Publish the release.
       id-token: write  # Sign artifacts with Cosign.
-    # Release only tags created from main.
-    if: github.ref_type == 'tag' && github.event.base_ref == 'refs/heads/main'
-
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Tag points to main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::release tags must point to a commit on main"
+            exit 1
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: true
+
+      # The tag is authoritative. VERSION mirrors it so a checkout of the tag has
+      # manifests and docs pinned to that same release. Checked here as well as in
+      # CI because a tag can be pushed at a commit whose CI never ran.
+      - name: Version is consistent
+        run: |
+          declared="v$(tr -d '[:space:]' < VERSION)"
+          if [ "$declared" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::VERSION is $declared but the tag is ${GITHUB_REF_NAME};"\
+                 "run scripts/set-version.sh ${GITHUB_REF_NAME} and commit before tagging"
+            exit 1
+          fi
+          go test -count=1 ./tests/repo/ -run 'TestPinnedVersions|TestEveryExpectedFile'
 
       # GoReleaser builds the dashboard UI in its before hook.
       - name: Set up pnpm

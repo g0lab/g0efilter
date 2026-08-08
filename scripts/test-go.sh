@@ -34,3 +34,15 @@ golangci-lint config verify
 
 echo ">>> golangci-lint"
 golangci-lint run --timeout=10m ./...
+
+# The controller is a separate module so controller-runtime stays out of the agent's
+# dependency tree; it needs its own vet, test and lint pass.
+echo ">>> controller module"
+cd "$ROOT/controller"
+go mod tidy
+git diff --exit-code -- go.mod go.sum
+go vet ./...
+# envtest runs a real kube-apiserver and etcd so the generated CRDs are exercised by
+# the API server's own validation, not just by the Go types.
+KUBEBUILDER_ASSETS="$(go tool setup-envtest use -p path)" go test -race ./...
+golangci-lint run --timeout=10m ./...

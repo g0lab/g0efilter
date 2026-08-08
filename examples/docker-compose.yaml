@@ -9,11 +9,9 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      # Filter traffic, then drop to a non-root user.
+      # The only capability needed: the image runs as uid 65534 and carries
+      # CAP_NET_ADMIN as a file capability.
       - NET_ADMIN
-      - SETUID
-      - SETGID
-      - CHOWN
     security_opt:
       - no-new-privileges
     ports:

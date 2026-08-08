@@ -1,0 +1,15 @@
+---
+# Minimal filtered workload. `kubectl kustomize examples/kubernetes` renders the
+# Deployment with the g0efilter sidecar already attached.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: g0efilter-demo
+
+resources:
+  - namespace.yaml
+  - policy.yaml
+  - deployment.yaml
+
+components:
+  - ../../deploy/kustomize/sidecar

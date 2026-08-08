@@ -1,0 +1,24 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: g0efilter-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: controller
+          args:
+            - --leader-elect
+            - --metrics-bind-address=:8080
+            - --health-probe-bind-address=:8081
+            - --webhook
+            - --webhook-port=9443
+            - --webhook-cert-dir=/tmp/g0efilter-certs
+            - --webhook-cert-source=external
+      volumes:
+        # cert-manager owns the Secret; the controller only reads it.
+        - name: certs
+          emptyDir: null
+          secret:
+            secretName: g0efilter-webhook-cert

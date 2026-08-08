@@ -13,72 +13,59 @@ import (
 	"github.com/g0lab/g0efilter/tests/e2e/internal/harness"
 )
 
-func TestPhase15EntrypointCaps(t *testing.T) {
+// TestPhase15FileCapabilities covers the image's privilege model: the agent runs
+// unprivileged and gets CAP_NET_ADMIN from file capabilities on itself and on the
+// nft binary it execs. The `caps` subcommand exercises both halves.
+func TestPhase15FileCapabilities(t *testing.T) {
 	t.Parallel()
 
 	mode := harness.ModeFromEnv(t)
 	if mode != harness.FilterModeHTTPS {
-		t.Skipf("entrypoint-caps phase runs once, in the https lane (got %s)", mode)
+		t.Skipf("file-capabilities phase runs once, in the https lane (got %s)", mode)
 	}
 
 	image := harness.Env("G0EFILTER_IMAGE", "g0efilter:test")
 
-	fullCaps := []string{"NET_ADMIN", "SETUID", "SETGID", "CHOWN"}
-
 	tests := []struct {
-		name      string
-		caps      []string
-		env       map[string]string
-		user      string
-		wantText  string
-		wantFails bool
+		name       string
+		caps       []string
+		user       string
+		security   []string
+		wantText   []string
+		wantAbsent []string
+		wantFails  bool
 	}{
 		{
-			name:     "full caps drop to nobody and keep net_admin",
-			caps:     fullCaps,
-			wantText: "running as uid:gid 65534:65534 (retained cap: net_admin)",
-		},
-		{
-			name: "missing SETUID/SETGID falls back to root with a warning",
-			caps: []string{"NET_ADMIN", "CHOWN"},
-			wantText: "running as root (weakens container isolation; " +
-				"set ALLOW_ROOT_FALLBACK=false to fail closed)",
-		},
-		{
-			name:      "ALLOW_ROOT_FALLBACK=false fails closed",
-			caps:      []string{"NET_ADMIN", "CHOWN"},
-			env:       map[string]string{"ALLOW_ROOT_FALLBACK": "false"},
-			wantText:  "ALLOW_ROOT_FALLBACK=false, refusing to run as root",
-			wantFails: true,
-		},
-		{
-			// Docker's --cap-add does not make a capability effective after switching
-			// to a non-root --user, so the entrypoint must abort rather than run
-			// unprotected.
-			name:      "pre-set non-root user without effective NET_ADMIN fails closed",
-			caps:      []string{"NET_ADMIN"},
-			user:      "65534:65534",
-			wantText:  "CAP_NET_ADMIN missing",
-			wantFails: true,
-		},
-		{
-			name:      "non-numeric PUID is rejected before startup",
-			caps:      fullCaps,
-			env:       map[string]string{"PUID": "nobody"},
-			wantText:  "PUID must be a non-negative integer",
-			wantFails: true,
-		},
-		{
-			name:      "missing NET_ADMIN aborts startup",
-			caps:      []string{"SETUID", "SETGID", "CHOWN"},
-			wantText:  "ERROR: CAP_NET_ADMIN missing",
-			wantFails: true,
-		},
-		{
-			name:     "PUID=0 stays root explicitly",
+			name:     "the image default user programs nftables without root",
 			caps:     []string{"NET_ADMIN"},
-			env:      map[string]string{"PUID": "0"},
-			wantText: "running as uid:gid 0:0",
+			wantText: []string{"euid=65534", "net_admin: effective=true", "can program nftables"},
+			// NET_ADMIN is the only capability the image needs now; a regression that
+			// reintroduced the privilege drop would run as root instead.
+			wantAbsent: []string{"euid=0"},
+		},
+		{
+			// allowPrivilegeEscalation=false in Kubernetes sets the same flag, and
+			// must not stop the kernel applying the binary's file capabilities.
+			name:     "no-new-privileges does not strip the file capabilities",
+			caps:     []string{"NET_ADMIN"},
+			security: []string{"no-new-privileges"},
+			wantText: []string{"euid=65534", "can program nftables"},
+		},
+		{
+			// Not the shipped configuration, but an explicit --user 0 override must
+			// keep working for anyone who still runs the agent as root.
+			name:     "an explicit root user still works",
+			caps:     []string{"NET_ADMIN"},
+			user:     "0:0",
+			wantText: []string{"euid=0", "can program nftables"},
+		},
+		{
+			// cap_net_admin=eip makes the kernel refuse the exec outright, which is
+			// the fail-closed outcome: no container, so no unfiltered traffic.
+			name:      "without NET_ADMIN the container refuses to start",
+			caps:      nil,
+			wantText:  []string{"not permitted"},
+			wantFails: true,
 		},
 	}
 
@@ -86,21 +73,33 @@ func TestPhase15EntrypointCaps(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			//nolint:exhaustruct // Binds are not needed here
+			//nolint:exhaustruct // Binds and Env are not needed here
 			res := harness.RunOneShot(t, harness.OneShot{
-				Image:  image,
-				Cmd:    []string{"healthcheck"},
-				Env:    tc.env,
-				CapAdd: tc.caps,
-				User:   tc.user,
+				Image:       image,
+				Cmd:         []string{"caps"},
+				CapAdd:      tc.caps,
+				User:        tc.user,
+				SecurityOpt: tc.security,
 			})
 
-			if !res.Contains(tc.wantText) {
-				t.Errorf("expected %q in output:\n%s", tc.wantText, res.Output)
+			for _, want := range tc.wantText {
+				if !res.Contains(want) {
+					t.Errorf("expected %q in output:\n%s", want, res.Output)
+				}
+			}
+
+			for _, absent := range tc.wantAbsent {
+				if res.Contains(absent) {
+					t.Errorf("unexpected %q in output:\n%s", absent, res.Output)
+				}
 			}
 
 			if tc.wantFails && res.Succeeded() {
 				t.Errorf("expected a non-zero exit, got 0:\n%s", res.Output)
+			}
+
+			if !tc.wantFails && !res.Succeeded() {
+				t.Errorf("expected a zero exit, got %d:\n%s", res.ExitCode, res.Output)
 			}
 		})
 	}

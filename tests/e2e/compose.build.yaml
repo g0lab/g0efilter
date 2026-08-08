@@ -2,11 +2,11 @@ services:
   g0efilter:
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile.agent
+      dockerfile: tests/e2e/Containerfile.agent
     image: g0efilter:test
 
   g0efilter-dashboard:
     build:
       context: ../..
-      dockerfile: tests/e2e/Dockerfile.dashboard
+      dockerfile: tests/e2e/Containerfile.dashboard
     image: g0efilter-dashboard:test
