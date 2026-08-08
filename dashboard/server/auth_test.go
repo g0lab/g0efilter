@@ -89,7 +89,7 @@ func TestSessionMode_LoginFlow(t *testing.T) {
 	srv := newSessionTestServer(t)
 	router := srv.routes()
 
-	// Unauthenticated API request → 401 JSON.
+	// Unauthenticated API request -> 401 JSON.
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/logs", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -98,7 +98,7 @@ func TestSessionMode_LoginFlow(t *testing.T) {
 		t.Fatalf("unauthenticated /api/v1/logs = %d, want 401", w.Code)
 	}
 
-	// Unauthenticated page request → redirect to login.
+	// Unauthenticated page request -> redirect to login.
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	req.Header.Set("Accept", "text/html")
 
@@ -118,13 +118,13 @@ func TestSessionMode_LoginFlow(t *testing.T) {
 		t.Fatalf("/login.html = %d, want 200", w.Code)
 	}
 
-	// Wrong password → 401, no cookie.
+	// Wrong password -> 401, no cookie.
 	w = doLogin(t, router, "wrong")
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("bad login = %d, want 401", w.Code)
 	}
 
-	// Correct login → cookie.
+	// Correct login -> cookie.
 	w = doLogin(t, router, testAdminPass)
 	if w.Code != http.StatusOK {
 		t.Fatalf("login = %d, want 200 (body %q)", w.Code, w.Body.String())
@@ -285,7 +285,7 @@ func TestEnsureAdminUser(t *testing.T) {
 	ctx := context.Background()
 	lg := slog.New(slog.DiscardHandler)
 
-	// No hash, no users → auto-generate a bootstrap admin (does not fail).
+	// No hash, no users -> auto-generate a bootstrap admin (does not fail).
 	gen := newMemUserStore()
 
 	var (
@@ -332,7 +332,7 @@ func TestEnsureAdminUser(t *testing.T) {
 		t.Fatalf("generated admin bootstrap notices = %d, want 1", got)
 	}
 
-	// Hash provided → seeded.
+	// Hash provided -> seeded.
 	users := newMemUserStore()
 	cfg := Config{AuthMode: AuthModeSession, AdminUsername: "admin", AdminPasswordHash: "x"}
 
@@ -395,7 +395,7 @@ func TestAPIKeyAdminEndpoints(t *testing.T) {
 		t.Fatalf("new key on machine realm = %d, want 200", w.Code)
 	}
 
-	// Revoke it → key stops working.
+	// Revoke it -> key stops working.
 	req = httptest.NewRequestWithContext(context.Background(),
 		http.MethodDelete, "/api/v1/apikeys/"+id, nil)
 	req.AddCookie(cookie)

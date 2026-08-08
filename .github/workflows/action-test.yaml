@@ -11,6 +11,7 @@ on:
       - 'action.yml'
       - 'action/**'
       - '.github/test-actions/**'
+      - 'scripts/test-action.sh'
       - '.github/workflows/action-test.yaml'
 
 permissions:

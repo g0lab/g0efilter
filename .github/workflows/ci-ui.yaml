@@ -2,17 +2,6 @@
 name: CI (UI)
 
 on:
-  push:
-    branches:
-      - '**'
-    tags-ignore:
-      - '**'
-    paths:
-      - 'dashboard/ui/**'
-      - '!dashboard/ui/*.go'
-      - 'scripts/test-ui.sh'
-      - '.github/workflows/ci-ui.yaml'
-
   pull_request:
     paths:
       - 'dashboard/ui/**'

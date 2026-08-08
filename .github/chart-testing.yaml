@@ -1,0 +1,19 @@
+---
+# chart-testing (ct) config. check-version-increment is the point: it fails a PR that
+# changes a chart without bumping its Chart.yaml version.
+remote: origin
+target-branch: main
+chart-dirs:
+  - deploy/helm
+check-version-increment: true
+validate-maintainers: false
+
+# Both validators below need an extra toolchain for little gain, so `helm lint` plus
+# tests/manifests/ covers the charts instead:
+#   validate-chart-schema needs the yamale Python tool, only to assert Chart.yaml
+#   carries a description, home and sources; helm lint already requires the fields
+#   that matter.
+#   validate-yaml needs a yamllint config and would lint only the chart files, while
+#   the repository lints no YAML at all - that belongs repo-wide, not here.
+validate-chart-schema: false
+validate-yaml: false
