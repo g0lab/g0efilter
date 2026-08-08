@@ -50,7 +50,7 @@ jobs:
       # The corpus Go grows during a run lives in the build cache, so restoring it
       # carries progress between nightly runs instead of restarting from the seeds.
       - name: Restore the fuzz corpus
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/go-build/fuzz
           key: fuzz-corpus-${{ github.run_id }}
