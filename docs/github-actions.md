@@ -20,6 +20,10 @@ jobs:
       - uses: actions/checkout@v7
 ```
 
+This repository filters its own workflows; see
+[`description.yaml`](https://github.com/g0lab/g0efilter/blob/main/.github/workflows/description.yaml)
+for a working example.
+
 ## Inputs
 
 | Input | Description | Default |

@@ -21,7 +21,7 @@ jobs:
       - name: Filter egress
         uses: g0lab/g0efilter@v0
         with:
-          egress-policy: audit
+          egress-policy: block
           allowed-domains: |
             hub.docker.com
 
@@ -32,7 +32,7 @@ jobs:
       - name: Update agent description
         uses: peter-evans/dockerhub-description@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter
           enable-url-completion: true
@@ -40,7 +40,7 @@ jobs:
       - name: Update dashboard description
         uses: peter-evans/dockerhub-description@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter-dashboard
           enable-url-completion: true
@@ -48,7 +48,7 @@ jobs:
       - name: Update controller description
         uses: peter-evans/dockerhub-description@v5
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: g0lab/g0efilter-controller
           enable-url-completion: true
