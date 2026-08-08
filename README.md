@@ -132,17 +132,37 @@ There is also a Helm library chart for charts you maintain, a Helm post-renderer
 for third-party charts you cannot edit, and a mutating webhook that injects the
 sidecar at admission for pods you do not template at all.
 
-The library chart is published both as a conventional Helm repository at
-`https://g0lab.github.io/g0efilter` and as an OCI artifact under
-`oci://ghcr.io/g0lab/helm/g0efilter`.
+To run it cluster-wide, install the control plane and label the namespaces to
+filter:
+
+```sh
+helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
+  --namespace g0efilter-system --create-namespace
+kubectl label namespace <namespace> g0efilter.io/inject=enabled
+```
+
+Every `EgressPolicy` in a labelled namespace then gets its own sidecar, with no
+change to the workload manifests. Roll one out with `enforcement: audit` to see
+what a policy would deny before it denies anything.
+
+Three charts are published, both as a conventional Helm repository at
+`https://g0lab.github.io/g0efilter` and as OCI artifacts under
+`oci://ghcr.io/g0lab/helm`:
+
+| Chart | Type | Use |
+| --- | --- | --- |
+| `g0efilter-controller` | application | the control plane: controller, webhook and CRDs |
+| `g0efilter-dashboard` | application | the dashboard the sidecars ship logs to |
+| `g0efilter` | library | sidecar templates for a chart you maintain |
 
 The render-time integrations mount a policy ConfigMap directly. The webhook uses
 `EgressPolicy` custom resources and a controller that renders the matching
 ConfigMap. Denials can also be surfaced as Kubernetes Events and Prometheus
 metrics.
 
-See [Kubernetes](docs/kubernetes.md) for all four integrations, policy
-distribution, and the required namespace label.
+See [Kubernetes](docs/kubernetes.md) for all four integrations, the full
+`EgressPolicy` sidecar options, policy distribution, and the required namespace
+label.
 
 ## GitHub Actions
 

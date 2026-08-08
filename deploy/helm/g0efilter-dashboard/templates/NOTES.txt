@@ -1,0 +1,76 @@
+g0efilter dashboard {{ .Chart.AppVersion }} installed in {{ .Release.Namespace }}.
+
+Rollback uses Helm's stored revisions, but does not restore the SQLite database:
+
+  helm history {{ .Release.Name }} -n {{ .Release.Namespace }}
+  helm rollback {{ .Release.Name }} <revision> -n {{ .Release.Namespace }} --wait
+
+Reachable in-cluster at:
+
+  http://{{ include "g0efilter-dashboard.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+{{ if not .Values.ingress.enabled -}}
+No Ingress was created. To look at it now:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "g0efilter-dashboard.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- else if .Values.ingress.tls -}}
+Published at https://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+{{- else -}}
+Published at http://{{ .Values.ingress.host }}{{ .Values.ingress.path }}
+{{- end }}
+
+{{ if eq .Values.auth.mode "none" -}}
+WARNING: auth.mode is none. The UI and its sensitive endpoints - stored logs, log
+deletion, API key management - are unauthenticated. Only do this behind a proxy that
+authenticates for it.
+{{- else if eq .Values.auth.mode "session" -}}
+{{- if not (or .Values.secrets.existingSecret .Values.secrets.adminPasswordHash) }}
+No admin password hash was supplied, so the dashboard generated one and printed it
+once at startup. Read it now - it is not stored anywhere and not printed again:
+
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "g0efilter-dashboard.fullname" . }} | grep -i password
+
+Set one yourself with:
+  docker run --rm -i {{ .Values.image.repository }}:{{ .Values.image.tag }} hash-password
+{{- end }}
+{{- if not .Values.auth.cookieSecure }}
+
+WARNING: auth.cookieSecure is false, so the session cookie is sent over plain HTTP.
+{{- end }}
+{{- end }}
+
+{{ if not (or .Values.secrets.existingSecret .Values.secrets.apiKey) -}}
+Sidecars need a machine API key to ship logs. One was generated and printed at
+startup when the key store was empty:
+
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "g0efilter-dashboard.fullname" . }} | grep -i 'api key'
+{{- end }}
+
+Point a sidecar at it. Both the host and the API key belong in the EgressPolicy, and
+the policy has to allow the dashboard itself - a sidecar filters its own egress:
+
+  apiVersion: g0efilter.io/v1alpha1
+  kind: EgressPolicy
+  metadata:
+    name: web
+  spec:
+    podSelector:
+      matchLabels:
+        app: web
+    sidecar:
+      dashboard:
+        host: http://{{ include "g0efilter-dashboard.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+        apiKeySecretRef:
+          name: g0efilter-dashboard-key
+          key: api-key
+    egress:
+      - name: dashboard
+        to:
+          - domainNames: ['{{ include "g0efilter-dashboard.fullname" . }}.{{ .Release.Namespace }}.svc']
+
+The Secret named there is read by kubelet in the workload's own namespace, so copy
+the key into each namespace that ships logs.
+{{ if and .Values.persistence.enabled (not .Values.ephemeral) }}
+The PersistentVolumeClaim carries helm.sh/resource-policy: keep, so `helm uninstall`
+leaves the collected history behind.
+{{- end }}

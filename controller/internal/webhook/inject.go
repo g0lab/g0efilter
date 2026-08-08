@@ -257,8 +257,15 @@ func inject(pod *corev1.Pod, settings sidecarSettings, configMapName, policyName
 
 	maps.Copy(pod.Annotations, scrapeAnnotations(settings))
 
-	if settings.events {
+	if settings.events.Enabled {
 		mount := true
 		pod.Spec.AutomountServiceAccountToken = &mount
+	}
+
+	// Process attribution reads /proc, so the sidecar has to share the pod's process
+	// namespace. That is mutual: every container can then see the others' processes.
+	if settings.processInfo {
+		share := true
+		pod.Spec.ShareProcessNamespace = &share
 	}
 }

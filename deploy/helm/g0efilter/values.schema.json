@@ -38,6 +38,13 @@
         "dns-strict"
       ]
     },
+    "enforcement": {
+      "description": "block drops traffic no rule allows; audit logs it and allows it through.",
+      "enum": [
+        "block",
+        "audit"
+      ]
+    },
     "logLevel": {
       "enum": [
         "TRACE",
@@ -46,6 +53,13 @@
         "WARN",
         "ERROR"
       ]
+    },
+    "processInfo": {
+      "description": "Needs shareProcessNamespace on the pod, which the consuming chart must set.",
+      "type": "boolean"
+    },
+    "tenantId": {
+      "type": "string"
     },
     "policy": {
       "type": "object",
@@ -75,6 +89,14 @@
         "serviceAccountName": {
           "type": "string",
           "minLength": 1
+        },
+        "maxDenials": {
+          "description": "Null uses the agent default; 0 records no Events at all.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
         }
       }
     },
@@ -127,6 +149,190 @@
         },
         "annotations": {
           "type": "boolean"
+        }
+      }
+    },
+    "dashboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "description": "The policy must allow this destination: the sidecar filters its own egress.",
+          "type": "string"
+        },
+        "apiKeySecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "queueSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "startDelay": {
+          "description": "A Go duration such as 5s or 1m.",
+          "type": "string",
+          "pattern": "^([0-9]+(ns|us|ms|s|m|h))*$"
+        },
+        "remoteUnblock": {
+          "type": "boolean"
+        },
+        "unblockPollInterval": {
+          "type": "string",
+          "pattern": "^([0-9]+(ns|us|ms|s|m|h))*$"
+        }
+      }
+    },
+    "notifications": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "description": "The policy must allow this destination: the sidecar filters its own egress.",
+          "type": "string"
+        },
+        "keySecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "backoffSeconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "ignoreDomains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "dns": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "upstreams": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "hardening": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "rateQps": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "rateBurst": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "ports": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "http": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "https": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "dns": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "connections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "description": "0 is unlimited.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "maxLifetimeMs": {
+          "description": "A single absolute deadline, not an idle timeout. 0 disables it.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "nflog": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bufSize": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "qthresh": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
         }
       }
     }

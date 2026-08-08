@@ -164,11 +164,11 @@ func TestPostRendererInjectsIntoAnUnmodifiedChart(t *testing.T) {
 	assertAppUntouched(t, injected)
 }
 
-// runExpectingFailure returns the combined output of a command that must fail.
-func runExpectingFailure(t *testing.T, name string, args ...string) string {
+// runHelmExpectingFailure returns the output of a Helm command that must fail.
+func runHelmExpectingFailure(t *testing.T, args ...string) string {
 	t.Helper()
 
-	bin := requireBinary(t, name)
+	bin := requireBinary(t, "helm")
 
 	ctx, cancel := context.WithTimeout(t.Context(), toolTimeout)
 	defer cancel()
@@ -176,7 +176,7 @@ func runExpectingFailure(t *testing.T, name string, args ...string) string {
 	//nolint:gosec // fixed tool names resolved through LookPath, with literal arguments
 	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
 	if err == nil {
-		t.Fatalf("%s %v unexpectedly succeeded:\n%s", name, args, out)
+		t.Fatalf("helm %v unexpectedly succeeded:\n%s", args, out)
 	}
 
 	return string(out)
@@ -208,7 +208,7 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 			t.Parallel()
 			serialHelm(t)
 
-			out := runExpectingFailure(t, "helm", "template", "release", chart, "--set", tc.set)
+			out := runHelmExpectingFailure(t, "template", "release", chart, "--set", tc.set)
 			if !strings.Contains(out, tc.wantErr) {
 				t.Errorf("error did not mention %q:\n%s", tc.wantErr, out)
 			}

@@ -1,0 +1,47 @@
+---
+# Turns enforcement off without turning filtering off. Layer it over the sidecar
+# component while rolling a policy out:
+#
+#   components:
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+#     - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.0
+#
+# Traffic no rule allows is logged as `audit` and then allowed through. Confirm
+# nothing legitimate is being denied, then remove this component to enforce.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: (Deployment|StatefulSet|DaemonSet|ReplicaSet|Job)
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: g0efilter
+                env:
+                  - name: ENFORCE
+                    value: audit
+
+  - target:
+      kind: CronJob
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: patched-by-target-selector
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                initContainers:
+                  - name: g0efilter
+                    env:
+                      - name: ENFORCE
+                        value: audit

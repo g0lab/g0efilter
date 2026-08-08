@@ -1,0 +1,146 @@
+---
+# The g0efilter control plane: the EgressPolicy controller, and optionally the
+# mutating webhook that injects the sidecar at admission.
+#
+# The control plane is not in the data path. An outage stops policy updates and, with
+# failurePolicy Fail, stops new pods being admitted in opted-in namespaces, but it
+# never stops filtering: a running sidecar keeps enforcing its mounted ConfigMap.
+image:
+  repository: docker.io/g0lab/g0efilter-controller
+  tag: v0.8.0
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ''
+fullnameOverride: ''
+
+# Leader election keeps one replica reconciling, so a second cannot render a
+# conflicting ConfigMap. Both replicas serve the webhook.
+replicaCount: 2
+
+leaderElection:
+  enabled: true
+
+crds:
+  # Install the EgressPolicy and ClusterEgressPolicy CRDs with the chart. Set false
+  # when they are applied out of band, which is what Argo CD users with a separate
+  # CRD sync wave usually want:
+  #   kubectl apply --server-side -f https://github.com/g0lab/g0efilter/tree/v0.8.0/deploy/crds
+  #
+  # They carry helm.sh/resource-policy: keep, so `helm uninstall` leaves them and the
+  # policies they hold in place. Removing them deletes every EgressPolicy in the
+  # cluster, so it is left as a deliberate manual step.
+  install: true
+
+serviceAccount:
+  create: true
+  name: ''
+  annotations: {}
+
+rbac:
+  create: true
+
+webhook:
+  enabled: true
+  port: 9443
+
+  # Fails closed: an unreachable webhook blocks pod creation in opted-in namespaces
+  # rather than admitting unfiltered pods. Ignore trades the guarantee for
+  # availability.
+  failurePolicy: Fail
+  timeoutSeconds: 10
+
+  # Namespaces are opted in by label, so installing the chart filters nothing until
+  # a namespace is labelled:
+  #   kubectl label namespace <ns> g0efilter.io/inject=enabled
+  namespaceLabel: g0efilter.io/inject
+  namespaceLabelValue: enabled
+
+  # Never considered, on top of the release namespace: a failing webhook must not
+  # stop the control plane itself being rescheduled.
+  excludedNamespaces:
+    - kube-system
+
+  certificate:
+    # self-signed: the controller issues its own certificate, stores it in a Secret,
+    # writes the CA into the MutatingWebhookConfiguration and renews it a month
+    # before expiry. Nothing else to install.
+    # cert-manager: cert-manager issues and rotates it, and cainjector fills the CA.
+    # Needs cert-manager with cainjector already running.
+    source: self-signed
+    duration: 8760h
+    renewBefore: 720h
+    # Issue from an existing cert-manager Issuer or ClusterIssuer instead of the
+    # self-signed Issuer the chart creates, e.g. {name: my-ca, kind: ClusterIssuer}.
+    issuerRef: {}
+
+sidecar:
+  # Image the webhook injects. Empty uses the controller binary's own default, which
+  # is pinned to the same release as this chart.
+  image: ''
+
+metrics:
+  port: 8080
+  service:
+    enabled: false
+    port: 8080
+    annotations: {}
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: ''
+    labels: {}
+    relabelings: []
+    metricRelabelings: []
+
+health:
+  port: 8081
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+# The controller needs no capabilities at all, unlike the sidecar, so it satisfies
+# the restricted Pod Security Standard. Label the namespace to match:
+#   kubectl label namespace <ns> pod-security.kubernetes.io/enforce=restricted
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+podLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: '{{ include "g0efilter-controller.fullname" . }}'
+
+priorityClassName: ''
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+extraArgs: []
+extraEnv: []

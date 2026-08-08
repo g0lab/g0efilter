@@ -1,0 +1,38 @@
+{{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) (not .Values.ephemeral) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "g0efilter-dashboard.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-dashboard.labels" . | nindent 4 }}
+  annotations:
+    # Uninstalling must not throw away the collected egress history.
+    helm.sh/resource-policy: keep
+    {{- with .Values.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.persistence.accessMode }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size | quote }}
+{{- end }}
+{{- if include "g0efilter-dashboard.createSecret" . }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "g0efilter-dashboard.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-dashboard.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- include "g0efilter-dashboard.secretData" . | nindent 2 }}
+{{- end }}

@@ -1,0 +1,64 @@
+{{- if .Values.webhook.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "g0efilter-controller.webhookServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "g0efilter-controller.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: 443
+      targetPort: webhook
+      protocol: TCP
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-sidecar-injector
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+  {{- if eq .Values.webhook.certificate.source "cert-manager" }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s" .Release.Namespace (include "g0efilter-controller.fullname" .) }}
+  {{- end }}
+webhooks:
+  - name: sidecar.g0efilter.io
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    clientConfig:
+      service:
+        name: {{ include "g0efilter-controller.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /inject-sidecar
+        port: 443
+    rules:
+      - operations: ['CREATE']
+        apiGroups: ['']
+        apiVersions: ['v1']
+        resources: ['pods']
+        scope: Namespaced
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    namespaceSelector:
+      matchExpressions:
+        - key: {{ .Values.webhook.namespaceLabel }}
+          operator: In
+          values: [{{ .Values.webhook.namespaceLabelValue | quote }}]
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            {{- /* The release namespace is always excluded: a failing webhook must not
+                   stop the control plane itself being rescheduled. */}}
+            {{- $excluded := concat (list .Release.Namespace) .Values.webhook.excludedNamespaces | uniq }}
+            {{- toYaml $excluded | nindent 12 }}
+    objectSelector:
+      matchExpressions:
+        - key: g0efilter.io/inject
+          operator: NotIn
+          values: ['false']
+{{- end }}

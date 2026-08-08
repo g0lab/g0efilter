@@ -1,0 +1,17 @@
+---
+apiVersion: v2
+name: g0efilter-dashboard
+description: Installs the g0efilter dashboard, which collects and displays the egress logs its sidecars ship.
+type: application
+version: 0.8.0
+appVersion: '0.8.0'
+home: https://github.com/g0lab/g0efilter
+sources:
+  - https://github.com/g0lab/g0efilter
+annotations:
+  org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+keywords:
+  - egress
+  - network
+  - security
+  - dashboard

@@ -35,6 +35,8 @@ patches:
                 env:
                   - name: FILTER_MODE
                     value: https
+                  - name: ENFORCE
+                    value: block
                   - name: POLICY_PATH
                     value: /app/policy/policy.yaml
                   - name: POLICY_CONFIGMAP
@@ -95,6 +97,8 @@ patches:
                     env:
                       - name: FILTER_MODE
                         value: https
+                      - name: ENFORCE
+                        value: block
                       - name: POLICY_PATH
                         value: /app/policy/policy.yaml
                       - name: POLICY_CONFIGMAP

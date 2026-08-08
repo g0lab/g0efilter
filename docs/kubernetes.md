@@ -30,6 +30,42 @@ to each pod after it starts.
 | Nothing - a third-party chart | [Helm post-renderer](#helm-post-renderer) | Any chart, no fork and no values contract |
 | Nothing at all, cluster-wide | [Mutating webhook](#mutating-webhook) | Any pod, including ones an operator creates |
 
+The first three render the sidecar into the manifest, so they need no controller.
+The webhook adds one, installed with the
+[`g0efilter-controller` chart](#installing-the-control-plane) or the Kustomize
+overlays. All four produce the same container: `tests/manifests/` and
+`controller/internal/webhook/parity_test.go` fail the build if they drift.
+
+### Published charts
+
+| Chart | Type | Use |
+| --- | --- | --- |
+| `g0efilter-controller` | application | The control plane: controller, webhook, CRDs and RBAC. One `helm install` per cluster. |
+| `g0efilter-dashboard` | application | The dashboard the sidecars ship their logs to. |
+| `g0efilter` | library | Sidecar templates for a chart you maintain. Not installable on its own - Helm refuses to install a library chart. |
+
+All three are published to `https://g0lab.github.io/g0efilter` and to
+`oci://ghcr.io/g0lab/helm`, and share the release's version.
+
+#### Upgrades and rollback
+
+The application charts use normal Helm-managed resources and support Helm's release
+rollback:
+
+```sh
+helm history g0efilter -n g0efilter-system
+helm rollback g0efilter <revision> -n g0efilter-system --wait
+```
+
+With Helm 4, use `helm upgrade --rollback-on-failure`; with Helm 3, use
+`helm upgrade --atomic`. A rollback restores the rendered Kubernetes resources and
+image tags, not application data. The dashboard claim is retained, so back up SQLite
+before an upgrade whose migrations may not be backward-compatible.
+
+The controller chart manages CRDs as templates so upgrades and rollbacks apply their
+schemas. Existing custom resources are not rewound, so confirm they remain valid for
+the older CRD and controller before rolling the control plane back.
+
 ### Kustomize
 
 Reference the component from your overlay. It patches every workload kind it
@@ -47,6 +83,30 @@ components:
 
 Pin `ref` to a release tag. The component sets the image tag to match, so the
 sidecar version and the component version never drift apart.
+
+Layer the optional components after `sidecar`:
+
+| Component | Effect |
+| --- | --- |
+| `audit` | `ENFORCE=audit`: log what the policy would deny and allow it through anyway |
+| `metrics` | Serve Prometheus metrics on 9095 and add the scrape annotations |
+| `events` | Record the first denials as Kubernetes Events, with the RBAC to do it |
+| `learning` | Observe and append what is seen to a writable policy, blocking nothing |
+| `process-info` | Add the originating pid and process name to flow logs |
+
+```yaml
+components:
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.0
+```
+
+`audit` and `learning` are not the same thing. `audit` keeps enforcing the policy's
+verdicts in the logs while letting the traffic pass, so it reports against the policy
+you wrote. `learning` has no policy to report against and rewrites one instead.
+
+`process-info` sets `shareProcessNamespace: true`, which also lets every container in
+the pod see and signal the others' processes. Leave it off unless the attribution is
+worth that.
 
 A complete overlay is in [examples/kubernetes](../examples/kubernetes); render it
 with `kubectl kustomize examples/kubernetes`.
@@ -105,16 +165,37 @@ library chart's own `values.yaml`:
 ```yaml
 g0efilter:
   mode: dns-strict
+  enforcement: audit
   logLevel: DEBUG
   image:
     tag: v0.8.0
   policy:
     configMapName: my-policy
+  dashboard:
+    host: http://g0efilter-dashboard.g0efilter-system.svc:8081
+    apiKeySecret:
+      name: g0efilter-dashboard-key
 ```
+
+The chart exposes the same options as the `EgressPolicy`
+[sidecar block](#sidecar-options), named for Helm rather than for Kubernetes API
+conventions: `tenantId`, `processInfo`, `events.maxDenials`, `dashboard.*`,
+`notifications.*`, `dns.*`, `ports.*`, `connections.*` and `nflog.*`. Two differ
+because Helm has no duration type, so the millisecond value is named for its unit:
+`connections.maxLifetimeMs`, while `dashboard.startDelay` is a duration string the
+agent parses itself.
+
+A numeric value left `null` is not rendered, so the agent applies its own default.
+That distinction matters where `0` means something: `connections.max: 0` is
+unlimited, and `events.maxDenials: 0` records no Events at all.
 
 Values are validated against
 [values.schema.json](../deploy/helm/g0efilter/values.schema.json), so a misspelled
 key or an invalid mode fails the render instead of silently doing nothing.
+
+`processInfo` is the one option the library chart cannot fully apply on its own: it
+needs `shareProcessNamespace: true` on the pod template, which belongs to your chart
+rather than to the sidecar.
 
 If events are enabled, also render the RBAC and mount the token:
 
@@ -153,17 +234,54 @@ The three integrations above add the sidecar when the manifest is rendered. The
 webhook adds it at admission instead, so pods created by an operator, a CI job or
 anything else you do not template are filtered too.
 
-Install the control plane with the webhook overlay:
+#### Installing the control plane
+
+The chart is the shortest path. It installs the CRDs, the controller, the webhook
+and its RBAC, and issues its own serving certificate:
+
+```sh
+helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
+  --namespace g0efilter-system --create-namespace
+```
+
+The controller itself needs no capabilities, so its namespace can run the
+`restricted` Pod Security Standard - unlike a filtered workload's:
+
+```sh
+kubectl label namespace g0efilter-system pod-security.kubernetes.io/enforce=restricted
+```
+
+The Kustomize overlays install the same thing, for a cluster managed without Helm.
+CRDs are applied separately there so that Argo CD and Helm do not fight over
+ordering:
 
 ```sh
 kubectl apply --server-side -f deploy/crds/
-kubectl apply -k deploy/webhook
+kubectl apply -k deploy/webhook            # or deploy/webhook-cert-manager
 ```
 
-Then opt a namespace in and write a policy that selects the pods:
+The chart's most useful values:
+
+| Value | Default | Effect |
+| --- | --- | --- |
+| `crds.install` | `true` | Install the CRDs from the chart. Set false when a separate sync wave applies them. They are annotated `helm.sh/resource-policy: keep`, so uninstalling never deletes your policies. |
+| `webhook.enabled` | `true` | With false the controller only renders policies into ConfigMaps and injects nothing. |
+| `webhook.failurePolicy` | `Fail` | Fails closed: an unreachable webhook blocks pod creation in opted-in namespaces rather than admitting unfiltered pods. |
+| `webhook.certificate.source` | `self-signed` | `cert-manager` hands issuing and rotation to cert-manager instead. Needs cainjector. |
+| `sidecar.image` | the release default | The image the webhook injects. |
+| `replicaCount` | `2` | Leader election keeps one replica reconciling; both serve admission. |
+| `metrics.service.enabled` | `false` | Also `metrics.serviceMonitor.enabled` for Prometheus Operator. |
+
+The release namespace is always excluded from injection, so a failing webhook can
+never stop the control plane being rescheduled.
+
+#### Writing a policy
+
+Opt a namespace in and write a policy that selects the pods:
 
 ```sh
 kubectl label namespace tenant-a g0efilter.io/inject=enabled
+kubectl label namespace tenant-a pod-security.kubernetes.io/enforce=privileged
 ```
 
 ```yaml
@@ -177,7 +295,10 @@ spec:
     matchLabels:
       app: web
   sidecar:
-    events: true
+    # Observe before enforcing. Switch to block once the logs are clean.
+    enforcement: audit
+    events:
+      enabled: true
   egress:
     - name: apis
       to:
@@ -206,6 +327,103 @@ Rules with ports must match the selected sidecar mode. `https` can enforce ports
 on network peers; `dns-strict` can enforce ports on network and domain peers.
 Plain `dns` cannot enforce port-constrained rules, so the controller marks such a
 policy not Ready instead of silently widening it.
+
+#### Sidecar options
+
+`spec.sidecar` tunes the injected container. Every field is optional; anything left
+out keeps the agent's own default, and the injector leaves it out of the pod
+entirely. The Kustomize component and the library chart ignore this block - they
+carry their own settings.
+
+`mode` and `enforcement` are different axes. `mode` picks the data path that reads a
+destination; `enforcement` decides what happens once a verdict exists.
+
+| Field | Sets | Notes |
+| --- | --- | --- |
+| `image`, `imagePullPolicy` | - | The sidecar image. Defaults to the controller's pinned release. |
+| `mode` | `FILTER_MODE` | `https`, `dns` or `dns-strict`. |
+| `enforcement` | `ENFORCE` | `block` or `audit`. Always rendered, so a pod's posture is readable without knowing the default. |
+| `logLevel` | `LOG_LEVEL` | |
+| `processInfo` | `PROCESS_INFO` | Also sets `shareProcessNamespace: true` on the pod, which lets every container see and signal the others' processes. |
+| `tenantId` | `TENANT_ID` | Tenant identifier on netfilter log events. |
+| `events.enabled` | `KUBE_EVENTS` | Needs `create` on events for the pod's ServiceAccount. |
+| `events.maxDenials` | `KUBE_EVENTS_MAX` | Caps Events per pod. `0` records none. |
+| `metrics.enabled`, `metrics.port` | `METRICS_ADDR` | Also declares the container port. |
+| `metrics.annotations` | - | Adds `prometheus.io/*` to the pod. |
+| `dashboard.host` | `DASHBOARD_HOST` | Where to ship logs. |
+| `dashboard.apiKeySecretRef` | `DASHBOARD_API_KEY` | Read from a Secret in the pod's namespace. |
+| `dashboard.queueSize` | `DASHBOARD_QUEUE_SIZE` | Oldest entries drop when full, so shipping never blocks traffic. |
+| `dashboard.startDelay` | `DASHBOARD_START_DELAY` | A duration, e.g. `10s`. |
+| `dashboard.remoteUnblock` | `ENABLE_REMOTE_UNBLOCK` | |
+| `dashboard.unblockPollInterval` | `UNBLOCK_POLL_INTERVAL` | |
+| `notifications.host` | `NOTIFICATION_HOST` | Gotify server. |
+| `notifications.keySecretRef` | `NOTIFICATION_KEY` | Read from a Secret in the pod's namespace. |
+| `notifications.backoffSeconds` | `NOTIFICATION_BACKOFF_SECONDS` | |
+| `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | Wildcards allowed. |
+| `dns.upstreams` | `DNS_UPSTREAMS` | `host:port` list. |
+| `dns.hardening` | `DNS_HARDENING` | On unless set to false. |
+| `dns.rateQps`, `dns.rateBurst` | `DNS_RATE_QPS`, `DNS_RATE_BURST` | One budget for the whole pod, not per client. |
+| `ports.http`, `ports.https`, `ports.dns` | `HTTP_PORT`, `HTTPS_PORT`, `DNS_PORT` | For a workload that already binds 65080, 65443 or 65053. |
+| `connections.max` | `MAX_CONNECTIONS` | `0` is unlimited. |
+| `connections.maxLifetime` | `CONN_MAX_LIFETIME_MS` | A duration. One absolute deadline, not an idle timeout. |
+| `nflog.bufSize`, `nflog.qthresh` | `NFLOG_BUFSIZE`, `NFLOG_QTHRESH` | Raise only if the logs report dropped netfilter messages. |
+| `runAsUser`, `runAsGroup` | - | Must not be 0. |
+| `resources` | - | Requests and limits. |
+| `extraEnv` | - | For agent options this API does not model yet. |
+
+The sidecar filters its own egress as well as the application's, so anything it has
+to reach must be allowed by the same policy: the API server for `events`, and the
+hosts named by `dashboard.host` and `notifications.host`.
+
+Credentials are referenced, never inlined - an `EgressPolicy` is readable by anyone
+with `get` on it. The controller never reads the Secret; kubelet resolves it in the
+pod's namespace, so a missing key shows up as the pod failing to start rather than as
+a sidecar with no key.
+
+`extraEnv` cannot set anything the fields above already derive, nor `ALLOWLIST_*`,
+`DENYLIST_*`, `DEFAULT_ACTION`, `LEARNING_MODE`, `POLICY_PATH` or
+`POLICY_CONFIGMAP`. Those replace the rendered policy wholesale, so a pod would stop
+enforcing the `EgressPolicy` that selected it. The CRD rejects them:
+
+```console
+$ kubectl apply -f bypass.yaml
+The EgressPolicy "web" is invalid: spec.sidecar.extraEnv: Invalid value: "array":
+extraEnv must not set ALLOWLIST_*, DENYLIST_*, DEFAULT_ACTION, LEARNING_MODE,
+POLICY_PATH or POLICY_CONFIGMAP: they would stop the sidecar enforcing this policy
+```
+
+There is no `learning` option here for the same reason: learning mode needs a
+writable policy file, which would displace the ConfigMap the controller rendered.
+Use `enforcement: audit` instead - it reports against the policy you wrote.
+
+#### Rolling a policy out
+
+A new policy is default-deny, so enforcing it immediately can break a workload on
+its first request to something you forgot. Start by observing:
+
+```yaml
+  sidecar:
+    enforcement: audit
+```
+
+Nothing is dropped. Everything the policy would have denied is logged as an `audit`
+decision, with the destination:
+
+```sh
+kubectl -n tenant-a logs deploy/web -c g0efilter | grep audit
+```
+
+Add what you find to `egress`, and once the audit lines stop, switch over:
+
+```sh
+kubectl -n tenant-a patch egresspolicy/web --type=merge \
+  -p '{"spec":{"sidecar":{"enforcement":"block"}}}'
+kubectl -n tenant-a rollout restart deployment/web
+```
+
+The restart is required. Policy *rules* reload live from the ConfigMap, but
+`enforcement` is part of the pod spec the webhook wrote at admission, so it only
+changes when the pod is recreated.
 
 ### Webhook certificates
 
@@ -300,6 +518,70 @@ Series are keyed on component, verdict and reason - **never on destination** - s
 port scan cannot grow the series count. Distinct label combinations are capped per
 metric and overflow is folded into a `reason="other"` series, so totals stay correct
 even under abuse.
+
+The controller exposes its own metrics on 8080. Enable
+`metrics.service.enabled` in the controller chart, and
+`metrics.serviceMonitor.enabled` with Prometheus Operator.
+
+### Dashboard
+
+The dashboard collects what the sidecars ship and shows live and stored traffic:
+
+```sh
+helm install g0efilter-dashboard oci://ghcr.io/g0lab/helm/g0efilter-dashboard \
+  --namespace g0efilter-system
+```
+
+It keeps its state in SQLite, so the chart runs exactly one replica with the
+`Recreate` strategy and a `ReadWriteOnce` claim. Scaling it out needs more than a
+replica count and is not supported. The claim is annotated
+`helm.sh/resource-policy: keep`, so an uninstall does not throw away the history; set
+`ephemeral: true` (with `persistence.enabled: false`) for a throwaway install that
+keeps everything in memory.
+
+By default the dashboard generates an admin password and a machine API key on first
+start and prints each once:
+
+```sh
+kubectl -n g0efilter-system logs deploy/g0efilter-dashboard | grep -iE 'password|api key'
+```
+
+Supply them yourself with a Secret you manage, which keeps them out of the Helm
+release:
+
+```sh
+kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
+  --from-literal=api-key="$(openssl rand -hex 32)" \
+  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.0 hash-password)"
+```
+
+```yaml
+secrets:
+  existingSecret: g0efilter-dashboard
+```
+
+Then point the sidecars at it. The API key Secret is resolved by kubelet in the
+workload's own namespace, so it has to exist in each namespace that ships logs, and
+the policy has to allow the dashboard - a sidecar filters its own egress too:
+
+```yaml
+spec:
+  sidecar:
+    dashboard:
+      host: http://g0efilter-dashboard.g0efilter-system.svc:8081
+      apiKeySecretRef:
+        name: g0efilter-dashboard-key
+        key: api-key
+  egress:
+    - name: dashboard
+      to:
+        - domainNames: ['g0efilter-dashboard.g0efilter-system.svc']
+```
+
+`auth.mode` defaults to `session`. `none` leaves the UI and its sensitive endpoints
+unauthenticated and is only safe behind a proxy that authenticates for it; `forward`
+and `jwt` delegate to one. See
+[dashboard authentication](configuration.md#dashboard-authentication).
 
 ### Building a policy by observation
 

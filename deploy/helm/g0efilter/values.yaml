@@ -2,16 +2,34 @@
 # Defaults for the g0efilter library chart. Helm coalesces these into
 # `.Values.g0efilter` in the consuming chart, so a consumer sets only the keys it
 # wants to change under a `g0efilter:` key and these fill in the rest.
+#
+# A key left null is not rendered at all, so the agent applies its own default. That
+# is deliberate for the numeric knobs below, where 0 is a meaningful value and could
+# not otherwise be told apart from "unset".
 image:
   repository: docker.io/g0lab/g0efilter
   # Must be v0.8.0 or later: earlier images start as root and need more capabilities.
   tag: v0.8.0
   pullPolicy: IfNotPresent
 
-# https, dns or dns-strict.
+# https, dns or dns-strict. Selects the data path, not how strictly a verdict is
+# applied - that is `enforcement`.
 mode: https
 
+# block drops traffic no rule allows. audit is a dry run: the denial is logged and
+# the traffic is allowed through anyway. Roll a policy out with audit, confirm
+# nothing legitimate is denied, then switch to block.
+enforcement: block
+
 logLevel: INFO
+
+# Add the originating pid and process name to flow logs. This needs
+# `shareProcessNamespace: true` on the pod, which the consuming chart has to set: it
+# also lets every container in the pod see and signal the others' processes.
+processInfo: false
+
+# Tenant identifier added to netfilter log events.
+tenantId: ''
 
 policy:
   configMapName: g0efilter-policy
@@ -24,6 +42,9 @@ policy:
 events:
   enabled: false
   serviceAccountName: default
+  # Distinct denials recorded per pod, so a pod hammering a blocked destination
+  # cannot flood the API server. 0 records none at all.
+  maxDenials: null
 
 # Run in learning mode: nothing is blocked and observed destinations are appended to
 # the policy file. Replaces the read-only ConfigMap mount with an emptyDir, so the
@@ -39,6 +60,63 @@ metrics:
   port: 9095
   # Add prometheus.io/* scrape annotations to the pod template.
   annotations: true
+
+# Ship this sidecar's logs to a g0efilter dashboard. The sidecar filters its own
+# traffic too, so the policy has to allow `host`.
+dashboard:
+  host: ''
+  # Read the machine API key from a Secret in the workload's namespace rather than
+  # putting it in values.
+  apiKeySecret:
+    name: ''
+    key: api-key
+  queueSize: null
+  startDelay: ''
+  remoteUnblock: false
+  unblockPollInterval: ''
+
+# Gotify alerts for blocked traffic. The policy has to allow `host`.
+notifications:
+  host: ''
+  keySecret:
+    name: ''
+    key: token
+  backoffSeconds: null
+  # Destinations that never raise an alert, even when blocked. Wildcards are allowed.
+  ignoreDomains: []
+
+# The sidecar's DNS proxy. Only has an effect in dns and dns-strict mode.
+dns:
+  # Resolvers to forward to, as host:port. Empty uses the container runtime's own.
+  upstreams: []
+  # Anti-exfiltration checks: qname and label length caps, NULL and bulky-TXT answer
+  # rejection, and per-source rate limiting.
+  hardening: null
+  # Everything behind the redirect shares one source address, so these are a single
+  # budget for the whole pod rather than one per client.
+  rateQps: null
+  rateBurst: null
+
+# Move the internal proxy listeners, for a workload that already binds one of the
+# defaults (65080, 65443, 65053).
+ports:
+  http: null
+  https: null
+  dns: null
+
+connections:
+  # Concurrent connections per listener; excess is held with backpressure rather than
+  # refused. 0 is unlimited.
+  max: null
+  # A single absolute deadline on a proxied connection, not an idle timeout: a
+  # long-lived stream is cut when it expires. 0 disables it.
+  maxLifetimeMs: null
+
+# The netfilter log socket denials are read from. Raise the buffer only if the logs
+# report dropped netfilter messages.
+nflog:
+  bufSize: null
+  qthresh: null
 
 runAsUser: 65534
 runAsGroup: 65534

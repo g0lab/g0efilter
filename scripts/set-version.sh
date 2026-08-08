@@ -9,7 +9,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-CHART="deploy/helm/g0efilter/Chart.yaml"
+# Every chart under deploy/helm is released.
+CHARTS=(deploy/helm/*/Chart.yaml)
 
 NEW="${1:-}"
 if [ -z "$NEW" ]; then
@@ -44,10 +45,12 @@ while IFS= read -r file; do
     "$file"
 done < <(git ls-files 'deploy/**' 'docs/**' 'examples/**' 'controller/**' README.md)
 
-# Keep the chart and application release aligned. ct still verifies that a chart
+# Keep the charts and application release aligned. ct still verifies that a chart
 # change is accompanied by a version change.
-chart_old="$(sed -n 's|^version: *||p' "$CHART")"
-sed -i "s|^version: $chart_old\$|version: $NEW|" "$CHART"
+for chart in "${CHARTS[@]}"; do
+  chart_old="$(sed -n 's|^version: *||p' "$chart")"
+  sed -i "s|^version: $chart_old\$|version: $NEW|" "$chart"
+done
 for consumer in \
   examples/helm/demo/Chart.yaml \
   tests/manifests/testdata/minimal-consumer/Chart.yaml; do
@@ -56,5 +59,5 @@ for consumer in \
   }" "$consumer"
 done
 
-echo "set $OLD -> $NEW, chart $chart_old -> $NEW"
+echo "set $OLD -> $NEW across ${#CHARTS[@]} charts"
 git --no-pager diff --stat

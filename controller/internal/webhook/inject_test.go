@@ -376,7 +376,7 @@ func TestSidecarSpecOverridesTheDefaults(t *testing.T) {
 		Image:     "example.com/g0efilter:custom",
 		Mode:      "dns-strict",
 		LogLevel:  "DEBUG",
-		Events:    true,
+		Events:    v1alpha1.EventsSpec{Enabled: true, MaxDenials: nil},
 		Metrics:   v1alpha1.MetricsSpec{Enabled: true, Port: 9110, Annotations: true},
 		Resources: corev1.ResourceRequirements{Limits: nil, Requests: nil, Claims: nil},
 	}

@@ -51,6 +51,12 @@ contains a comma, such as `/cache-[0-9]{1,3}\.example\.com/`. Use a policy file
 for the full policy language and for dynamically delivered policy. Kubernetes
 packaging always uses a ConfigMap-backed file.
 
+On Kubernetes these are set for you. `EgressPolicy`'s
+[`spec.sidecar`](kubernetes.md#sidecar-options) and the library chart's values both
+map onto this table, and neither exposes the four allowlist/denylist variables,
+`DEFAULT_ACTION` or `LEARNING_MODE`: each replaces the rendered policy, which would
+stop a pod enforcing the policy that selected it.
+
 #### Privileges
 
 The agent runs as uid/gid 65534 (`nobody`) from the first instruction and never

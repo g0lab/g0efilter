@@ -1,0 +1,135 @@
+{{- if .Values.serviceAccount.create }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "g0efilter-controller.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Values.rbac.create }}
+---
+# These rules must match deploy/controller/role.yaml, which scripts/gen-controller.sh
+# generates from the controller's kubebuilder markers. tests/manifests compares them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ''
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - ''
+    resources:
+      - namespaces
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ''
+    resources:
+      - secrets
+    verbs:
+      - create
+      - get
+      - update
+  - apiGroups:
+      - admissionregistration.k8s.io
+    resources:
+      - mutatingwebhookconfigurations
+    verbs:
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - g0efilter.io
+    resources:
+      - clusteregresspolicies
+      - egresspolicies
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - g0efilter.io
+    resources:
+      - egresspolicies/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "g0efilter-controller.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "g0efilter-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if .Values.leaderElection.enabled }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ['coordination.k8s.io']
+    resources: ['leases']
+    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['create', 'patch']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-leader-election
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "g0efilter-controller.fullname" . }}-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "g0efilter-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

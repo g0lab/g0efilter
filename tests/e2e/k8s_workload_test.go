@@ -66,6 +66,13 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	t.Run("WebhookInjectedPodFilters", func(t *testing.T) { webhookInjectedPodFilters(t, cluster, injected) })
 	t.Run("WebhookLeavesUnselectedPodsAlone", func(t *testing.T) { webhookLeavesUnselectedPodsAlone(t, cluster) })
 	t.Run("WebhookHonoursTheOptOut", func(t *testing.T) { webhookHonoursTheOptOut(t, cluster) })
+
+	audited := webhookInjectsAuditMode(t, cluster)
+
+	t.Run("AuditModeSetsTheEnvironment", func(t *testing.T) { auditModeSetsTheEnvironment(t, cluster, audited) })
+	t.Run("AuditModeAllowsUnmatchedTraffic", func(t *testing.T) { auditModeAllowsUnmatchedTraffic(t, cluster, audited) })
+	t.Run("AuditModeLogsTheDecision", func(t *testing.T) { auditModeLogsTheDecision(t, cluster, audited) })
+	t.Run("AuditModeSwitchesToBlock", func(t *testing.T) { auditModeSwitchesToBlock(t, cluster, audited) })
 }
 
 // docs/kubernetes.md tells operators a filtered namespace needs Pod Security

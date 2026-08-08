@@ -1,0 +1,38 @@
+{{- if and .Values.webhook.enabled (eq .Values.webhook.certificate.source "cert-manager") }}
+{{- if not .Values.webhook.certificate.issuerRef }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  {{- /* cainjector reads the CA from this Certificate, so the name has to match the
+         cert-manager.io/inject-ca-from annotation on the webhook configuration. */}}
+  name: {{ include "g0efilter-controller.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "g0efilter-controller.certSecretName" . }}
+  duration: {{ .Values.webhook.certificate.duration }}
+  renewBefore: {{ .Values.webhook.certificate.renewBefore }}
+  issuerRef:
+    {{- if .Values.webhook.certificate.issuerRef }}
+    {{- toYaml .Values.webhook.certificate.issuerRef | nindent 4 }}
+    {{- else }}
+    name: {{ include "g0efilter-controller.fullname" . }}-selfsigned
+    kind: Issuer
+    {{- end }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" (include "g0efilter-controller.webhookServiceName" .) .Release.Namespace }}
+    - {{ printf "%s.%s.svc.cluster.local" (include "g0efilter-controller.webhookServiceName" .) .Release.Namespace }}
+{{- end }}

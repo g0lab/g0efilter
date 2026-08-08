@@ -15,6 +15,11 @@ linters:
     - gomodguard  # Replaced by gomodguard_v2
   exclusions:
     rules:
+      # A kubebuilder marker is one comment line by definition: controller-gen does
+      # not join continuations, so a CEL rule cannot be wrapped to fit.
+      - path: controller/api/
+        linters:
+          - lll
       - path: tests/e2e
         linters:
           # Shared stacks mutate policy and must remain serial.

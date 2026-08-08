@@ -21,8 +21,6 @@ var taggedPins = []*regexp.Regexp{ //nolint:gochecknoglobals // the pin list is 
 	regexp.MustCompile(`(?m)^\s*tag:\s*'?v([0-9]+\.[0-9]+\.[0-9]+[^\s'"]*)`),
 }
 
-const g0efilterChart = "deploy/helm/g0efilter/Chart.yaml"
-
 // versionScanned are the trees whose pins must match VERSION. Everything else may
 // mention an older release legitimately, for example a changelog.
 var versionScanned = []string{ //nolint:gochecknoglobals // the scan list is the test's data
@@ -91,31 +89,34 @@ func TestChartAppVersionMatchesVERSION(t *testing.T) {
 
 	want := declaredVersion(t)
 
-	content, err := os.ReadFile(filepath.Join("..", "..", g0efilterChart))
-	if err != nil {
-		t.Fatalf("read %s: %v", g0efilterChart, err)
+	charts, err := filepath.Glob(filepath.Join("..", "..", "deploy", "helm", "*", "Chart.yaml"))
+	if err != nil || len(charts) == 0 {
+		t.Fatalf("find charts: %v", err)
 	}
 
-	appVersion := regexp.MustCompile(`(?m)^appVersion:\s*'?"?(\S+?)"?'?$`).FindStringSubmatch(string(content))
-	if appVersion == nil {
-		t.Fatalf("%s declares no appVersion", g0efilterChart)
-	}
+	for _, chart := range charts {
+		content, err := os.ReadFile(chart) //nolint:gosec // repository chart paths
+		if err != nil {
+			t.Errorf("read %s: %v", chart, err)
 
-	if appVersion[1] != want {
-		t.Errorf("appVersion is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
-			appVersion[1], want, want)
-	}
+			continue
+		}
 
-	// Keeping these versions equal makes the chart and its default images one
-	// release unit. ct also checks that chart changes increment this value.
-	chartVersion := regexp.MustCompile(`(?m)^version:\s*'?"?(\S+?)"?'?$`).FindStringSubmatch(string(content))
-	if chartVersion == nil {
-		t.Fatalf("%s declares no version", g0efilterChart)
-	}
+		appVersion := regexp.MustCompile(`(?m)^appVersion:\s*'?"?(\S+?)"?'?$`).FindStringSubmatch(string(content))
+		if appVersion == nil {
+			t.Errorf("%s declares no appVersion", chart)
+		} else if appVersion[1] != want {
+			t.Errorf("%s appVersion is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
+				chart, appVersion[1], want, want)
+		}
 
-	if chartVersion[1] != want {
-		t.Errorf("chart version is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
-			chartVersion[1], want, want)
+		chartVersion := regexp.MustCompile(`(?m)^version:\s*'?"?(\S+?)"?'?$`).FindStringSubmatch(string(content))
+		if chartVersion == nil {
+			t.Errorf("%s declares no version", chart)
+		} else if chartVersion[1] != want {
+			t.Errorf("%s chart version is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
+				chart, chartVersion[1], want, want)
+		}
 	}
 }
 
@@ -128,8 +129,14 @@ func TestEveryExpectedFileCarriesAVersionPin(t *testing.T) {
 
 	required := []string{
 		"deploy/kustomize/sidecar/kustomization.yaml",
+		"deploy/kustomize/audit/kustomization.yaml",
+		"deploy/kustomize/process-info/kustomization.yaml",
 		"deploy/helm/g0efilter/values.yaml",
 		"deploy/helm/g0efilter/Chart.yaml",
+		"deploy/helm/g0efilter-controller/values.yaml",
+		"deploy/helm/g0efilter-controller/Chart.yaml",
+		"deploy/helm/g0efilter-dashboard/values.yaml",
+		"deploy/helm/g0efilter-dashboard/Chart.yaml",
 		"deploy/controller/deployment.yaml",
 		"controller/internal/webhook/sidecar.go",
 	}
