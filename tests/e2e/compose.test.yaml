@@ -28,7 +28,7 @@ services:
       - NET_ADMIN
 
   dashboard-data-init:
-    image: alpine:3.23
+    image: alpine:3.24
     command: ['chown', '-R', '65532:65532', '/app/data']
     user: '0:0'
     cap_drop:
