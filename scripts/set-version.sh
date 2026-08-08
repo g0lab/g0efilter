@@ -51,13 +51,11 @@ for chart in "${CHARTS[@]}"; do
   chart_old="$(sed -n 's|^version: *||p' "$chart")"
   sed -i "s|^version: $chart_old\$|version: $NEW|" "$chart"
 done
-for consumer in \
-  examples/helm/demo/Chart.yaml \
-  tests/manifests/testdata/minimal-consumer/Chart.yaml; do
+while IFS= read -r consumer; do
   sed -i "/^[[:space:]]*- name: g0efilter\$/,/^[[:space:]]*repository:/ {
     s|^\([[:space:]]*version: \).*$|\1$NEW|
   }" "$consumer"
-done
+done < <(git ls-files '**/Chart.yaml')
 
 echo "set $OLD -> $NEW across ${#CHARTS[@]} charts"
 git --no-pager diff --stat

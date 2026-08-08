@@ -3,8 +3,8 @@
 # component while rolling a policy out:
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.0
-#     - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.0
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.1
+#     - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.1
 #
 # Traffic no rule allows is logged as `audit` and then allowed through. Confirm
 # nothing legitimate is being denied, then remove this component to enforce.

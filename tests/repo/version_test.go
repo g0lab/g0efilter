@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v4"
 )
 
 // The version is pinned in manifests, docs and Go source. A release that updates
@@ -116,6 +118,48 @@ func TestChartAppVersionMatchesVERSION(t *testing.T) {
 		} else if chartVersion[1] != want {
 			t.Errorf("%s chart version is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
 				chart, chartVersion[1], want, want)
+		}
+	}
+}
+
+func TestLocalChartDependenciesMatchVERSION(t *testing.T) {
+	t.Parallel()
+
+	want := declaredVersion(t)
+
+	for _, name := range trackedFiles(t) {
+		if filepath.Base(name) != "Chart.yaml" {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Join("..", "..", name)) //nolint:gosec // tracked repository path
+		if err != nil {
+			t.Errorf("read %s: %v", name, err)
+
+			continue
+		}
+
+		var chart struct {
+			Dependencies []struct {
+				Name       string `yaml:"name"`
+				Version    string `yaml:"version"`
+				Repository string `yaml:"repository"`
+			} `yaml:"dependencies"`
+		}
+
+		err = yaml.Unmarshal(content, &chart)
+		if err != nil {
+			t.Errorf("parse %s: %v", name, err)
+
+			continue
+		}
+
+		for _, dependency := range chart.Dependencies {
+			if dependency.Name == "g0efilter" && strings.HasPrefix(dependency.Repository, "file://") &&
+				dependency.Version != want {
+				t.Errorf("%s requires g0efilter %s, but VERSION is %s\nrun scripts/set-version.sh %s",
+					name, dependency.Version, want, want)
+			}
 		}
 	}
 }
