@@ -48,7 +48,7 @@ Save this as `docker-compose.yaml`:
 ```yaml
 services:
   g0efilter:
-    image: docker.io/g0lab/g0efilter:latest
+    image: docker.io/g0lab/g0efilter:v0
     volumes:
       - ./policy/:/app/policy/
     cap_drop:
@@ -132,6 +132,10 @@ There is also a Helm library chart for charts you maintain, a Helm post-renderer
 for third-party charts you cannot edit, and a mutating webhook that injects the
 sidecar at admission for pods you do not template at all.
 
+The library chart is published both as a conventional Helm repository at
+`https://g0lab.github.io/g0efilter` and as an OCI artifact under
+`oci://ghcr.io/g0lab/helm/g0efilter`.
+
 The render-time integrations mount a policy ConfigMap directly. The webhook uses
 `EgressPolicy` custom resources and a controller that renders the matching
 ConfigMap. Denials can also be surfaced as Kubernetes Events and Prometheus
@@ -197,13 +201,13 @@ Signatures are stored in `g0lab/signatures`:
 
 ```sh
 COSIGN_REPOSITORY=docker.io/g0lab/signatures \
-cosign verify g0lab/g0efilter:latest \
+cosign verify g0lab/g0efilter:v0 \
   --certificate-identity-regexp=https://github.com/g0lab/g0efilter \
   --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
   -o text
 ```
 
-Use `g0lab/g0efilter-dashboard:latest` to verify the dashboard image.
+Use `g0lab/g0efilter-dashboard:v0` to verify the dashboard image.
 
 ## License
 

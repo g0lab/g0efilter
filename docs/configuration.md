@@ -134,7 +134,7 @@ server-side sessions.
 Set `ADMIN_PASSWORD_HASH` to a bcrypt hash:
 
 ```sh
-docker run --rm -i docker.io/g0lab/g0efilter-dashboard:latest hash-password
+docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0 hash-password
 ```
 
 If no hash or admin user exists, the dashboard generates a password and prints
@@ -144,7 +144,7 @@ Reset a lost password with:
 
 ```sh
 docker run --rm -v g0efilter-dashboard-data:/app/data \
-  docker.io/g0lab/g0efilter-dashboard:latest reset-password
+  docker.io/g0lab/g0efilter-dashboard:v0 reset-password
 ```
 
 The optional final argument is a username. `ADMIN_PASSWORD_HASH` overrides a

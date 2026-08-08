@@ -44,11 +44,17 @@ while IFS= read -r file; do
     "$file"
 done < <(git ls-files 'deploy/**' 'docs/**' 'examples/**' 'controller/**' README.md)
 
-# A chart whose appVersion moved is a different package even when its templates are
-# identical, so it needs its own version. ct check-version-increment enforces this.
+# Keep the chart and application release aligned. ct still verifies that a chart
+# change is accompanied by a version change.
 chart_old="$(sed -n 's|^version: *||p' "$CHART")"
-chart_new="$(echo "$chart_old" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')"
-sed -i "s|^version: $chart_old\$|version: $chart_new|" "$CHART"
+sed -i "s|^version: $chart_old\$|version: $NEW|" "$CHART"
+for consumer in \
+  examples/helm/demo/Chart.yaml \
+  tests/manifests/testdata/minimal-consumer/Chart.yaml; do
+  sed -i "/^[[:space:]]*- name: g0efilter\$/,/^[[:space:]]*repository:/ {
+    s|^\([[:space:]]*version: \).*$|\1$NEW|
+  }" "$consumer"
+done
 
-echo "set $OLD -> $NEW, chart $chart_old -> $chart_new"
+echo "set $OLD -> $NEW, chart $chart_old -> $NEW"
 git --no-pager diff --stat

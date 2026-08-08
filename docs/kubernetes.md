@@ -53,14 +53,34 @@ with `kubectl kustomize examples/kubernetes`.
 
 ### Helm library chart
 
-For a chart you maintain, declare the dependency:
+For a chart you maintain, add the GitHub Pages repository and declare the
+dependency. The `0.x.x` constraint follows the newest v0 chart without naming a
+patch release that may not exist yet:
+
+```sh
+helm repo add g0efilter https://g0lab.github.io/g0efilter
+helm repo update
+```
 
 ```yaml
 dependencies:
   - name: g0efilter
-    version: 0.1.0
-    repository: file://../../deploy/helm/g0efilter
+    version: 0.x.x
+    repository: https://g0lab.github.io/g0efilter
 ```
+
+OCI is available as an alternative. Helm appends the dependency name to this
+repository path, resolving `oci://ghcr.io/g0lab/helm/g0efilter`:
+
+```yaml
+dependencies:
+  - name: g0efilter
+    version: 0.x.x
+    repository: oci://ghcr.io/g0lab/helm
+```
+
+Run `helm dependency update` after choosing either source. The example in this
+repository uses a `file://` dependency so it always tests the local chart.
 
 Then include the sidecar as the **first** init container, and its volume:
 

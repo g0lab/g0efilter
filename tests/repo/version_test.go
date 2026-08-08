@@ -106,15 +106,16 @@ func TestChartAppVersionMatchesVERSION(t *testing.T) {
 			appVersion[1], want, want)
 	}
 
-	// The chart is a different package once appVersion moves, so its own version has
-	// to move with it; ct check-version-increment fails the release otherwise.
+	// Keeping these versions equal makes the chart and its default images one
+	// release unit. ct also checks that chart changes increment this value.
 	chartVersion := regexp.MustCompile(`(?m)^version:\s*'?"?(\S+?)"?'?$`).FindStringSubmatch(string(content))
 	if chartVersion == nil {
 		t.Fatalf("%s declares no version", g0efilterChart)
 	}
 
-	if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`).MatchString(chartVersion[1]) {
-		t.Errorf("chart version %q is not plain SemVer", chartVersion[1])
+	if chartVersion[1] != want {
+		t.Errorf("chart version is %q, but VERSION is %q\nrun scripts/set-version.sh %s",
+			chartVersion[1], want, want)
 	}
 }
 
@@ -131,7 +132,6 @@ func TestEveryExpectedFileCarriesAVersionPin(t *testing.T) {
 		"deploy/helm/g0efilter/Chart.yaml",
 		"deploy/controller/deployment.yaml",
 		"controller/internal/webhook/sidecar.go",
-		"README.md",
 	}
 
 	for _, name := range required {
