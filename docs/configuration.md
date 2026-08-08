@@ -7,7 +7,7 @@
 | Variable | Description | Default |
 | --- | --- | --- |
 | `FILTER_MODE` | `https`, `dns`, or `dns-strict` | `https` |
-| `POLICY_PATH` | Path to policy file inside container. When unset, `/app/policy.yaml` is used if present, then `/app/policy/policy.yaml` (the directory-mount convention). The file is never auto-created. | `/app/policy.yaml` |
+| `POLICY_PATH` | Policy file. If unset, also checks `/app/policy/policy.yaml`. Never auto-created | `/app/policy.yaml` |
 | `DEFAULT_ACTION` | `deny` (allowlist) or `allow` (denylist). Policy file `default_action` wins when set | `deny` |
 | `ENFORCE` | `block` or `audit` (dry-run: log would-be blocks, allow traffic) | `block` |
 | `LEARNING_MODE` | `true` to observe without blocking and auto-append seen domains/IPs to the policy | `false` |
@@ -21,7 +21,7 @@
 | `DNS_PORT` | Local DNS proxy port | `65053` |
 | `DNS_UPSTREAMS` | Upstream DNS servers (comma-separated) | `127.0.0.11:53` |
 | `DNS_HARDENING` | Anti-exfil checks in the DNS proxy: qname/label length caps, NULL and bulky-TXT answer rejection, per-source rate limiting | `true` |
-| `DNS_RATE_QPS` | Hardening rate limiter: sustained queries/sec per source. Everything behind the NAT redirect shares one source address, so this is a single budget covering all redirected workloads combined, not one per workload | `50` |
+| `DNS_RATE_QPS` | Sustained queries/sec. Redirected workloads share one budget | `50` |
 | `DNS_RATE_BURST` | Hardening rate limiter: burst allowance per source | `100` |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
@@ -45,17 +45,14 @@
 | `MAX_CONNECTIONS` | Max concurrent connections per listener; excess is held via backpressure (`0` = unlimited) | `4096` |
 | `CONN_MAX_LIFETIME_MS` | Max connection lifetime in ms (a single deadline, not an idle timeout; `0` = none) | `600000` |
 
-The four allowlist/denylist environment variables are a convenience for short,
-static lists. They are comma-delimited, so they cannot represent a regex that
-contains a comma, such as `/cache-[0-9]{1,3}\.example\.com/`. Use a policy file
-for the full policy language and for dynamically delivered policy. Kubernetes
-packaging always uses a ConfigMap-backed file.
+The four allowlist/denylist variables suit short static lists. Because they are
+comma-delimited, use a policy file for regexes containing commas and for dynamic
+policy. Kubernetes packaging always uses a ConfigMap-backed file.
 
 On Kubernetes these are set for you. `EgressPolicy`'s
 [`spec.sidecar`](kubernetes.md#sidecar-options) and the library chart's values both
-map onto this table, and neither exposes the four allowlist/denylist variables,
-`DEFAULT_ACTION` or `LEARNING_MODE`: each replaces the rendered policy, which would
-stop a pod enforcing the policy that selected it.
+map onto this table. They omit settings that would replace the rendered policy:
+the allowlist/denylist variables, `DEFAULT_ACTION`, and `LEARNING_MODE`.
 
 #### Privileges
 
@@ -68,24 +65,19 @@ cap_drop: [ALL]
 cap_add: [NET_ADMIN]
 ```
 
-`NET_ADMIN` is carried as a file capability on `/app/g0efilter` and on the `nft`
-binary, so no startup privilege drop is involved. Both binaries need it because
-capabilities do not survive `execve` into a child process, and the Go runtime
-execs `nft` from an arbitrary thread.
+`NET_ADMIN` is a file capability on `/app/g0efilter` and `nft`, so no startup
+privilege drop is needed. Both binaries need it because capabilities do not
+survive `execve` into a child process.
 
-Grant `NET_ADMIN` to the container even so: file capabilities are limited by the
-container's bounding set, so without it the kernel refuses to execute the binary
-and the container fails to start with `exec /app/g0efilter: operation not
-permitted`. That is fail-closed - no container means no unfiltered traffic - but
-the message does not name the cause, so check the capability first.
+The container must still receive `NET_ADMIN` in its bounding set. Without it the
+kernel fails closed with `exec /app/g0efilter: operation not permitted`.
 
 `read_only: true`, `no-new-privileges` and Kubernetes'
 `allowPrivilegeEscalation: false` are all supported and recommended. None of them
 interfere with file capabilities.
 
-Pod Security Standards note: `NET_ADMIN` is outside the `baseline` capability
-allow-list, so a namespace running the sidecar needs the `privileged` label. That
-is a property of `NET_ADMIN` itself, not of how g0efilter uses it.
+Because Pod Security `baseline` excludes `NET_ADMIN`, filtered namespaces need
+the `privileged` label.
 
 `g0efilter policy [path]` prints the active policy as a Kubernetes ConfigMap,
 validating it first. `POLICY_CONFIGMAP` and `POD_NAMESPACE` set the emitted name and
@@ -98,8 +90,8 @@ docker run --rm --cap-drop=ALL --cap-add=NET_ADMIN docker.io/g0lab/g0efilter cap
 kubectl exec <pod> -c g0efilter -- /app/g0efilter caps
 ```
 
-It prints the capability state, verifies a child `nft` process can reach netlink,
-and exits non-zero with a remediation hint if not.
+It checks the capability state and `nft` netlink access, exiting non-zero with a
+remediation hint on failure.
 
 The dashboard image runs as uid 65532; its `/app/data` volume must be writable by
 that user. The supplied Compose example handles this.
@@ -119,7 +111,7 @@ that user. The supplied Compose example handles this.
 | `RATE_BURST` | Rate limit burst | `100` |
 | `AUTH_MODE` | Web UI auth: `session` (built-in login), `none` (reverse proxy only), `forward` (trust proxy header), `jwt` (validate bearer token) | `session` |
 | `ADMIN_USERNAME` | Login user for `session` mode | `admin` |
-| `ADMIN_PASSWORD_HASH` | bcrypt hash for the admin login; generate with `g0efilter-dashboard hash-password`. Optional in `session` mode - if unset and no admin user exists yet, a random password is generated and printed once at startup | unset |
+| `ADMIN_PASSWORD_HASH` | bcrypt admin hash. If absent, generates and prints a password once | unset |
 | `SESSION_TTL` | Session lifetime (Go duration, e.g. `24h`) | `24h` |
 | `COOKIE_SECURE` | Mark the session cookie `Secure` (HTTPS-only; localhost exempt). Set `false` only for plain-HTTP trials | `true` |
 | `FORWARD_AUTH_HEADER` | Identity header trusted in `forward` mode | `X-Forwarded-User` |
@@ -134,8 +126,7 @@ that user. The supplied Compose example handles this.
 
 #### Dashboard authentication
 
-`AUTH_MODE=session` is the default. It protects the UI with a login and
-server-side sessions.
+`AUTH_MODE=session` protects the UI with a login and server-side sessions.
 
 Set `ADMIN_PASSWORD_HASH` to a bcrypt hash:
 
@@ -154,8 +145,7 @@ docker run --rm -v g0efilter-dashboard-data:/app/data \
 ```
 
 The optional final argument is a username. `ADMIN_PASSWORD_HASH` overrides a
-stored reset on the next startup. In ephemeral mode, credentials reset at each
-restart unless a hash is configured.
+stored reset. Ephemeral mode resets credentials unless a hash is configured.
 
 #### API keys
 
@@ -172,10 +162,9 @@ the UI or through `/api/v1/apikeys`. Ephemeral mode resets keys on restart.
 - `forward`: trust the proxy identity in `FORWARD_AUTH_HEADER`.
 - `jwt`: validate a bearer token or `jwt` cookie.
 
-JWT mode requires exactly one key source: `JWT_SECRET`, `JWT_PUBLIC_KEY`, or
-`JWKS_URL`. It validates signatures and time claims. Use `JWT_ISSUER`,
-`JWT_AUDIENCE`, and `JWT_USERNAME_CLAIM` for additional checks. Startup fails if
-the key configuration is missing, ambiguous, or unavailable.
+JWT mode requires exactly one of `JWT_SECRET`, `JWT_PUBLIC_KEY`, or `JWKS_URL`.
+It validates signatures and time claims; issuer, audience, and username-claim
+settings add further checks. Invalid key configuration fails startup.
 
 #### CORS
 

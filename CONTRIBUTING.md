@@ -2,16 +2,16 @@
 
 Thanks for helping improve g0efilter.
 
-## Before You Start
+## Before you start
 
 Discuss large features or filtering changes in an issue first. Small fixes,
 documentation, and tests can go straight to a pull request.
 
-## AI Usage
+## AI usage
 
 AI tools are welcome, but you must understand, review, and test their changes.
 
-## Pull Requests
+## Pull requests
 
 Keep pull requests small and focused.
 
@@ -73,12 +73,9 @@ itself carry a `v`; the Helm `appVersion` and chart version do not.
 `tests/repo/version_test.go` fails when a pin drifts, and the release workflow
 fails when `VERSION` does not match the tag.
 
-The chart is part of the same release unit, so `Chart.yaml` `version` and
-`appVersion` both track `VERSION` and `set-version.sh` moves them together. A
-chart is only ever published from a tag, so every published package has a
-distinct version. `ct check-version-increment` catches a chart edited with no
-bump at all; a template change outside a release needs a `VERSION` bump like any
-other, which leaves `main` pinned to the next release until it is tagged.
+All chart `version` and `appVersion` fields track `VERSION`; `set-version.sh`
+updates them together. Charts publish only from tags, and chart-testing rejects
+template changes without a version bump.
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.

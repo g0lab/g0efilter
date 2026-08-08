@@ -141,9 +141,9 @@ helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
 kubectl label namespace <namespace> g0efilter.io/inject=enabled
 ```
 
-Every `EgressPolicy` in a labelled namespace then gets its own sidecar, with no
-change to the workload manifests. Roll one out with `enforcement: audit` to see
-what a policy would deny before it denies anything.
+Matching pods in a labelled namespace get a sidecar without changes to their
+workload manifests. Start with `enforcement: audit` to see what the policy would
+deny.
 
 Three charts are published, both as a conventional Helm repository at
 `https://g0lab.github.io/g0efilter` and as OCI artifacts under
@@ -155,10 +155,9 @@ Three charts are published, both as a conventional Helm repository at
 | `g0efilter-dashboard` | application | the dashboard the sidecars ship logs to |
 | `g0efilter` | library | sidecar templates for a chart you maintain |
 
-The render-time integrations mount a policy ConfigMap directly. The webhook uses
-`EgressPolicy` custom resources and a controller that renders the matching
-ConfigMap. Denials can also be surfaced as Kubernetes Events and Prometheus
-metrics.
+Render-time integrations mount a policy ConfigMap directly. The webhook uses a
+controller to render one from each `EgressPolicy`. Kubernetes Events and
+Prometheus metrics are optional.
 
 See [Kubernetes](docs/kubernetes.md) for all four integrations, the full
 `EgressPolicy` sidecar options, policy distribution, and the required namespace

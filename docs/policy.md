@@ -61,7 +61,7 @@ record's TTL. This IP-layer enforcement is available only in default-deny
 `dns-strict`; other modes and permissive configurations reject constrained
 domains at startup.
 
-Two consequences worth knowing, both inherent to enforcing on resolved IPs:
+Resolved-IP enforcement has two consequences:
 
 - The kernel matches on address, not hostname. On shared hosting or a CDN,
   `tcp/example.com:443` opens tcp/443 to whatever address that name resolves to,
@@ -76,9 +76,8 @@ volumes:
   - ./policy/:/app/policy/
 ```
 
-The file is hashed every 5 seconds, so a rewrite with identical content never
-reloads. Send `SIGHUP` to apply the file immediately rather than waiting for the
-next check:
+The file is hashed every five seconds; unchanged content does not reload. Send
+`SIGHUP` to apply a changed file immediately:
 
 ```sh
 docker kill --signal HUP g0efilter

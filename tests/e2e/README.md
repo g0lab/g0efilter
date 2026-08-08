@@ -1,10 +1,9 @@
 # End-to-end tests
 
-Go tests driving real containers through Testcontainers. They need Docker with
-the Compose plugin.
+These Go tests drive real containers through Testcontainers and require Docker
+with the Compose plugin.
 
-This directory is its own Go module. The Testcontainers dependency tree is large
-and test-only, so it stays out of the module that ships the agent and dashboard.
+This separate Go module keeps Testcontainers dependencies out of shipped modules.
 
 ## Running
 
@@ -30,7 +29,7 @@ step. It will not rebuild an existing image, so rebuild explicitly after
 changing agent or dashboard code:
 
 ```sh
-E2E_BUILD=force go test -count=1 -v -timeout=25m .
+E2E_BUILD=force go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
 ```
 
 Always pass `-count=1`: these tests drive external container state and must
@@ -60,21 +59,17 @@ They need `kubectl` and `helm` on `PATH`. Phase 18 covers the control plane: the
 CRDs, the controller Deployment and its RBAC, rendering, cluster-policy merging
 and garbage collection. Phase 19 covers a filtered workload: Pod Security
 rejecting `NET_ADMIN` under `baseline`, sidecar ordering, real egress under
-containerd, denial Events, live policy reload, a `helm install` of the example
-chart, and the mutating webhook injecting into a Deployment that names no
-sidecar. The controller image is rebuilt from source every run, so a controller
-change is never tested against a stale tag; the agent image is taken from
-`G0EFILTER_IMAGE` and loaded into the cluster.
+containerd, denial Events, live policy reload, the example Helm chart, webhook
+injection, and the audit-to-block rollout. The controller image rebuilds on every
+run; the agent image comes from `G0EFILTER_IMAGE`.
 
 CI runs them from `.github/workflows/test.yaml` on relevant pull requests,
 nightly, and manual runs. The workflow loads the agent image; the harness builds
 the controller image from the checked-out source.
 
-`internal/harness` holds the stack lifecycle, typed container exec, traffic
-assertions, log parsing, the dashboard API client, nftables inspection and the
-load driver. `compose.test.yaml` is the test stack: no fixed container names, an
-ephemeral host port, and a per-stack policy directory, so stacks can run
-concurrently.
+`internal/harness` contains stack lifecycle and assertions. `compose.test.yaml`
+uses unique names, an ephemeral host port, and per-stack policy directories for
+concurrent stacks.
 
 ## How assertions work
 
@@ -116,9 +111,9 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `LOAD_ALLOWED` | `25` | Allowed requests in the mixed-load check |
 | `LOAD_MAX_TIME` | `8` | Per-request timeout in seconds |
 | `LOAD_MAX_LATENCY_MS` | `2000` | Median blocked-latency ceiling |
-| `LOAD_MIN_ALLOWED_PERCENT` | `100` | Min % of the `LOAD_ALLOWED` requests that must connect while blocked traffic floods alongside them: every one of the default 25. Lower it if upstream flakiness proves noisy, since this measures the upstream as well as the filter. The filter's own decision is checked separately, by requiring no `BLOCKED` verdict for an allowed URL |
-| `LOAD_RECOVERY_PAUSE` | `4s` | Pause before the mixed check so the DNS rate limiter refills, otherwise it, not the filter, decides the result |
-| `LOAD_ALLOWED_URLS` | `https://github.com https://1.1.1.1` | Space-separated URLs used round-robin for allowed traffic, so one degraded upstream cannot sink the success rate. Both are covered by the baseline policy |
+| `LOAD_MIN_ALLOWED_PERCENT` | `100` | Minimum successful allowed requests during mixed load |
+| `LOAD_RECOVERY_PAUSE` | `4s` | Pause for DNS rate-limit recovery before mixed load |
+| `LOAD_ALLOWED_URLS` | `https://github.com https://1.1.1.1` | Round-robin allowed URLs |
 | `LOAD_BLOCKED_URL` | `https://google.com` | URL used for blocked HTTPS traffic |
 | `LOAD_BLOCKED_URL_HTTP` | `http://google.com` | URL used for blocked HTTP traffic |
 | `E2E_LOAD_MAX_MEMORY_MIB` | `384` | Memory ceiling after the load phase |

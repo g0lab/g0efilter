@@ -10,10 +10,9 @@ The dashboard API has three authentication realms.
 | **machine** | `X-Api-Key: <key>` (see [API keys](configuration.md#api-keys)) | g0efilter instances |
 | **UI** | session cookie, proxy header, bearer JWT, or no auth, based on `AUTH_MODE` | browser dashboard |
 
-Successful API responses are JSON. Errors may be plain text. UI mutations are
-CSRF-checked. CORS is off unless `CORS_ALLOWED_ORIGINS` is set.
-
-In session mode, UI routes also accept a valid `X-Api-Key` for scripts.
+Successful responses are JSON; errors may be plain text. UI mutations are
+CSRF-checked. CORS is off unless configured. Session-mode UI routes also accept
+`X-Api-Key` for scripts.
 
 ## Public
 
