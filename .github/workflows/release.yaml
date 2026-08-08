@@ -100,7 +100,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Release
         uses: goreleaser/goreleaser-action@v7
@@ -170,7 +170,7 @@ jobs:
 
   update-major-tag:
     name: Move major version tag
-    needs: release
+    needs: [release, release-chart]
     runs-on: ubuntu-latest
     # Do not move the rolling tag for prereleases.
     if: ${{ !contains(github.ref_name, '-') }}

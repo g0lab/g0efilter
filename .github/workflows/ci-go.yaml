@@ -19,6 +19,8 @@ on:
       - 'deploy/**'
       - 'examples/kubernetes/**'
       - 'examples/helm/**'
+      - 'scripts/gen-chart-crds.sh'
+      - 'scripts/gen-controller.sh'
       - 'scripts/test-go.sh'
       - '.github/workflows/ci-go.yaml'
 
