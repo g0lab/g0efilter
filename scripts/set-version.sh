@@ -48,6 +48,13 @@ done < <(git ls-files 'deploy/**' 'docs/**' 'examples/**' 'controller/**' README
 # change is accompanied by a version change.
 chart_old="$(sed -n 's|^version: *||p' "$CHART")"
 sed -i "s|^version: $chart_old\$|version: $NEW|" "$CHART"
+for consumer in \
+  examples/helm/demo/Chart.yaml \
+  tests/manifests/testdata/minimal-consumer/Chart.yaml; do
+  sed -i "/^[[:space:]]*- name: g0efilter\$/,/^[[:space:]]*repository:/ {
+    s|^\([[:space:]]*version: \).*$|\1$NEW|
+  }" "$consumer"
+done
 
 echo "set $OLD -> $NEW, chart $chart_old -> $NEW"
 git --no-pager diff --stat

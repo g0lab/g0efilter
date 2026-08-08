@@ -17,20 +17,24 @@ func TestAddToSchemeRegistersAPIObjects(t *testing.T) {
 		t.Fatalf("AddToScheme() error = %v", err)
 	}
 
-	objects := []runtime.Object{
-		&v1alpha1.EgressPolicy{},
-		&v1alpha1.EgressPolicyList{},
-		&v1alpha1.ClusterEgressPolicy{},
-		&v1alpha1.ClusterEgressPolicyList{},
+	objects := []struct {
+		object   runtime.Object
+		wantKind string
+	}{
+		{object: &v1alpha1.EgressPolicy{}, wantKind: "EgressPolicy"},
+		{object: &v1alpha1.EgressPolicyList{}, wantKind: "EgressPolicyList"},
+		{object: &v1alpha1.ClusterEgressPolicy{}, wantKind: "ClusterEgressPolicy"},
+		{object: &v1alpha1.ClusterEgressPolicyList{}, wantKind: "ClusterEgressPolicyList"},
 	}
-	for _, object := range objects {
-		gvks, _, err := scheme.ObjectKinds(object)
+	for _, test := range objects {
+		gvks, _, err := scheme.ObjectKinds(test.object)
 		if err != nil {
-			t.Fatalf("ObjectKinds(%T) error = %v", object, err)
+			t.Fatalf("ObjectKinds(%T) error = %v", test.object, err)
 		}
 
-		if len(gvks) != 1 || gvks[0].GroupVersion() != v1alpha1.GroupVersion {
-			t.Errorf("ObjectKinds(%T) = %v, want one %s kind", object, gvks, v1alpha1.GroupVersion)
+		want := v1alpha1.GroupVersion.WithKind(test.wantKind)
+		if len(gvks) != 1 || gvks[0] != want {
+			t.Errorf("ObjectKinds(%T) = %v, want [%s]", test.object, gvks, want)
 		}
 	}
 }
