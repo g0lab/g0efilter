@@ -4,6 +4,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,8 @@ type recordedEvent struct {
 	Message string `json:"message"`
 	Type    string `json:"type"`
 }
+
+var errInvalidDomain = errors.New("invalid domain")
 
 // eventSink stands in for the Kubernetes API server.
 type eventSink struct {
@@ -140,6 +143,29 @@ func TestShipperIgnoresNonDenials(t *testing.T) {
 
 	if got := len(sink.recorded()); got != 0 {
 		t.Errorf("recorded %d events for allowed traffic, want 0", got)
+	}
+}
+
+func TestShipperRecordsPolicyErrors(t *testing.T) {
+	t.Parallel()
+
+	sink := newEventSink(t)
+	shipper := newShipperWithSink(sink)
+
+	shipper.RecordPolicyError(context.Background(), errInvalidDomain)
+	shipper.kubeevent.Close()
+
+	events := sink.recorded()
+	if len(events) != 1 {
+		t.Fatalf("recorded %d events, want 1", len(events))
+	}
+
+	if events[0].Type != "Warning" || events[0].Reason != "PolicyReloadFailed" {
+		t.Errorf("event type/reason = %q/%q", events[0].Type, events[0].Reason)
+	}
+
+	if !strings.Contains(events[0].Message, "invalid domain") {
+		t.Errorf("message %q omits the policy error", events[0].Message)
 	}
 }
 

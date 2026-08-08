@@ -30,11 +30,20 @@ func HandleCaps(args []string) (bool, int) {
 }
 
 func handleCaps(args []string, out, errOut io.Writer) (bool, int) {
+	return handleCapsWith(args, out, errOut, caps.Inspect, nftables.Probe)
+}
+
+func handleCapsWith(
+	args []string,
+	out, errOut io.Writer,
+	inspect func() (caps.State, error),
+	probe func(context.Context) error,
+) (bool, int) {
 	if len(args) < 2 || args[1] != "caps" {
 		return false, 0
 	}
 
-	state, err := caps.Inspect()
+	state, err := inspect()
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "g0efilter: cannot read capabilities: %v\n", err)
 
@@ -55,7 +64,7 @@ func handleCaps(args []string, out, errOut io.Writer) (bool, int) {
 	ctx, cancel := context.WithTimeout(context.Background(), capsProbeTimeout)
 	defer cancel()
 
-	err = nftables.Probe(ctx)
+	err = probe(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "g0efilter: nftables unreachable: %v\n", err)
 		_, _ = fmt.Fprintf(errOut, "g0efilter: the nft binary lost its file capabilities "+
@@ -90,7 +99,11 @@ func verifyCapabilities(lg *slog.Logger) error {
 
 // preflight rejects a configuration that cannot filter before any traffic flows.
 func preflight(cfg config, lg *slog.Logger) error {
-	err := verifyCapabilities(lg)
+	return preflightWith(cfg, lg, verifyCapabilities)
+}
+
+func preflightWith(cfg config, lg *slog.Logger, verify func(*slog.Logger) error) error {
+	err := verify(lg)
 	if err != nil {
 		return err
 	}

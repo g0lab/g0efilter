@@ -3,11 +3,19 @@ package g0efilter
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/g0lab/g0efilter/agent/caps"
+)
+
+var (
+	errTestCapsInspect = errors.New("read status")
+	errTestCapsProbe   = errors.New("netlink denied")
+	errTestPreflight   = errors.New("capability rejected")
 )
 
 // netAdminEffective reports what the test environment can actually do, so the
@@ -68,6 +76,93 @@ func TestHandleCapsAlwaysReportsTheCapabilityState(t *testing.T) {
 	}
 }
 
+//nolint:funlen // the table keeps every security-relevant verdict in one place
+func TestHandleCapsOutcomes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		inspect    func() (caps.State, error)
+		probeErr   error
+		wantProbe  bool
+		wantCode   int
+		wantOut    string
+		wantErrOut string
+	}{
+		{
+			name: "inspect error",
+			inspect: func() (caps.State, error) {
+				return caps.State{}, errTestCapsInspect
+			},
+			wantCode:   1,
+			wantErrOut: "cannot read capabilities: read status",
+		},
+		{
+			name: "capability unavailable",
+			inspect: func() (caps.State, error) {
+				return caps.State{EUID: 1000}, nil
+			},
+			wantCode:   1,
+			wantOut:    "effective=false",
+			wantErrOut: "capabilities.add",
+		},
+		{
+			name: "nft probe fails",
+			inspect: func() (caps.State, error) {
+				return caps.State{EUID: 1000, Effective: true, Permitted: true}, nil
+			},
+			probeErr:   errTestCapsProbe,
+			wantProbe:  true,
+			wantCode:   1,
+			wantOut:    "effective=true",
+			wantErrOut: "nftables unreachable: netlink denied",
+		},
+		{
+			name: "usable",
+			inspect: func() (caps.State, error) {
+				return caps.State{EUID: 1000, Effective: true, Permitted: true}, nil
+			},
+			wantProbe: true,
+			wantCode:  0,
+			wantOut:   "can program nftables",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var out, errOut bytes.Buffer
+
+			probeCalled := false
+			probe := func(context.Context) error {
+				probeCalled = true
+
+				return tc.probeErr
+			}
+
+			handled, code := handleCapsWith(
+				[]string{"g0efilter", "caps"}, &out, &errOut, tc.inspect, probe,
+			)
+			if !handled || code != tc.wantCode {
+				t.Errorf("handled/code = %t/%d, want true/%d", handled, code, tc.wantCode)
+			}
+
+			if !strings.Contains(out.String(), tc.wantOut) {
+				t.Errorf("stdout %q omits %q", out.String(), tc.wantOut)
+			}
+
+			if !strings.Contains(errOut.String(), tc.wantErrOut) {
+				t.Errorf("stderr %q omits %q", errOut.String(), tc.wantErrOut)
+			}
+
+			if probeCalled != tc.wantProbe {
+				t.Errorf("probe called = %t, want %t", probeCalled, tc.wantProbe)
+			}
+		})
+	}
+}
+
 func TestHandleCapsFailsWithActionableHints(t *testing.T) {
 	t.Parallel()
 
@@ -104,5 +199,30 @@ func TestVerifyCapabilitiesMatchesTheEnvironment(t *testing.T) {
 
 	if !netAdminEffective(t) && err == nil {
 		t.Error("startup accepted an environment without effective CAP_NET_ADMIN")
+	}
+}
+
+func TestPreflightFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	valid := config{mode: "https", httpPort: "65080", httpsPort: "65443", dnsPort: "65053"}
+	verifyFailure := func(*slog.Logger) error { return errTestPreflight }
+
+	err := preflightWith(valid, discardLogger(), verifyFailure)
+	if !errors.Is(err, errTestPreflight) {
+		t.Errorf("preflight capability error = %v, want %v", err, errTestPreflight)
+	}
+
+	invalid := valid
+	invalid.httpPort = invalid.httpsPort
+
+	err = preflightWith(invalid, discardLogger(), func(*slog.Logger) error { return nil })
+	if err == nil {
+		t.Error("preflight accepted conflicting proxy ports")
+	}
+
+	err = preflightWith(valid, discardLogger(), func(*slog.Logger) error { return nil })
+	if err != nil {
+		t.Errorf("preflight rejected a usable configuration: %v", err)
 	}
 }
