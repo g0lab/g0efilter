@@ -1,0 +1,99 @@
+---
+name: Tag Release
+run-name: Tag release ${{ inputs.version }} from latest main
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'VERSION expected on the latest main commit (for example 0.8.4)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Validate and create tag
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 10
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GOWORK: 'off'
+    steps:
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Resolve and validate tag
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          declared="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$declared" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::VERSION must contain plain SemVer (got '$declared')"
+            exit 1
+          fi
+
+          requested="${REQUESTED_VERSION#v}"
+          if [ "$requested" != "$declared" ]; then
+            echo "::error::requested version $REQUESTED_VERSION does not match VERSION ($declared)"
+            exit 1
+          fi
+
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "::error::$DEFAULT_BRANCH advanced after checkout; rerun against its latest commit"
+            exit 1
+          fi
+
+          release_tag="v$declared"
+          if git ls-remote --exit-code --tags origin "refs/tags/$release_tag" >/dev/null; then
+            echo "::error::tag $release_tag already exists"
+            exit 1
+          fi
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: tests/go.sum
+
+      - name: Validate version pins
+        run: go -C tests test -count=1 ./repo/...
+
+      - name: Create release tag
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
+            echo "::error::$DEFAULT_BRANCH advanced during validation; rerun the workflow"
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::tag $RELEASE_TAG already exists"
+            exit 1
+          fi
+          git tag "$RELEASE_TAG" HEAD
+          git push origin "refs/tags/$RELEASE_TAG"
