@@ -109,7 +109,7 @@ func TestHelmMetricsMatchTheComponent(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	fromHelm := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.metrics.enabled=true")))

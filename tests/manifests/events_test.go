@@ -142,7 +142,7 @@ func TestHelmEventsRBACIsOptIn(t *testing.T) {
 	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.events.enabled=true")))
 

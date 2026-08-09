@@ -118,7 +118,7 @@ func TestHelmEnforcementMatchesTheAuditComponent(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	fromHelm := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.enforcement=audit")))
@@ -167,7 +167,7 @@ func TestHelmRendersZeroValuedNumbers(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.connections.max=0",
@@ -191,7 +191,7 @@ func TestHelmRendersTheFullSidecarOptionSurface(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.processInfo=true",
@@ -247,7 +247,7 @@ func TestHelmRejectsMetricsProxyPortConflict(t *testing.T) {
 	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	out := runHelmExpectingFailure(t, "template", "release", chart,
 		"--set", "g0efilter.metrics.enabled=true",

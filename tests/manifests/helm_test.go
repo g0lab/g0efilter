@@ -3,6 +3,7 @@ package manifests_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -18,24 +19,83 @@ func serialHelm(t *testing.T) {
 	t.Cleanup(helmTestMu.Unlock)
 }
 
-func updateHelmDependency(t *testing.T, chart string) {
+func updateHelmDependency(t *testing.T, chart string) string {
 	t.Helper()
 	helmTestMu.Lock()
 	defer helmTestMu.Unlock()
 
-	run(t, "helm", "dependency", "update", chart)
+	return localHelmChart(t, chart)
 }
 
 func repoPath(parts ...string) string {
 	return filepath.Join(append([]string{"..", ".."}, parts...)...)
 }
 
-// helmTemplate resolves the local library-chart dependency first, which is what a
-// consumer does with `helm dependency update`.
+// localHelmChart copies an OCI-backed consumer to a temporary directory and points
+// it at the local library chart. Tests must exercise the current source before its
+// release chart exists in the registry.
+func localHelmChart(t *testing.T, chart string) string {
+	t.Helper()
+
+	chartFile := filepath.Join(chart, "Chart.yaml")
+
+	content, err := os.ReadFile(chartFile) //nolint:gosec // a repository test fixture
+	if err != nil {
+		t.Fatalf("read %s: %v", chartFile, err)
+	}
+
+	const publishedRepository = "repository: oci://ghcr.io/g0lab/helm"
+	if !strings.Contains(string(content), publishedRepository) {
+		run(t, "helm", "dependency", "update", chart)
+
+		return chart
+	}
+
+	temporaryChart := filepath.Join(t.TempDir(), "chart")
+
+	absoluteChart, err := filepath.Abs(chart)
+	if err != nil {
+		t.Fatalf("resolve %s: %v", chart, err)
+	}
+
+	err = os.CopyFS(temporaryChart, os.DirFS(absoluteChart))
+	if err != nil {
+		t.Fatalf("copy %s: %v", chart, err)
+	}
+
+	err = os.RemoveAll(filepath.Join(temporaryChart, "charts"))
+	if err != nil {
+		t.Fatalf("remove packaged dependencies: %v", err)
+	}
+
+	err = os.Remove(filepath.Join(temporaryChart, "Chart.lock"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("remove dependency lock: %v", err)
+	}
+
+	libraryChart, err := filepath.Abs(repoPath("deploy", "helm", "g0efilter"))
+	if err != nil {
+		t.Fatalf("resolve local library chart: %v", err)
+	}
+
+	content = []byte(strings.Replace(string(content), publishedRepository,
+		"repository: file://"+filepath.ToSlash(libraryChart), 1))
+
+	err = os.WriteFile(filepath.Join(temporaryChart, "Chart.yaml"), content, 0o600) //nolint:gosec // t.TempDir target
+	if err != nil {
+		t.Fatalf("write temporary Chart.yaml: %v", err)
+	}
+
+	run(t, "helm", "dependency", "update", temporaryChart)
+
+	return temporaryChart
+}
+
+// helmTemplate resolves the local library-chart dependency first.
 func helmTemplate(t *testing.T, chart string) []byte {
 	t.Helper()
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	return run(t, "helm", "template", "release", chart)
 }
@@ -115,8 +175,8 @@ func TestHelmChartsLint(t *testing.T) {
 			t.Parallel()
 			serialHelm(t)
 
-			run(t, "helm", "dependency", "update", chart)
-			run(t, "helm", "lint", chart)
+			localChart := localHelmChart(t, chart)
+			run(t, "helm", "lint", localChart)
 		})
 	}
 }
@@ -189,7 +249,7 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	updateHelmDependency(t, chart)
+	chart = updateHelmDependency(t, chart)
 
 	tests := []struct {
 		name    string
@@ -222,7 +282,7 @@ func TestHelmAcceptsFractionalDurations(t *testing.T) {
 	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.dashboard.startDelay=1.5s",
@@ -237,7 +297,7 @@ func TestHelmDefaultsComeFromTheLibraryChart(t *testing.T) {
 
 	chart := filepath.Join("testdata", "minimal-consumer")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart)))
 
@@ -267,7 +327,7 @@ func TestHelmPolicyCommandUsesTheConfiguredConfigMap(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	run(t, "helm", "dependency", "update", chart)
+	chart = localHelmChart(t, chart)
 
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
 		"--set", "g0efilter.policy.configMapName=team-policy")))

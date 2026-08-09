@@ -5,6 +5,8 @@ library chart. Replace `10.96.0.10` in `values.yaml` with your cluster DNS Servi
 address (`kubectl -n kube-system get service -l k8s-app=kube-dns -o
 jsonpath='{.items[0].spec.clusterIP}'`), then run from the repository root:
 
+This example requires Kubernetes 1.29 or later.
+
 ```sh
 helm dependency update --skip-refresh examples/helm/demo
 kubectl create namespace g0efilter-demo
@@ -19,5 +21,5 @@ kubectl -n g0efilter-demo exec deployment/demo -c app -- curl -fsS https://examp
 kubectl -n g0efilter-demo exec deployment/demo -c app -- curl -I --max-time 5 https://github.com
 ```
 
-See the [Helm library chart guide](../../../../docs/kubernetes.md#helm-library-chart)
+See the [Helm library chart guide](../../../docs/kubernetes.md#helm-library-chart)
 for published dependencies and optional settings.

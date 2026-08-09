@@ -158,7 +158,7 @@ jobs:
 
       - name: Update GitHub Pages chart index
         run: |
-          git fetch origin gh-pages
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
           pages_dir="$RUNNER_TEMP/g0efilter-gh-pages"
           git worktree add "$pages_dir" origin/gh-pages
 
