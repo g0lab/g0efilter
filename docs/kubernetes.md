@@ -74,7 +74,7 @@ resources:
   - deployment.yaml
   - policy.yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
 ```
 
 Pin `ref` to a release tag. The component sets the image tag to match, so the
@@ -92,8 +92,8 @@ Layer the optional components after `sidecar`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
-  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.3
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.4
 ```
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
@@ -163,7 +163,7 @@ g0efilter:
   enforcement: audit
   logLevel: DEBUG
   image:
-    tag: v0.8.3
+    tag: v0.8.4
   policy:
     configMapName: my-policy
   dns:
@@ -215,7 +215,7 @@ helm install app oci://example.com/app \
 Outside this repository, point the script at a pinned component:
 
 ```sh
-export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3'
+export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4'
 ```
 
 This path needs no cooperation from the chart. It still requires the policy
@@ -441,8 +441,8 @@ Denials are logged. To also show the first few in `kubectl describe pod`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
-  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.3
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.4
 ```
 
 This grants the workload ServiceAccount `create` on Events in its namespace and
@@ -465,8 +465,8 @@ is missing, g0efilter logs one warning and keeps filtering.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
-  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.3
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.4
 ```
 
 Or `g0efilter.metrics.enabled: true` with the Helm chart. Both expose `/metrics` on
@@ -511,7 +511,7 @@ release:
 ```sh
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
   --from-literal=api-key="$(openssl rand -hex 32)" \
-  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.3 hash-password)"
+  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.4 hash-password)"
 ```
 
 ```yaml
@@ -551,8 +551,8 @@ The add-on replaces the ConfigMap mount with an emptyDir:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
-  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.3
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.4
 ```
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.
