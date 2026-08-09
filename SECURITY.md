@@ -1,12 +1,11 @@
 # Security
 
 This project is maintained on a best-effort basis without response or remediation
-guarantees.
+guarantees. That said, I will respond to and fix relevant issues as soon as I can.
 
 ## Supported versions
 
-Only the latest g0efilter and dashboard releases, plus the `main` branch, receive
-security fixes.
+Security fixes are provided only for the latest release and the main branch.
 
 ## Report a vulnerability
 
