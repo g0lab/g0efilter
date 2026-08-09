@@ -133,7 +133,8 @@ dependencies:
 ```
 
 Run `helm dependency update` after choosing either source. The example in this
-repository uses a `file://` dependency so it always tests the local chart.
+repository uses the published OCI chart so it works without configuring a Helm
+repository first.
 
 Then include the sidecar as the **first** init container, and its volume:
 
@@ -153,6 +154,9 @@ Any init container before the sidecar has unfiltered egress.
 Override defaults under a `g0efilter` key; anything you leave out comes from the
 library chart's own `values.yaml`:
 
+When using `dns` or `dns-strict`, set `dns.upstreams` to the cluster DNS Service.
+The agent's `127.0.0.11:53` default is Docker-specific.
+
 ```yaml
 g0efilter:
   mode: dns-strict
@@ -162,6 +166,8 @@ g0efilter:
     tag: v0.8.1
   policy:
     configMapName: my-policy
+  dns:
+    upstreams: ['10.96.0.10:53']
   dashboard:
     host: http://g0efilter-dashboard.g0efilter-system.svc:8081
     apiKeySecret:
@@ -350,9 +356,11 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `resources` | - | Requests and limits. |
 | `extraEnv` | - | For agent options this API does not model yet. |
 
-The sidecar filters its own egress as well as the application's, so anything it has
-to reach must be allowed by the same policy: the API server for `events`, and the
-hosts named by `dashboard.host` and `notifications.host`.
+The API server must be allowed when Kubernetes Events are enabled. Dashboard,
+remote-unblock, notification, and upstream-DNS connections use marked sockets
+that bypass the packet filter. In `dns` modes, hostname lookups still pass through
+the DNS policy, so allow dashboard and notification hostnames when they are names
+rather than IP addresses.
 
 Credentials use Secret references because `EgressPolicy` is not a Secret. Kubelet
 resolves them in the pod's namespace; the controller never reads them.
@@ -517,8 +525,7 @@ secrets:
 Declare only keys that are present. This lets the chart validate JWT setup and
 show recovery instructions when an optional credential is generated at startup.
 
-The API key Secret must exist in each workload namespace. Its policy must also
-allow the dashboard because the sidecar filters its own egress:
+The API key Secret must exist in each workload namespace:
 
 ```yaml
 spec:
@@ -528,11 +535,10 @@ spec:
       apiKeySecretRef:
         name: g0efilter-dashboard-key
         key: api-key
-  egress:
-    - name: dashboard
-      to:
-        - domainNames: ['g0efilter-dashboard.g0efilter-system.svc']
 ```
+
+In `dns` and `dns-strict` modes, also allow the dashboard hostname so the DNS
+proxy resolves it. The marked dashboard connection itself bypasses filtering.
 
 `auth.mode` defaults to `session`. Use `none` only behind an authenticating proxy;
 `forward` and `jwt` delegate authentication. See
@@ -594,13 +600,16 @@ A policy the agent refuses to load leaves the previous one in force rather than
 opening egress. That shows up as a `PolicyReloadFailed` Event on the pod when
 `events` are enabled, and as `g0efilter_policy_reloads_total{result="failure"}`.
 
-**Always allow cluster DNS.** g0efilter is default-deny, so without the DNS
-ClusterIP every name lookup fails and every request looks blocked for reasons
-unrelated to your domain rules:
+**Allow cluster DNS in `https` mode.** Its default-deny packet filter otherwise
+blocks the workload's resolver, so every request looks blocked for reasons
+unrelated to domain rules:
 
 ```sh
 kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
 ```
+
+In `dns` and `dns-strict` modes, configure that address as `DNS_UPSTREAMS`
+instead. The DNS proxy's marked upstream connection does not need a policy rule.
 
 In `https` mode only ports 80 and 443 are matched by domain. Anything else must be
 allowed by IP or CIDR - including in-cluster traffic to other Services, which
@@ -633,8 +642,8 @@ securityContext:
     add: [NET_ADMIN]
 ```
 
-**Everything is blocked, including things you allowed.** Cluster DNS is almost
-always the cause. Check the allowlist contains the kube-dns ClusterIP.
+**Everything is blocked, including things you allowed.** Check that `https` mode
+allows the kube-dns ClusterIP, or that a DNS mode sets `DNS_UPSTREAMS` to it.
 
 **Check a pod's privileges directly:**
 

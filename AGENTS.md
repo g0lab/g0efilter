@@ -69,7 +69,7 @@ Use `-run` to select a suite when appropriate. See `tests/e2e/README.md` for det
 
 ## Project Rules
 
-* Always update both README and `docs/` when changing user-facing behavior, configuration, or Action inputs.
+* Always update README, `docs/`, and `examples/` when changing user-facing behavior, configuration, or Action inputs.
 * Always add E2E coverage for significant changes to runtime, networking, security, or cross-component behavior.
 * Always keep sidecar configuration identical in `deploy/kustomize`, `deploy/helm` and the controller's injecting webhook; `tests/manifests/` and `controller/internal/webhook/parity_test.go` check this.
 * Never add comments for obvious behavior; comment only on non-obvious constraints, security decisions, or workarounds.

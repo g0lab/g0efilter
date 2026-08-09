@@ -124,7 +124,7 @@ func TestChartAppVersionMatchesVERSION(t *testing.T) {
 	}
 }
 
-func TestLocalChartDependenciesMatchVERSION(t *testing.T) {
+func TestG0efilterChartDependenciesMatchVERSION(t *testing.T) {
 	t.Parallel()
 
 	want := declaredVersion(t)
@@ -157,8 +157,7 @@ func TestLocalChartDependenciesMatchVERSION(t *testing.T) {
 		}
 
 		for _, dependency := range chart.Dependencies {
-			if dependency.Name == "g0efilter" && strings.HasPrefix(dependency.Repository, "file://") &&
-				dependency.Version != want {
+			if dependency.Name == "g0efilter" && dependency.Version != want {
 				t.Errorf("%s requires g0efilter %s, but VERSION is %s\nrun scripts/set-version.sh %s",
 					name, dependency.Version, want, want)
 			}

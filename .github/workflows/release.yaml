@@ -7,7 +7,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -48,7 +48,7 @@ jobs:
                  "run scripts/set-version.sh ${GITHUB_REF_NAME} and commit before tagging"
             exit 1
           fi
-          go test -count=1 ./tests/repo/ -run 'TestPinnedVersions|TestEveryExpectedFile'
+          go test -count=1 ./tests/repo/
 
       # GoReleaser builds the dashboard UI in its before hook.
       - name: Set up pnpm
@@ -112,12 +112,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-chart:
-    name: Publish Helm chart
+    name: Publish Helm charts
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write  # Publish the chart release and GitHub Pages index.
+      contents: write  # Add charts to the product release and update GitHub Pages.
       packages: write  # Publish the OCI chart to GHCR.
     steps:
       - uses: actions/checkout@v7
@@ -144,14 +144,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish GitHub Pages chart
-        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
-        with:
-          charts_dir: deploy/helm
-          mark_as_latest: false
-          skip_existing: true
+      - name: Package Helm charts
+        run: |
+          mkdir -p .cr-release-packages
+          for chart in deploy/helm/*/Chart.yaml; do
+            helm package "$(dirname "$chart")" --destination .cr-release-packages
+          done
+
+      - name: Add Helm charts to product release
         env:
-          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" .cr-release-packages/*.tgz --clobber
+
+      - name: Update GitHub Pages chart index
+        run: |
+          git fetch origin gh-pages
+          pages_dir="$RUNNER_TEMP/g0efilter-gh-pages"
+          git worktree add "$pages_dir" origin/gh-pages
+
+          index_args=(
+            .cr-release-packages
+            --url "https://github.com/g0lab/g0efilter/releases/download/${GITHUB_REF_NAME}"
+          )
+          if [ -f "$pages_dir/index.yaml" ]; then
+            index_args+=(--merge "$pages_dir/index.yaml")
+          fi
+          helm repo index "${index_args[@]}"
+          cp .cr-release-packages/index.yaml "$pages_dir/index.yaml"
+
+          git -C "$pages_dir" add index.yaml
+          if git -C "$pages_dir" diff --cached --quiet; then
+            exit 0
+          fi
+          git -C "$pages_dir" commit -m "Release ${GITHUB_REF_NAME} Helm charts"
+          git -C "$pages_dir" push origin HEAD:gh-pages
 
       - name: Publish OCI charts
         env:
@@ -159,7 +185,6 @@ jobs:
         run: |
           printf '%s' "$G0EFILTER_GHCR_TOKEN" | helm registry login ghcr.io \
             --username "$GITHUB_ACTOR" --password-stdin
-          # chart-releaser packages every chart into .cr-release-packages.
           for chart in deploy/helm/*/Chart.yaml; do
             name="$(awk '/^name:/ { print $2; exit }' "$chart")"
             version="$(awk '/^version:/ { print $2; exit }' "$chart")"

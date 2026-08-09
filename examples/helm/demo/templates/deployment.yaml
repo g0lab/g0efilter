@@ -18,8 +18,7 @@ spec:
         {{- $annotations | nindent 8 }}
       {{- end }}
     spec:
-      # Required when g0efilter.events.enabled: the sidecar needs a token to post.
-      automountServiceAccountToken: {{ .Values.g0efilter.events.enabled }}
+      automountServiceAccountToken: false
       initContainers:
         {{- include "g0efilter.sidecar" . | nindent 8 }}
       containers:

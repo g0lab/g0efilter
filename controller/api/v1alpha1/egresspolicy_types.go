@@ -30,9 +30,9 @@ type EgressPolicySpec struct {
 // SidecarSpec tunes the injected sidecar. The defaults match the Kustomize
 // component and the Helm library chart.
 //
-// Anything the sidecar itself talks to - the API server for Events, a dashboard, a
-// notification server - has to be allowed by this policy's own Egress rules. The
-// sidecar filters the whole network namespace, including its own traffic.
+// The API server must be allowed when Events are enabled. Dashboard, notification,
+// remote-unblock and upstream-DNS connections use marked sockets that bypass the
+// packet filter, although DNS modes still apply domain policy to hostname lookups.
 // +kubebuilder:validation:XValidation:rule="!has(self.metrics) || !self.metrics.enabled || (has(self.mode) && self.mode in ['dns','dns-strict'] ? (has(self.ports) && has(self.ports.dns) ? self.ports.dns : 65053) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095) : ((has(self.ports) && has(self.ports.http) ? self.ports.http : 65080) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095) && (has(self.ports) && has(self.ports.https) ? self.ports.https : 65443) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095)))",message="metrics port must differ from the active proxy ports"
 type SidecarSpec struct {
 	// Image overrides the sidecar image, including the tag.
@@ -162,7 +162,7 @@ type MetricsSpec struct {
 type DashboardSpec struct {
 	// Host is the dashboard's URL, such as
 	// `http://g0efilter-dashboard.g0efilter-system.svc:8080`. Shipping is off while
-	// this is empty. The Egress rules have to allow it.
+	// this is empty. DNS modes must allow the hostname so it can be resolved.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Host string `json:"host,omitempty"`
@@ -197,8 +197,8 @@ type DashboardSpec struct {
 
 // NotificationsSpec configures Gotify alerts for blocked traffic.
 type NotificationsSpec struct {
-	// Host is the Gotify server URL. Alerting is off while this is empty, and the
-	// Egress rules have to allow it.
+	// Host is the Gotify server URL. Alerting is off while this is empty. DNS modes
+	// must allow the hostname so it can be resolved.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Host string `json:"host,omitempty"`
@@ -222,8 +222,8 @@ type NotificationsSpec struct {
 
 // DNSSpec tunes the sidecar's DNS proxy.
 type DNSSpec struct {
-	// Upstreams are the resolvers the proxy forwards to, as `host:port`. Defaults to
-	// the container runtime's own resolver.
+	// Upstreams are the resolvers the proxy forwards to, as `host:port`. The default
+	// is Docker's `127.0.0.11:53`; set this to cluster DNS on Kubernetes.
 	// +optional
 	// +listType=atomic
 	Upstreams []string `json:"upstreams,omitempty"`

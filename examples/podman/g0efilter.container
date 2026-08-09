@@ -5,6 +5,7 @@ After=network-online.target
 [Container]
 Image=docker.io/g0lab/g0efilter:v0
 Pod=g0efilter.pod
+Notify=healthy
 
 # Mount the directory, not the file: live reload follows a replaced file. :Z relabels
 # for SELinux and is required on Fedora, RHEL and derivatives.

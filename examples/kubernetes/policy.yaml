@@ -14,4 +14,3 @@ data:
         - '10.96.0.10'
       domains:
         - 'example.com'
-        - '*.githubusercontent.com'
