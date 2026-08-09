@@ -269,12 +269,12 @@ never stop the control plane being rescheduled.
 Opt a namespace in and write a policy that selects the pods:
 
 ```sh
-kubectl label namespace tenant-a g0efilter.io/inject=enabled
+kubectl label namespace tenant-a g0efilter.g0lab.com/inject=enabled
 kubectl label namespace tenant-a pod-security.kubernetes.io/enforce=privileged
 ```
 
 ```yaml
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: web
@@ -420,13 +420,13 @@ Self-signed is the default to avoid making a fail-closed webhook depend on
 cert-manager startup. Use cert-manager when cluster policy requires a managed
 issuer.
 
-**Opting out.** Set `g0efilter.io/inject: "false"` as a pod annotation or label.
+**Opting out.** Set `g0efilter.g0lab.com/inject: "false"` as a pod annotation or label.
 Pods that already carry a `g0efilter` container, and host-network pods, are
 skipped.
 
 **Two policies selecting one pod is rejected.** Each policy renders its own
 ConfigMap, so admission fails rather than guessing. Set the
-`g0efilter.io/policy: <name>` annotation on the pod to choose.
+`g0efilter.g0lab.com/policy: <name>` annotation on the pod to choose.
 
 > [!WARNING]
 > The webhook is configured `failurePolicy: Fail`, so it fails closed: if the

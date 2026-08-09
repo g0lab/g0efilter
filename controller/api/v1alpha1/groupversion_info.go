@@ -1,7 +1,7 @@
 // Package v1alpha1 contains the g0efilter egress policy API.
 //
 // +kubebuilder:object:generate=true
-// +groupName=g0efilter.io
+// +groupName=g0efilter.g0lab.com
 package v1alpha1
 
 import (
@@ -11,7 +11,10 @@ import (
 )
 
 // GroupVersion is the API group and version this package defines.
-var GroupVersion = schema.GroupVersion{Group: "g0efilter.io", Version: "v1alpha1"} //nolint:gochecknoglobals
+var GroupVersion = schema.GroupVersion{ //nolint:gochecknoglobals
+	Group:   "g0efilter.g0lab.com",
+	Version: "v1alpha1",
+}
 
 // SchemeBuilder registers this package's types with a runtime.Scheme.
 var SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes) //nolint:gochecknoglobals

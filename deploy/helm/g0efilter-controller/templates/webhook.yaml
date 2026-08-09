@@ -27,7 +27,7 @@ metadata:
     cert-manager.io/inject-ca-from: {{ printf "%s/%s" .Release.Namespace (include "g0efilter-controller.fullname" .) }}
   {{- end }}
 webhooks:
-  - name: sidecar.g0efilter.io
+  - name: sidecar.g0efilter.g0lab.com
     admissionReviewVersions: ['v1']
     sideEffects: None
     clientConfig:
@@ -58,7 +58,7 @@ webhooks:
             {{- toYaml $excluded | nindent 12 }}
     objectSelector:
       matchExpressions:
-        - key: g0efilter.io/inject
+        - key: g0efilter.g0lab.com/inject
           operator: NotIn
           values: ['false']
 {{- end }}

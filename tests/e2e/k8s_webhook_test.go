@@ -23,9 +23,9 @@ metadata:
   name: %[1]s
   labels:
     pod-security.kubernetes.io/enforce: privileged
-    g0efilter.io/inject: enabled
+    g0efilter.g0lab.com/inject: enabled
 ---
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: web
@@ -149,7 +149,7 @@ metadata:
   labels:
     app: web
   annotations:
-    g0efilter.io/inject: 'false'
+    g0efilter.g0lab.com/inject: 'false'
 spec:
   containers:
     - name: app

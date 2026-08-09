@@ -51,7 +51,7 @@ func webhookConfiguration(name string) *admissionv1.MutatingWebhookConfiguration
 	return &admissionv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Webhooks: []admissionv1.MutatingWebhook{{
-			Name:         "sidecar.g0efilter.io",
+			Name:         "sidecar.g0efilter.g0lab.com",
 			ClientConfig: admissionv1.WebhookClientConfig{CABundle: nil}, //nolint:exhaustruct // bundle only
 		}},
 	}

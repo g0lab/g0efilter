@@ -36,7 +36,7 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	cluster.LoadAgentImage(t, harness.Env("G0EFILTER_IMAGE", "g0efilter:test"))
 
 	cluster.Apply(t, "--server-side", "-f", harness.RepoPath("deploy", "crds"))
-	cluster.WaitForCRDs(t, "egresspolicies.g0efilter.io", "clusteregresspolicies.g0efilter.io")
+	cluster.WaitForCRDs(t, "egresspolicies.g0efilter.g0lab.com", "clusteregresspolicies.g0efilter.g0lab.com")
 	// The webhook overlay, so this phase covers injection at admission as well as
 	// the render-time paths.
 	cluster.ApplyKustomize(t, harness.RepoPath("tests", "e2e", "testdata", "webhook"))
@@ -150,7 +150,7 @@ subjects:
   - kind: ServiceAccount
     name: default
 ---
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: web

@@ -91,8 +91,8 @@ func assertNamespaceGating(t *testing.T, hook map[string]any) {
 		found[key] = operator
 	}
 
-	if found["g0efilter.io/inject"] != "In" {
-		t.Errorf("namespaces are not gated on g0efilter.io/inject: %v", found)
+	if found["g0efilter.g0lab.com/inject"] != "In" {
+		t.Errorf("namespaces are not gated on g0efilter.g0lab.com/inject: %v", found)
 	}
 
 	if found["kubernetes.io/metadata.name"] != "NotIn" {

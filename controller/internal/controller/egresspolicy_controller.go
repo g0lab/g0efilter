@@ -30,7 +30,7 @@ const (
 	reasonInvalidPolicy = "InvalidPolicy"
 
 	managedByLabel = "app.kubernetes.io/managed-by"
-	policyLabel    = "g0efilter.io/policy"
+	policyLabel    = "g0efilter.g0lab.com/policy"
 	managedByValue = "g0efilter-controller"
 
 	maxConfigMapName = 253
@@ -44,8 +44,8 @@ type EgressPolicyReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=g0efilter.io,resources=egresspolicies;clusteregresspolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=g0efilter.io,resources=egresspolicies/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=g0efilter.g0lab.com,resources=egresspolicies;clusteregresspolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=g0efilter.g0lab.com,resources=egresspolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch

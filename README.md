@@ -140,7 +140,7 @@ filter:
 ```sh
 helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
   --namespace g0efilter-system --create-namespace
-kubectl label namespace <namespace> g0efilter.io/inject=enabled
+kubectl label namespace <namespace> g0efilter.g0lab.com/inject=enabled
 ```
 
 Pods also need to match an `EgressPolicy`; the namespace label alone does not

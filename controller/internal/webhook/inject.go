@@ -29,13 +29,13 @@ var (
 
 const (
 	// InjectAnnotation set to "false" on a pod opts it out of injection.
-	InjectAnnotation = "g0efilter.io/inject"
+	InjectAnnotation = "g0efilter.g0lab.com/inject"
 
 	// PolicyAnnotation names the policy to use when several select the pod.
-	PolicyAnnotation = "g0efilter.io/policy"
+	PolicyAnnotation = "g0efilter.g0lab.com/policy"
 
 	// InjectedAnnotation records the policy a pod was filtered by.
-	InjectedAnnotation = "g0efilter.io/injected-from"
+	InjectedAnnotation = "g0efilter.g0lab.com/injected-from"
 )
 
 // Injector adds the sidecar to pods selected by an EgressPolicy in their namespace.

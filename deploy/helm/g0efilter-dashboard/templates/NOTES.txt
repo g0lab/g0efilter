@@ -49,7 +49,7 @@ startup when the key store was empty:
 Point a sidecar at it. Both the host and the API key belong in the EgressPolicy, and
 the policy has to allow the dashboard itself - a sidecar filters its own egress:
 
-  apiVersion: g0efilter.io/v1alpha1
+  apiVersion: g0efilter.g0lab.com/v1alpha1
   kind: EgressPolicy
   metadata:
     name: web
