@@ -19,8 +19,8 @@ on:
       - 'tests/e2e/**/*.go'
       - 'tests/e2e/go.mod'
       - 'tests/e2e/go.sum'
-      - 'tests/repo/go.mod'
-      - 'tests/repo/go.sum'
+      - 'tests/go.mod'
+      - 'tests/go.sum'
       - 'tests/repo/**/*.go'
       - 'tests/manifests/**'
       - 'controller/**'
@@ -70,7 +70,7 @@ jobs:
             dashboard/go.sum
             shared/go.sum
             tests/e2e/go.sum
-            tests/repo/go.sum
+            tests/go.sum
 
       # Go tests embed and exercise the built dashboard UI.
       - name: Set up pnpm
@@ -123,11 +123,11 @@ jobs:
             --timeout=10m
             ./...
 
-      - name: Lint repository module
+      - name: Lint repository and manifest tests
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: '${{ env.GOLANGCI_LINT_VERSION }}'
-          working-directory: tests/repo
+          working-directory: tests
           args: >
             --timeout=10m
             ./...
@@ -181,4 +181,4 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: agent/coverage.txt,dashboard/coverage.txt,shared/coverage.txt,tests/repo/coverage.txt,controller/coverage.txt
+          files: agent/coverage.txt,dashboard/coverage.txt,shared/coverage.txt,tests/coverage.txt,controller/coverage.txt

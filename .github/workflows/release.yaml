@@ -43,7 +43,7 @@ jobs:
             controller/go.sum
             dashboard/go.sum
             shared/go.sum
-            tests/repo/go.sum
+            tests/go.sum
 
       # The tag is authoritative. VERSION mirrors it so a checkout of the tag has
       # manifests and docs pinned to that same release. Checked here as well as in
@@ -56,7 +56,7 @@ jobs:
                  "run scripts/set-version.sh ${GITHUB_REF_NAME} and commit before tagging"
             exit 1
           fi
-          go -C tests/repo test -count=1 ./...
+          go -C tests test -count=1 ./repo/...
 
       # GoReleaser builds the dashboard UI in its before hook.
       - name: Set up pnpm
@@ -73,14 +73,14 @@ jobs:
 
       - name: Check Go modules
         run: |
-          for module in shared agent dashboard controller tests/repo; do
+          for module in shared agent dashboard controller tests; do
             go -C "$module" mod tidy
           done
           git diff --exit-code
 
       - name: Vet
         run: |
-          for module in shared agent dashboard controller tests/repo; do
+          for module in shared agent dashboard controller tests; do
             go -C "$module" vet ./...
           done
 
@@ -91,9 +91,14 @@ jobs:
 
       - name: Test
         run: |
-          for module in shared agent dashboard tests/repo; do
+          for module in shared agent dashboard tests; do
             go -C "$module" test -race -covermode=atomic -coverprofile=coverage.txt ./...
           done
+
+      - name: Test controller
+        run: |
+          KUBEBUILDER_ASSETS="$(go -C controller tool setup-envtest use -p path)" \
+            go -C controller test -race -covermode=atomic -coverprofile=coverage.txt ./...
 
       - name: Lint agent module
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
@@ -122,11 +127,11 @@ jobs:
             --timeout=10m
             ./...
 
-      - name: Lint repository module
+      - name: Lint repository and manifest tests
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: latest
-          working-directory: tests/repo
+          working-directory: tests
           args: >
             --timeout=10m
             ./...

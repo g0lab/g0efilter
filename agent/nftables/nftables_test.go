@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/florianl/go-nflog/v2"
+	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -750,6 +751,24 @@ func TestCreateNflogHook(t *testing.T) {
 	}
 }
 
+func TestCreateNflogHookAddsFlowID(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	hook := createNflogHook(logger)
+	prefix := "blocked"
+	payload := buildIPv4TCPPacket(t)
+
+	hook(nflog.Attribute{Prefix: &prefix, Payload: &payload})
+
+	want := flow.ID("10.0.0.1", 12345, "10.0.0.2", 443, "TCP")
+	if !strings.Contains(buf.String(), `"flow_id":"`+want+`"`) {
+		t.Errorf("nflog event does not contain flow ID %q: %s", want, buf.String())
+	}
+}
+
 func TestStreamNfLogWithLogger(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping nflog stream test in short mode")
@@ -1070,6 +1089,22 @@ func TestProcessActionEventLevels(t *testing.T) {
 
 	if buf.Len() != 0 {
 		t.Errorf("ALLOWED nflog event must stay at DEBUG (filtered at INFO), got: %s", buf.String())
+	}
+}
+
+func TestProcessActionEventSuppressesSyntheticRedirect(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	flowID := flow.ID("192.0.2.1", 12345, "198.51.100.2", 443, "TCP")
+	flow.MarkSynthetic(flowID)
+
+	processActionEvent(logger, actions.ActionRedirected, flowID, PacketInfo{}, 64)
+
+	if buf.Len() != 0 {
+		t.Errorf("synthetic redirect produced a duplicate nflog event: %s", buf.String())
 	}
 }
 

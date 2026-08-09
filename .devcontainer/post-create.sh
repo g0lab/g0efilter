@@ -17,7 +17,7 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install
   | sh -s -- -b "$GOBIN"
 
 echo ">>> Go modules"
-for module in shared agent dashboard controller tests/e2e tests/repo; do
+for module in shared agent dashboard controller tests tests/e2e; do
   GOWORK=off go -C "$module" mod download
 done
 

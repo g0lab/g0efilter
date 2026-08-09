@@ -1,4 +1,4 @@
-module github.com/g0lab/g0efilter/tests/repo
+module github.com/g0lab/g0efilter/tests
 
 go 1.26.4
 

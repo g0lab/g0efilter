@@ -20,8 +20,8 @@ updates:
       - '/agent'
       - '/dashboard'
       - '/shared'
+      - '/tests'
       - '/tests/e2e'
-      - '/tests/repo'
       - '/controller'
     groups:
       gomod:

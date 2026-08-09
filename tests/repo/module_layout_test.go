@@ -13,7 +13,7 @@ func TestGoWorkspaceContainsEveryModule(t *testing.T) {
 
 	root := filepath.Join("..", "..")
 	workspace := readFile(t, filepath.Join(root, "go.work"))
-	modules := []string{"agent", "controller", "dashboard", "shared", "tests/e2e", "tests/repo"}
+	modules := []string{"agent", "controller", "dashboard", "shared", "tests", "tests/e2e"}
 
 	_, err := os.Stat(filepath.Join(root, "go.mod"))
 	if !errors.Is(err, os.ErrNotExist) {

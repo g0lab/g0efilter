@@ -91,7 +91,6 @@ func localHelmChart(t *testing.T, chart string) string {
 	return temporaryChart
 }
 
-// helmTemplate resolves the local library-chart dependency first.
 func helmTemplate(t *testing.T, chart string) []byte {
 	t.Helper()
 

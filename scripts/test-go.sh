@@ -24,7 +24,7 @@ echo ">>> golangci-lint config verify"
 golangci-lint config verify
 
 
-for module in shared agent dashboard tests/repo; do
+for module in shared agent dashboard tests; do
   echo ">>> $module module"
   GOWORK=off go -C "$module" mod tidy
   git diff --exit-code -- "$module/go.mod" "$module/go.sum"
