@@ -3,8 +3,8 @@
 # Kubernetes Events on the pod, so they appear in `kubectl describe pod`.
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
-#     - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.3
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+#     - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.4
 #
 # This is opt-in because it is the only thing that gives the pod Kubernetes API
 # access. Every container in a pod shares one ServiceAccount, so the permission is
