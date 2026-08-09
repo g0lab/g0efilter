@@ -141,7 +141,10 @@ func TestHelmEventsRBACIsOptIn(t *testing.T) {
 	t.Parallel()
 	serialHelm(t)
 
-	docs := byKind(t, decodeDocs(t, helmTemplate(t, repoPath("examples", "helm", "demo"))))
+	chart := repoPath("examples", "helm", "demo")
+	run(t, "helm", "dependency", "update", chart)
+	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
+		"--set", "g0efilter.events.enabled=true")))
 
 	if _, ok := docs["Role"]; !ok {
 		t.Fatal("the demo chart enables events but rendered no Role")

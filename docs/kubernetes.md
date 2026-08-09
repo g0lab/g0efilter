@@ -605,7 +605,7 @@ blocks the workload's resolver, so every request looks blocked for reasons
 unrelated to domain rules:
 
 ```sh
-kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'
+kubectl -n kube-system get svc -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.clusterIP}'
 ```
 
 In `dns` and `dns-strict` modes, configure that address as `DNS_UPSTREAMS`

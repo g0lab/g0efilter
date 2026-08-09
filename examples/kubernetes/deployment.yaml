@@ -26,6 +26,8 @@ spec:
             runAsUser: 65532
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop: ['ALL']
           resources:

@@ -4,7 +4,7 @@ This overlay requires Kubernetes 1.29 or later. Before applying it, replace
 `10.96.0.10` in `policy.yaml` with your cluster DNS Service address:
 
 ```sh
-kubectl -n kube-system get service kube-dns -o jsonpath='{.spec.clusterIP}'
+kubectl -n kube-system get service -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.clusterIP}'
 kubectl apply -k examples/kubernetes
 ```
 

@@ -57,6 +57,7 @@ services:
       - NET_ADMIN
     security_opt:
       - no-new-privileges
+    read_only: true
 
   example-container:
     image: docker.io/alpine/curl:latest

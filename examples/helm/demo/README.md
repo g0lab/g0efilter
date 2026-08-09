@@ -2,7 +2,8 @@
 
 This chart shows the minimum templates needed to consume the published g0efilter
 library chart. Replace `10.96.0.10` in `values.yaml` with your cluster DNS Service
-address, then run from the repository root:
+address (`kubectl -n kube-system get service -l k8s-app=kube-dns -o
+jsonpath='{.items[0].spec.clusterIP}'`), then run from the repository root:
 
 ```sh
 helm dependency update --skip-refresh examples/helm/demo

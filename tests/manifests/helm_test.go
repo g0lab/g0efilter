@@ -66,7 +66,7 @@ func TestHelmAndKustomizeAgreeOnTheSidecar(t *testing.T) {
 	serialHelm(t)
 
 	fromHelm := byKind(t, decodeDocs(t, helmTemplate(t, repoPath("examples", "helm", "demo"))))
-	fromKustomize := byKind(t, decodeDocs(t, renderKustomize(t, filepath.Join("testdata", "all-kinds-events"))))
+	fromKustomize := byKind(t, decodeDocs(t, renderKustomize(t, filepath.Join("testdata", "all-kinds"))))
 
 	helmPod := podSpec(t, fromHelm["Deployment"])
 	kzPod := podSpec(t, fromKustomize["Deployment"])

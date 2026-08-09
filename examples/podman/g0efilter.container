@@ -7,11 +7,20 @@ Image=docker.io/g0lab/g0efilter:v0
 Pod=g0efilter.pod
 Notify=healthy
 
+# OCI image metadata does not reliably preserve Dockerfile HEALTHCHECK settings.
+# Define it here so Notify=healthy works with the published image as well.
+HealthCmd=/app/g0efilter healthcheck
+HealthInterval=30s
+HealthTimeout=5s
+HealthStartPeriod=10s
+HealthRetries=3
+
 # Mount the directory, not the file: live reload follows a replaced file. :Z relabels
 # for SELinux and is required on Fedora, RHEL and derivatives.
 Volume=%h/g0efilter/policy:/app/policy:ro,Z
 
-Environment=FILTER_MODE=https
+Environment=FILTER_MODE=dns-strict
+Environment=DNS_UPSTREAMS=1.1.1.1:53
 Environment=POLICY_PATH=/app/policy/policy.yaml
 Environment=LOG_LEVEL=INFO
 
