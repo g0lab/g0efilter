@@ -3,7 +3,7 @@
 # workload of an overlay that references it:
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.1
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.2
 #
 # The sidecar is rendered into the manifest at build time, so filtering has no
 # runtime dependency: no webhook, no controller, no separate Service. Consumers
@@ -14,7 +14,7 @@ kind: Component
 
 images:
   - name: docker.io/g0lab/g0efilter
-    newTag: v0.8.1
+    newTag: v0.8.2
 
 patches:
   # Every workload whose pod template lives at spec.template.
