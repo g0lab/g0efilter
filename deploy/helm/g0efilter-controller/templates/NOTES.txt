@@ -23,7 +23,7 @@ Then write a policy selecting the pods to filter, and wait for it before creatin
 their workloads - admission denies a pod whose policy has not rendered yet:
 
   kubectl -n <namespace> apply -f - <<'EOF'
-  apiVersion: g0efilter.io/v1alpha1
+  apiVersion: g0efilter.g0lab.com/v1alpha1
   kind: EgressPolicy
   metadata:
     name: web
@@ -56,11 +56,11 @@ cert-manager issues the serving certificate. Confirm it was issued:
 {{ if not .Values.crds.install -}}
 crds.install is false, so apply them yourself:
 
-  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.io_egresspolicies.yaml
-  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.io_clusteregresspolicies.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.g0lab.com_egresspolicies.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v{{ .Chart.AppVersion }}/deploy/crds/g0efilter.g0lab.com_clusteregresspolicies.yaml
 {{- else -}}
 The CRDs are annotated helm.sh/resource-policy: keep, so `helm uninstall` leaves them
 and the policies they hold. Remove them deliberately when you mean to:
 
-  kubectl delete crd egresspolicies.g0efilter.io clusteregresspolicies.g0efilter.io
+  kubectl delete crd egresspolicies.g0efilter.g0lab.com clusteregresspolicies.g0efilter.g0lab.com
 {{- end }}

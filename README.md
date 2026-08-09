@@ -24,6 +24,7 @@ workload and applies IP and domain rules without decrypting TLS traffic.
 - Test and build policies with audit and learning modes.
 - Reload policies without restarting the container.
 - Use the optional dashboard, remote unblock, process details, and Gotify alerts.
+- Manage Kubernetes policies and inject sidecars with the optional controller.
 
 ## Quick start
 
@@ -126,7 +127,7 @@ without changing the workload source manifests.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.2
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.3
 ```
 
 That covers Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
@@ -140,7 +141,7 @@ filter:
 ```sh
 helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
   --namespace g0efilter-system --create-namespace
-kubectl label namespace <namespace> g0efilter.io/inject=enabled
+kubectl label namespace <namespace> g0efilter.g0lab.com/inject=enabled
 ```
 
 Pods also need to match an `EgressPolicy`; the namespace label alone does not

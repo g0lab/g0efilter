@@ -19,7 +19,7 @@ kind: MutatingWebhookConfiguration
 metadata:
   name: g0efilter-sidecar-injector
 webhooks:
-  - name: sidecar.g0efilter.io
+  - name: sidecar.g0efilter.g0lab.com
     admissionReviewVersions: ['v1']
     sideEffects: None
     # The controller writes its own CA here at startup, so no cert-manager is needed.
@@ -44,7 +44,7 @@ webhooks:
     # own: a failing webhook must not stop the controller being rescheduled.
     namespaceSelector:
       matchExpressions:
-        - key: g0efilter.io/inject
+        - key: g0efilter.g0lab.com/inject
           operator: In
           values: ['enabled']
         - key: kubernetes.io/metadata.name
@@ -52,6 +52,6 @@ webhooks:
           values: ['g0efilter-system', 'kube-system']
     objectSelector:
       matchExpressions:
-        - key: g0efilter.io/inject
+        - key: g0efilter.g0lab.com/inject
           operator: NotIn
           values: ['false']

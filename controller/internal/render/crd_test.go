@@ -30,10 +30,10 @@ func TestGeneratedCRDsMatchTheAPI(t *testing.T) {
 		wantText []string
 	}{
 		{
-			file: "g0efilter.io_egresspolicies.yaml",
+			file: "g0efilter.g0lab.com_egresspolicies.yaml",
 			wantText: []string{
-				"name: egresspolicies.g0efilter.io",
-				"group: g0efilter.io",
+				"name: egresspolicies.g0efilter.g0lab.com",
+				"group: g0efilter.g0lab.com",
 				"kind: EgressPolicy",
 				"scope: Namespaced",
 				"- g0ep",
@@ -46,9 +46,9 @@ func TestGeneratedCRDsMatchTheAPI(t *testing.T) {
 			},
 		},
 		{
-			file: "g0efilter.io_clusteregresspolicies.yaml",
+			file: "g0efilter.g0lab.com_clusteregresspolicies.yaml",
 			wantText: []string{
-				"name: clusteregresspolicies.g0efilter.io",
+				"name: clusteregresspolicies.g0efilter.g0lab.com",
 				"kind: ClusterEgressPolicy",
 				"scope: Cluster",
 				"- g0cep",
@@ -77,7 +77,7 @@ func TestGeneratedCRDsMatchTheAPI(t *testing.T) {
 func TestGeneratedCRDKeepsValidation(t *testing.T) {
 	t.Parallel()
 
-	crd := readCRD(t, "g0efilter.io_egresspolicies.yaml")
+	crd := readCRD(t, "g0efilter.g0lab.com_egresspolicies.yaml")
 
 	for _, want := range []string{
 		"maximum: 65535",

@@ -23,9 +23,9 @@ metadata:
   name: %[1]s
   labels:
     pod-security.kubernetes.io/enforce: privileged
-    g0efilter.io/inject: enabled
+    g0efilter.g0lab.com/inject: enabled
 ---
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: web
@@ -86,7 +86,8 @@ func webhookSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string
 		t.Errorf("init containers are %q; the webhook must inject the sidecar first", names)
 	}
 
-	from := cluster.Get(t, webhookNamespace, "pod", pod, "{.metadata.annotations.g0efilter\\.io/injected-from}")
+	from := cluster.Get(t, webhookNamespace, "pod", pod,
+		"{.metadata.annotations.g0efilter\\.g0lab\\.com/injected-from}")
 	if from != "web" {
 		t.Errorf("injected-from = %q, want web", from)
 	}
@@ -149,7 +150,7 @@ metadata:
   labels:
     app: web
   annotations:
-    g0efilter.io/inject: 'false'
+    g0efilter.g0lab.com/inject: 'false'
 spec:
   containers:
     - name: app

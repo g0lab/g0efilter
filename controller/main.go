@@ -137,7 +137,7 @@ func run(opts options) error {
 		Metrics:                metricsserver.Options{BindAddress: opts.metricsAddr}, //nolint:exhaustruct // address only
 		HealthProbeBindAddress: opts.probeAddr,
 		LeaderElection:         opts.leaderElect,
-		LeaderElectionID:       "g0efilter-controller.g0efilter.io",
+		LeaderElectionID:       "g0efilter-controller.g0efilter.g0lab.com",
 		WebhookServer: webhookserver.NewServer(webhookserver.Options{ //nolint:exhaustruct // port and cert dir only
 			Port:    opts.webhookPort,
 			CertDir: opts.certDir,

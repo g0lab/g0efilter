@@ -28,7 +28,7 @@ func TestPhase18Kubernetes(t *testing.T) {
 	cluster := harness.StartK3s(t)
 
 	cluster.Apply(t, "--server-side", "-f", harness.RepoPath("deploy", "crds"))
-	cluster.WaitForCRDs(t, "egresspolicies.g0efilter.io", "clusteregresspolicies.g0efilter.io")
+	cluster.WaitForCRDs(t, "egresspolicies.g0efilter.g0lab.com", "clusteregresspolicies.g0efilter.g0lab.com")
 
 	cluster.ApplyKustomize(t, harness.RepoPath("tests", "e2e", "testdata", "controller"))
 	cluster.WaitForDeployment(t, "g0efilter-system", "g0efilter-controller")
@@ -47,7 +47,7 @@ kind: Namespace
 metadata:
   name: tenant-a
 ---
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: web
@@ -97,7 +97,7 @@ func k8sMergesClusterPolicy(t *testing.T, cluster *harness.K3sCluster) {
 	t.Helper()
 
 	cluster.ApplyManifest(t, `
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: ClusterEgressPolicy
 metadata:
   name: baseline-dns
@@ -117,7 +117,7 @@ func k8sGarbageCollects(t *testing.T, cluster *harness.K3sCluster) {
 	t.Helper()
 
 	cluster.ApplyManifest(t, `
-apiVersion: g0efilter.io/v1alpha1
+apiVersion: g0efilter.g0lab.com/v1alpha1
 kind: EgressPolicy
 metadata:
   name: temporary

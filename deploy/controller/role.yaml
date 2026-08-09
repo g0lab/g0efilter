@@ -49,7 +49,7 @@ rules:
   - get
   - update
 - apiGroups:
-  - g0efilter.io
+  - g0efilter.g0lab.com
   resources:
   - clusteregresspolicies
   - egresspolicies
@@ -58,7 +58,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - g0efilter.io
+  - g0efilter.g0lab.com
   resources:
   - egresspolicies/status
   verbs:

@@ -370,7 +370,7 @@ type EgressPolicyStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // Short names are cluster-global and ungrouped, so they carry the project prefix
-// even though egresspolicies.g0efilter.io is already unique.
+// even though egresspolicies.g0efilter.g0lab.com is already unique.
 // +kubebuilder:resource:shortName=g0ep,categories=g0efilter
 // +kubebuilder:printcolumn:name="ConfigMap",type=string,JSONPath=`.status.configMapName`
 // +kubebuilder:printcolumn:name="Pods",type=integer,JSONPath=`.status.selectedPods`
