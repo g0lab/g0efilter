@@ -1,0 +1,106 @@
+---
+name: Prepare Release
+run-name: Prepare ${{ inputs.version || 'next patch release' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (for example 0.8.4); leave blank for the next patch'
+        required: false
+        type: string
+
+permissions:
+  contents: write  # Push the version bump branch.
+  pull-requests: write  # Open the release preparation PR.
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Update version and open PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Set version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          current="$(tr -d '[:space:]' < VERSION)"
+          scripts/set-version.sh "$REQUESTED_VERSION"
+          target="$(tr -d '[:space:]' < VERSION)"
+          {
+            echo "current=$current"
+            echo "target=$target"
+            echo "branch=chore/release-v$target"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Ensure release does not already exist
+        env:
+          BRANCH: ${{ steps.version.outputs.branch }}
+          VERSION: ${{ steps.version.outputs.target }}
+        run: |
+          if git rev-parse --quiet --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::tag v$VERSION already exists"
+            exit 1
+          fi
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            echo "::error::branch $BRANCH already exists; update or remove it before retrying"
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26'
+          cache: true
+          cache-dependency-path: tests/go.sum
+
+      - name: Validate generated changes
+        run: |
+          git diff --check
+          go -C tests test -count=1 ./repo/...
+          if git diff --quiet; then
+            echo "::error::set-version.sh made no changes"
+            exit 1
+          fi
+
+      - name: Commit and push version bump
+        env:
+          BRANCH: ${{ steps.version.outputs.branch }}
+          VERSION: ${{ steps.version.outputs.target }}
+        run: |
+          git switch -c "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "chore: prepare release v$VERSION"
+          git push origin "$BRANCH"
+
+      - name: Open pull request
+        env:
+          BRANCH: ${{ steps.version.outputs.branch }}
+          CURRENT_VERSION: ${{ steps.version.outputs.current }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.target }}
+        run: |
+          body="$(printf '%s\n\n%s\n%s' \
+            "Updates the unified g0efilter release from $CURRENT_VERSION to $VERSION." \
+            "- Runs \`scripts/set-version.sh $VERSION\`" \
+            "- Updates the agent, dashboard, controller, charts, docs, and examples together")"
+          gh pr create \
+            --base "$DEFAULT_BRANCH" \
+            --head "$BRANCH" \
+            --title "chore: prepare release v$VERSION" \
+            --body "$body"

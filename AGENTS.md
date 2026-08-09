@@ -25,7 +25,8 @@ scripts/test-fuzz.sh     # every Go fuzz target, FUZZTIME per target
 
 `VERSION` pins the release referenced by every manifest, doc and the injected
 sidecar image. It holds plain SemVer; tags carry a `v`. Change it only with
-`scripts/set-version.sh X.Y.Z`, which also bumps the Helm chart version.
+`scripts/set-version.sh [X.Y.Z]`, which defaults to the next patch and also bumps
+the Helm chart version.
 
 Use `scripts/dev.sh` for local dashboard development; add `--traffic` for synthetic traffic. The `.devcontainer/` contains the supported full toolchain.
 

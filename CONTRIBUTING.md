@@ -64,7 +64,14 @@ agent or dashboard code. See `tests/e2e/README.md` for modes and suite selection
 ## Releasing
 
 `VERSION` is the source of truth for the g0efilter release. Release tags must
-match it and are what trigger publication:
+match it and are what trigger publication. The preferred path is to run the
+**Prepare Release** workflow. Leave its version input blank to use the next patch
+version from `VERSION`, or enter a newer `X.Y.Z` version. The workflow validates
+the input, runs `set-version.sh`, checks every pinned version, and opens a release
+preparation PR.
+
+For a manual next-patch bump, run `scripts/set-version.sh` with no arguments. To
+select another newer version, pass it explicitly:
 
 ```sh
 scripts/set-version.sh 0.9.0

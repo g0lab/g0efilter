@@ -29,8 +29,10 @@ on:
       - 'examples/helm/**'
       - 'scripts/gen-chart-crds.sh'
       - 'scripts/gen-controller.sh'
+      - 'scripts/set-version.sh'
       - 'scripts/test-go.sh'
-      - '.github/workflows/ci-go.yaml'
+      - '.github/**/*.yml'
+      - '.github/**/*.yaml'
 
   workflow_dispatch:
 
