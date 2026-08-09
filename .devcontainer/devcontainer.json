@@ -1,7 +1,7 @@
 {
   "name": "g0efilter",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
-  // Feature versions mirror the repo's own lines (go.mod `go 1.26`,
+  // Feature versions mirror the repo's own lines (go.work `go 1.26`,
   // package.json `engines.node >=24`); static JSON can't read those files.
   "features": {
     "ghcr.io/devcontainers/features/go:1": { "version": "1.26" },

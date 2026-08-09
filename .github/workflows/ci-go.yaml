@@ -9,11 +9,19 @@ on:
       - 'dashboard/**'
       - '!dashboard/ui/**'
       - 'dashboard/ui/*.go'
-      - 'go.mod'
-      - 'go.sum'
+      - 'go.work'
+      - 'agent/go.mod'
+      - 'agent/go.sum'
+      - 'dashboard/go.mod'
+      - 'dashboard/go.sum'
+      - 'shared/go.mod'
+      - 'shared/go.sum'
       - 'tests/e2e/**/*.go'
       - 'tests/e2e/go.mod'
       - 'tests/e2e/go.sum'
+      - 'tests/repo/go.mod'
+      - 'tests/repo/go.sum'
+      - 'tests/repo/**/*.go'
       - 'tests/manifests/**'
       - 'controller/**'
       - 'deploy/**'
@@ -39,31 +47,39 @@ concurrency:
 
 env:
   GOLANGCI_LINT_VERSION: latest
+  GOWORK: 'off'
 
 jobs:
   validate-test-lint:
     name: Validate, test, lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.26'
           cache: true
+          cache-dependency-path: |
+            agent/go.sum
+            controller/go.sum
+            dashboard/go.sum
+            shared/go.sum
+            tests/e2e/go.sum
+            tests/repo/go.sum
 
       # Go tests embed and exercise the built dashboard UI.
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           package_json_file: dashboard/ui/package.json
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: '24'
           cache: pnpm
@@ -75,21 +91,49 @@ jobs:
           pnpm --dir dashboard/ui build
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@v5
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5
 
       - name: Set up Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
 
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
+      - name: Lint agent module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: '${{ env.GOLANGCI_LINT_VERSION }}'
+          working-directory: agent
+          args: >
+            --timeout=10m
+            ./...
+
+      - name: Lint dashboard module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: '${{ env.GOLANGCI_LINT_VERSION }}'
+          working-directory: dashboard
+          args: >
+            --timeout=10m
+            ./...
+
+      - name: Lint shared module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: '${{ env.GOLANGCI_LINT_VERSION }}'
+          working-directory: shared
+          args: >
+            --timeout=10m
+            ./...
+
+      - name: Lint repository module
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
+        with:
+          version: '${{ env.GOLANGCI_LINT_VERSION }}'
+          working-directory: tests/repo
           args: >
             --timeout=10m
             ./...
 
       - name: Lint e2e module
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: '${{ env.GOLANGCI_LINT_VERSION }}'
           working-directory: tests/e2e
@@ -102,7 +146,7 @@ jobs:
         run: go vet ./...
 
       - name: Lint controller module
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: '${{ env.GOLANGCI_LINT_VERSION }}'
           working-directory: controller
@@ -118,7 +162,7 @@ jobs:
 
       # Fails when a chart changed without a Chart.yaml version bump.
       - name: Lint charts
-        uses: helm/chart-testing-action@v2
+        uses: helm/chart-testing-action@6ec842c01de15ebb84c8627d2744a0c2f2755c9f # v2
         with:
           version: v3.14.0
 
@@ -134,7 +178,7 @@ jobs:
         run: scripts/test-go.sh
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.txt,controller/coverage.txt
+          files: agent/coverage.txt,dashboard/coverage.txt,shared/coverage.txt,tests/repo/coverage.txt,controller/coverage.txt

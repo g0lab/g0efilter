@@ -16,17 +16,17 @@ const helmNamespace = "helm-demo"
 func helmInstalledRelease(t *testing.T, cluster *harness.K3sCluster) string {
 	t.Helper()
 
-	cluster.ApplyManifest(t, `
+	cluster.ApplyManifest(t, strings.TrimSpace(`
 apiVersion: v1
 kind: Namespace
 metadata:
   name: `+helmNamespace+`
   labels:
     pod-security.kubernetes.io/enforce: privileged
-`)
+	`))
 
 	chart := harness.RepoPath("examples", "helm", "demo")
-	cluster.HelmDependencyUpdate(t, chart)
+	chart = cluster.HelmDependencyUpdate(t, chart)
 
 	cluster.HelmInstall(t, helmNamespace, "demo", chart,
 		"--set", "g0efilter.image.repository=g0efilter",

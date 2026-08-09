@@ -1,5 +1,6 @@
 [![agent pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter.svg?label=agent%20pulls)](https://hub.docker.com/r/g0lab/g0efilter)
 [![dashboard pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-dashboard.svg?label=dashboard%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-dashboard)
+[![controller pulls](https://img.shields.io/docker/pulls/g0lab/g0efilter-controller.svg?label=controller%20pulls)](https://hub.docker.com/r/g0lab/g0efilter-controller)
 [![CI (Go)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci-go.yaml)
 [![CI (UI)](https://github.com/g0lab/g0efilter/actions/workflows/ci-ui.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/ci-ui.yaml)
 [![Tests](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml/badge.svg)](https://github.com/g0lab/g0efilter/actions/workflows/test.yaml)

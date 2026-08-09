@@ -4,11 +4,11 @@ g0efilter is a Go egress-filtering sidecar with a dashboard, Kubernetes packagin
 
 ## Repository
 
-* `agent/` and `dashboard/` contain the main Go binaries; shared packages are in `shared/`.
-* `controller/` is a separate Go module to keep `controller-runtime` out of the agent and dashboard dependencies.
+* `agent/`, `dashboard/`, and `shared/` are separate Go modules joined by the committed root `go.work`.
+* `controller/` is a separate Go module to keep `controller-runtime` out of the other production dependency trees.
 * `dashboard/ui/` contains the frontend. Its generated `dist/` is embedded by Go but is not committed.
 * `deploy/` contains the Kustomize, Helm, and Helm post-renderer implementations. They must inject the same sidecar configuration.
-* `tests/e2e/` is a separate Go module containing container-based end-to-end tests.
+* `tests/e2e/` and `tests/repo/` are separate Go modules for end-to-end and repository-wide tests.
 
 Prefer inspecting the repository tree over maintaining detailed package lists here.
 

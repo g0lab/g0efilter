@@ -14,7 +14,7 @@ FILTER="${1:-}"
 
 # Modules holding fuzz targets. go list scopes each one, so nested modules are not
 # walked twice.
-MODULES=("." "controller")
+MODULES=("agent" "controller" "dashboard" "shared")
 
 failed=0
 
@@ -26,7 +26,7 @@ fuzz_package() {
   for target in $targets; do
     echo ">>> $importpath: $target ($FUZZTIME)"
 
-    if ! (cd "$module" && go test "$importpath" -run '^$' -fuzz "^${target}\$" -fuzztime="$FUZZTIME"); then
+    if ! (cd "$module" && GOWORK=off go test "$importpath" -run '^$' -fuzz "^${target}\$" -fuzztime="$FUZZTIME"); then
       failed=$((failed + 1))
     fi
   done
@@ -39,7 +39,7 @@ for module in "${MODULES[@]}"; do
     fi
 
     fuzz_package "$module" "$dir" "$importpath"
-  done < <(cd "$module" && go list -f '{{.Dir}}	{{.ImportPath}}' ./...)
+  done < <(cd "$module" && GOWORK=off go list -f '{{.Dir}}	{{.ImportPath}}' ./...)
 done
 
 if [ "$failed" -ne 0 ]; then

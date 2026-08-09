@@ -6,15 +6,16 @@ ARG DATE=unknown
 
 WORKDIR /build
 
-COPY go.mod go.sum ./
-RUN go mod download
+COPY agent/go.mod agent/go.sum ./agent/
+COPY shared/go.mod shared/go.sum ./shared/
+RUN GOWORK=off go -C agent mod download
 
 COPY . .
 
 ENV CGO_ENABLED=0 GOOS=linux
-RUN go build -trimpath \
+RUN GOWORK=off go -C agent build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
-    -o /build/g0efilter ./agent
+    -o /build/g0efilter .
 
 FROM alpine:3.24.1
 

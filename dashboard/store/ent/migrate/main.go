@@ -5,7 +5,7 @@
 // replays the committed migrations onto a throwaway dev database, diffs the
 // desired state (the Ent schema) against it, and writes the new .sql file.
 //
-// Usage: go run -mod=mod ./dashboard/store/ent/migrate <name>
+// Usage: run scripts/gen-migration.sh from the repository root.
 package main
 
 import (
@@ -22,7 +22,7 @@ import (
 	sqlite "modernc.org/sqlite"
 )
 
-const migrationsDir = "dashboard/store/migrations"
+const migrationsDir = "store/migrations"
 
 // Atlas's sqlite opener does sql.Open("sqlite3", ...); modernc registers only
 // "sqlite", so alias it.
@@ -30,7 +30,7 @@ func init() { sql.Register("sqlite3", &sqlite.Driver{}) }
 
 func main() {
 	if len(os.Args) != 2 {
-		log.Fatalln("migration name required: go run -mod=mod ./dashboard/store/ent/migrate <name>")
+		log.Fatalln("migration name required: run scripts/gen-migration.sh <name> from the repository root")
 	}
 
 	ctx := context.Background()

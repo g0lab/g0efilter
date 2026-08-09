@@ -51,7 +51,8 @@ func trackedFiles(t *testing.T) []string {
 	defer cancel()
 
 	//nolint:gosec // git resolved through LookPath, with literal arguments
-	out, err := exec.CommandContext(ctx, bin, "-C", filepath.Join("..", ".."), "ls-files").Output()
+	out, err := exec.CommandContext(ctx, bin, "-C", filepath.Join("..", ".."),
+		"ls-files", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -65,7 +66,20 @@ func trackedFiles(t *testing.T) []string {
 
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		name := strings.TrimSpace(line)
-		if name != "" && !skipExtensions[strings.ToLower(filepath.Ext(name))] {
+		if name == "" {
+			continue
+		}
+
+		_, err := os.Stat(filepath.Join("..", "..", name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			t.Fatalf("stat %s: %v", name, err)
+		}
+
+		if !skipExtensions[strings.ToLower(filepath.Ext(name))] {
 			files = append(files, name)
 		}
 	}

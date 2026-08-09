@@ -54,6 +54,9 @@ linters:
               desc: 'Use math/rand/v2 instead'
     goconst:
       ignore-tests: true
+    gomoddirectives:
+      # Agent and dashboard are binary modules developed with the sibling shared module.
+      replace-local: true
     gomodguard_v2:
       local-replace-directives: true
     ireturn:

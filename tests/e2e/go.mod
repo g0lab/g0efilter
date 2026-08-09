@@ -1,5 +1,5 @@
 // Separate module: the Testcontainers dependency tree is large and test-only, so
-// it stays out of the module that ships the agent and dashboard binaries.
+// it stays out of the production modules.
 module github.com/g0lab/g0efilter/tests/e2e
 
 go 1.26.4

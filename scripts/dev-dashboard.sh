@@ -20,7 +20,7 @@ DEV_SEED_COUNT="${DEV_SEED_COUNT:-10000}"
 
 if [ "$DEV_SEED_COUNT" != "0" ]; then
   echo ">>> replacing dev traffic logs with $DEV_SEED_COUNT seeded events"
-  go run ./scripts/dev-seed-dashboard -db "$DEV_DIR/dashboard.db" -count "$DEV_SEED_COUNT"
+  go run ./dashboard/cmd/dev-seed-dashboard -db "$DEV_DIR/dashboard.db" -count "$DEV_SEED_COUNT"
 fi
 
 HASH=$(printf '%s\n' "$DEV_PASSWORD" | go run ./dashboard hash-password)

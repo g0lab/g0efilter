@@ -19,18 +19,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@v0
+        uses: g0lab/g0efilter@d7fa6ef3f34db2948be993a114b474b80b6066f8 # v0
         with:
           egress-policy: block
           allowed-domains: |
             hub.docker.com
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Update agent description
-        uses: peter-evans/dockerhub-description@v5
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -38,7 +38,7 @@ jobs:
           enable-url-completion: true
 
       - name: Update dashboard description
-        uses: peter-evans/dockerhub-description@v5
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -46,7 +46,7 @@ jobs:
           enable-url-completion: true
 
       - name: Update controller description
-        uses: peter-evans/dockerhub-description@v5
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

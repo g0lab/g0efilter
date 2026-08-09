@@ -26,6 +26,10 @@ checks.
 
 ## Validation
 
+The agent, dashboard, shared library, controller, and test suites have separate
+Go modules. The committed `go.work` joins them for local development, while the
+canonical scripts test each module independently.
+
 Run the script for each area you changed:
 
 ```sh
