@@ -1,6 +1,7 @@
-# Docker Compose example
+# Examples
 
-This example starts g0efilter, its dashboard, and a test container.
+The default example starts g0efilter, its dashboard, and a test container with
+Docker Compose:
 
 ```sh
 cd examples
@@ -20,6 +21,12 @@ Try an allowed domain from the test container:
 docker compose exec example-container curl -I https://github.com
 ```
 
+An unlisted domain is blocked:
+
+```sh
+docker compose exec example-container curl -I --max-time 5 https://example.com
+```
+
 Edit `policy/policy.yaml` to change the rules. Changes reload automatically.
 
 Before using this setup outside your machine, replace
@@ -34,3 +41,10 @@ docker compose down
 
 See [configuration](../docs/configuration.md) and
 [policy](../docs/policy.md) for more options.
+
+Other examples:
+
+- [Kubernetes with Kustomize](kubernetes/)
+- [a Helm library-chart consumer](helm/demo/)
+- [rootless Podman Quadlet](podman/)
+- [building the images from source](build/)

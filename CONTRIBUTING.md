@@ -26,6 +26,10 @@ checks.
 
 ## Validation
 
+The agent, dashboard, shared library, controller, and test suites have separate
+Go modules. The committed `go.work` joins them for local development, while the
+canonical scripts test each module independently.
+
 Run the script for each area you changed:
 
 ```sh
@@ -75,7 +79,9 @@ fails when `VERSION` does not match the tag.
 
 All chart `version` and `appVersion` fields track `VERSION`; `set-version.sh`
 updates them together. Charts publish only from tags, and chart-testing rejects
-template changes without a version bump.
+template changes without a version bump. One `v<version>` GitHub release contains
+the agent, dashboard, controller, and all three Helm chart packages. The same tag
+also publishes their container images and OCI charts.
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.

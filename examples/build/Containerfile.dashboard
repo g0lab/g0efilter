@@ -20,16 +20,17 @@ ARG DATE=unknown
 
 WORKDIR /build
 
-COPY go.mod go.sum ./
-RUN go mod download
+COPY dashboard/go.mod dashboard/go.sum ./dashboard/
+COPY shared/go.mod shared/go.sum ./shared/
+RUN GOWORK=off go -C dashboard mod download
 
 COPY . .
 COPY --from=ui /ui/dist ./dashboard/ui/dist
 
 ENV CGO_ENABLED=0 GOOS=linux
-RUN go build -trimpath \
+RUN GOWORK=off go -C dashboard build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
-    -o /build/g0efilter-dashboard ./dashboard
+    -o /build/g0efilter-dashboard .
 
 # Create the runtime image.
 FROM gcr.io/distroless/static:nonroot

@@ -18,7 +18,6 @@ spec:
         {{- $annotations | nindent 8 }}
       {{- end }}
     spec:
-      # Required when g0efilter.events.enabled: the sidecar needs a token to post.
       automountServiceAccountToken: {{ .Values.g0efilter.events.enabled }}
       initContainers:
         {{- include "g0efilter.sidecar" . | nindent 8 }}
@@ -31,6 +30,8 @@ spec:
             runAsUser: 65532
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop: ['ALL']
       volumes:

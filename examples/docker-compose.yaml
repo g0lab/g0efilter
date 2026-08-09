@@ -24,6 +24,11 @@ services:
   g0efilter-dashboard:
     image: docker.io/g0lab/g0efilter-dashboard:v0
     container_name: g0efilter-dashboard
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
     volumes:
       - g0efilter-dashboard-data:/app/data
     env_file:

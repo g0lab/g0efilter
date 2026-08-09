@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/agent/procinfo"
@@ -667,7 +668,7 @@ func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, target 
 	destIP, destPort := parseHostPort(target)
 	sourceIP, sourcePort := sourceAddr(conn)
 
-	flowID := actions.FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
+	flowID := flow.ID(sourceIP, sourcePort, destIP, destPort, "tcp")
 	logger.Debug("nflog.synthetic",
 		"component", component,
 		"action", actions.ActionRedirected,
@@ -681,7 +682,7 @@ func EmitSynthetic(logger *slog.Logger, component string, conn net.Conn, target 
 		"dst", destIP+":"+strconv.Itoa(destPort),
 		"flow_id", flowID,
 	)
-	actions.MarkSynthetic(flowID)
+	flow.MarkSynthetic(flowID)
 
 	return flowID
 }
@@ -693,7 +694,7 @@ func EmitSyntheticUDP(logger *slog.Logger, component, sourceIP string, sourcePor
 	}
 
 	destIP, destPort := parseHostPort(dst)
-	flowID := actions.FlowID(sourceIP, sourcePort, destIP, destPort, "udp")
+	flowID := flow.ID(sourceIP, sourcePort, destIP, destPort, "udp")
 	logger.Debug("nflog.synthetic",
 		"component", component,
 		"action", actions.ActionRedirected,
@@ -707,7 +708,7 @@ func EmitSyntheticUDP(logger *slog.Logger, component, sourceIP string, sourcePor
 		"dst", dst,
 		"flow_id", flowID,
 	)
-	actions.MarkSynthetic(flowID)
+	flow.MarkSynthetic(flowID)
 
 	return flowID
 }
@@ -843,7 +844,7 @@ func logAllowedConnection(opts Options, component, target, identifier string, co
 
 	sourceIP, sourcePort := sourceAddr(conn)
 	destIP, destPort := parseHostPort(target)
-	flowID := actions.FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
+	flowID := flow.ID(sourceIP, sourcePort, destIP, destPort, "tcp")
 
 	fields := baseLogFields(component, actions.ActionAllowed, identifier, sourceIP, sourcePort)
 	fields = append(fields,
@@ -888,7 +889,7 @@ func logPolicyViolation(
 	}
 
 	if destIP != "" {
-		flowID := actions.FlowID(sourceIP, sourcePort, destIP, destPort, "tcp")
+		flowID := flow.ID(sourceIP, sourcePort, destIP, destPort, "tcp")
 		fields = append(fields,
 			"destination_ip", destIP,
 			"destination_port", destPort,

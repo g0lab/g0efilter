@@ -1,0 +1,10 @@
+go 1.26.4
+
+use (
+	./agent
+	./controller
+	./dashboard
+	./shared
+	./tests
+	./tests/e2e
+)

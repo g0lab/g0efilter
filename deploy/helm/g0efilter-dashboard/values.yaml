@@ -2,12 +2,9 @@
 # The g0efilter dashboard. Sidecars ship their logs to it with a machine API key;
 # point them at it with the EgressPolicy's `sidecar.dashboard` block, or the library
 # chart's `dashboard` values.
-#
-# A sidecar filters its own egress, so the policy of every workload that ships logs
-# has to allow this dashboard's address.
 image:
   repository: docker.io/g0lab/g0efilter-dashboard
-  tag: v0.8.1
+  tag: v0.8.2
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -61,7 +58,7 @@ secrets:
   #
   # Leaving apiKey and adminPasswordHash empty is supported - the dashboard generates
   # each once and prints it to its log on first start. Generate a hash yourself with:
-  #   docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.1 hash-password
+  #   docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.2 hash-password
   apiKey: ''
   adminPasswordHash: ''
   jwtSecret: ''

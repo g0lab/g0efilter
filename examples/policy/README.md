@@ -5,7 +5,7 @@ other policy, copy it over `policy.yaml`; live reload applies the change.
 
 | File | Behavior |
 | --- | --- |
-| `policy.yaml` | Blocks everything except its allowlist |
+| `policy.yaml` | Allows only `github.com` |
 | `policy-default-allow.yaml` | Allows everything except its denylist |
 
 Domain lists accept exact names, wildcards, and regular expressions:
@@ -19,7 +19,7 @@ domains:
 ```
 
 `*` can cross dots. Use a regular expression when a match must stay within one
-domain label. Use single quotes for all policy string values.
+domain label.
 
 See the main [policy guide](../../docs/policy.md) for denylist, learning, and
 audit modes.

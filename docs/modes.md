@@ -37,6 +37,11 @@ returned. This check applies only when the policy contains allowed IPs.
 DNS mode covers any protocol with little overhead, but it only enforces rules
 during lookup. Hardcoded IPs, cached answers, and DNS-over-HTTPS can bypass it.
 
+The default upstream is Docker's `127.0.0.11:53`. On Kubernetes, set
+`DNS_UPSTREAMS` (or `dns.upstreams` in the Helm library chart and
+`spec.sidecar.dns.upstreams` in an `EgressPolicy`) to the cluster DNS Service,
+such as `10.96.0.10:53`.
+
 ## DNS-strict mode
 
 DNS-strict starts with DNS mode, then adds each allowed A or AAAA answer to a

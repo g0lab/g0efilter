@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/g0lab/g0efilter/shared/actions"
+	"github.com/g0lab/g0efilter/agent/flow"
 )
 
 // Test constants.
@@ -368,7 +368,7 @@ func testEmitSyntheticUDPCase(t *testing.T, tt struct {
 			t.Error("Expected non-empty flow ID")
 		}
 		// Verify the flow is marked as synthetic
-		if !actions.IsSyntheticRecent(result) {
+		if !flow.IsSyntheticRecent(result) {
 			t.Error("Expected emitted flow to be marked as synthetic")
 		}
 	} else if result != "" {
@@ -635,7 +635,7 @@ func testEmitSyntheticCase(t *testing.T, tt struct {
 			t.Error("Expected non-empty flow ID")
 		}
 		// Verify the flow is marked as synthetic
-		if !actions.IsSyntheticRecent(result) {
+		if !flow.IsSyntheticRecent(result) {
 			t.Error("Expected emitted flow to be marked as synthetic")
 		}
 	} else if result != "" {

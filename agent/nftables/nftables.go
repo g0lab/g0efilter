@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/florianl/go-nflog/v2"
+	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/shared/actions"
@@ -1311,7 +1312,7 @@ func processActionEvent(
 	payloadLen int,
 ) {
 	// If we have a recent synthetic for this flow, suppress kernel nflog REDIRECTED to avoid duplicates
-	if action == actions.ActionRedirected && flowID != "" && actions.IsSyntheticRecent(flowID) {
+	if action == actions.ActionRedirected && flowID != "" && flow.IsSyntheticRecent(flowID) {
 		return // handled, skip logging
 	}
 
@@ -1363,7 +1364,7 @@ func createNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
 		// Compute flow id
 		flowID := ""
 		if pkt.SourceIP != "" && pkt.DestinationIP != "" {
-			flowID = actions.FlowID(pkt.SourceIP, pkt.SourcePort, pkt.DestinationIP, pkt.DestinationPort, pkt.Protocol)
+			flowID = flow.ID(pkt.SourceIP, pkt.SourcePort, pkt.DestinationIP, pkt.DestinationPort, pkt.Protocol)
 		}
 
 		if action != "" {

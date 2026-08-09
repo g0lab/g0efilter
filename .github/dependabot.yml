@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
-      interval: 'weekly'
+      interval: 'daily'
     labels: ['dependencies', 'github-actions']
     commit-message:
       prefix: 'chore'
@@ -17,7 +17,10 @@ updates:
 
   - package-ecosystem: 'gomod'
     directories:
-      - '/'
+      - '/agent'
+      - '/dashboard'
+      - '/shared'
+      - '/tests'
       - '/tests/e2e'
       - '/controller'
     groups:

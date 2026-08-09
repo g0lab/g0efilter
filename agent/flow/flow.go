@@ -1,4 +1,5 @@
-package actions
+// Package flow tracks agent-side network flows.
+package flow
 
 import (
 	"hash/fnv"
@@ -21,8 +22,8 @@ const suppressWindow = 5 * time.Second
 // pruneInterval controls how many writes between prune sweeps.
 const pruneInterval = 64
 
-// FlowID generates a deterministic hash identifier for a network flow using source, destination, and protocol.
-func FlowID(sourceIP string, sourcePort int, destinationIP string, destinationPort int, proto string) string {
+// ID generates a deterministic hash identifier for a network flow using source, destination, and protocol.
+func ID(sourceIP string, sourcePort int, destinationIP string, destinationPort int, proto string) string {
 	hasher := fnv.New64a()
 	_, _ = hasher.Write([]byte(sourceIP))
 	_, _ = hasher.Write([]byte(":"))

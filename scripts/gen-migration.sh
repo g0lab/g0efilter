@@ -7,7 +7,7 @@
 # Pure Go - no atlas binary required.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT/dashboard"
 
 if [ $# -ne 1 ]; then
   echo "usage: scripts/gen-migration.sh <name>" >&2
@@ -15,9 +15,9 @@ if [ $# -ne 1 ]; then
 fi
 
 echo ">>> regenerating ent client"
-go generate ./dashboard/store/ent/...
+GOWORK=off go generate ./store/ent/...
 
 echo ">>> generating migration: $1"
-go run -mod=mod dashboard/store/ent/migrate/main.go "$1"
+GOWORK=off go run -mod=mod store/ent/migrate/main.go "$1"
 
 echo ">>> done. new files under dashboard/store/migrations/"

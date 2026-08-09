@@ -5,7 +5,7 @@ description: Load the agent image built from the current checkout
 runs:
   using: composite
   steps:
-    - uses: actions/download-artifact@v8
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: action-agent-image
         path: ${{ runner.temp }}/g0efilter-action-image

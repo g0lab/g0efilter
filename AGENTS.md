@@ -4,11 +4,11 @@ g0efilter is a Go egress-filtering sidecar with a dashboard, Kubernetes packagin
 
 ## Repository
 
-* `agent/` and `dashboard/` contain the main Go binaries; shared packages are in `shared/`.
-* `controller/` is a separate Go module to keep `controller-runtime` out of the agent and dashboard dependencies.
+* `agent/`, `dashboard/`, and `shared/` are separate Go modules joined by the committed root `go.work`.
+* `controller/` is a separate Go module to keep `controller-runtime` out of the other production dependency trees.
 * `dashboard/ui/` contains the frontend. Its generated `dist/` is embedded by Go but is not committed.
 * `deploy/` contains the Kustomize, Helm, and Helm post-renderer implementations. They must inject the same sidecar configuration.
-* `tests/e2e/` is a separate Go module containing container-based end-to-end tests.
+* `tests/` is a Go module for manifest and repository-wide tests; nested `tests/e2e/` remains isolated.
 
 Prefer inspecting the repository tree over maintaining detailed package lists here.
 
@@ -69,7 +69,7 @@ Use `-run` to select a suite when appropriate. See `tests/e2e/README.md` for det
 
 ## Project Rules
 
-* Always update both README and `docs/` when changing user-facing behavior, configuration, or Action inputs.
+* Always update README, `docs/`, and `examples/` when changing user-facing behavior, configuration, or Action inputs.
 * Always add E2E coverage for significant changes to runtime, networking, security, or cross-component behavior.
 * Always keep sidecar configuration identical in `deploy/kustomize`, `deploy/helm` and the controller's injecting webhook; `tests/manifests/` and `controller/internal/webhook/parity_test.go` check this.
 * Never add comments for obvious behavior; comment only on non-obvious constraints, security decisions, or workarounds.

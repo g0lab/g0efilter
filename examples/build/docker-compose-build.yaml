@@ -72,6 +72,11 @@ services:
       context: ../..
       dockerfile: examples/build/Containerfile.controller
     image: g0efilter-controller:latest
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
 
 volumes:
   dashboard-data:

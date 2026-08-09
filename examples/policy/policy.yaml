@@ -1,11 +1,4 @@
 ---
-# Block everything except this allowlist.
 allowlist:
-  ips:
-    - '1.1.1.1'
-    - '192.168.0.0/16'
   domains:
-    - 'github.com'                             # exact
-    - '*.alpinelinux.org'                      # wildcard
-    - 'bucket.*.r2.cloudflarestorage.com'      # mid-name wildcard
-    - '/cache-[0-9]+\.example\.com/'           # regular expression
+    - 'github.com'

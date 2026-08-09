@@ -238,7 +238,7 @@ spec:
                         description: |-
                           Host is the dashboard's URL, such as
                           `http://g0efilter-dashboard.g0efilter-system.svc:8080`. Shipping is off while
-                          this is empty. The Egress rules have to allow it.
+                          this is empty. DNS modes must allow the hostname so it can be resolved.
                         maxLength: 253
                         type: string
                       queueSize:
@@ -295,8 +295,8 @@ spec:
                         type: integer
                       upstreams:
                         description: |-
-                          Upstreams are the resolvers the proxy forwards to, as `host:port`. Defaults to
-                          the container runtime's own resolver.
+                          Upstreams are the resolvers the proxy forwards to, as `host:port`. The default
+                          is Docker's `127.0.0.11:53`; set this to cluster DNS on Kubernetes.
                         items:
                           type: string
                         type: array
@@ -570,8 +570,8 @@ spec:
                         type: integer
                       host:
                         description: |-
-                          Host is the Gotify server URL. Alerting is off while this is empty, and the
-                          Egress rules have to allow it.
+                          Host is the Gotify server URL. Alerting is off while this is empty. DNS modes
+                          must allow the hostname so it can be resolved.
                         maxLength: 253
                         type: string
                       ignoreDomains:

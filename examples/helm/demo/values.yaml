@@ -6,21 +6,14 @@ policy:
   ips:
     # Cluster DNS, or nothing resolves under default-deny. 10.96.0.10 is the
     # kubeadm default; k3s and k0s use 10.43.0.10. Check with
-    # `kubectl -n kube-system get svc kube-dns -o jsonpath='{.spec.clusterIP}'`.
+    # `kubectl -n kube-system get svc -l k8s-app=kube-dns -o
+    # jsonpath='{.items[0].spec.clusterIP}'`.
     - 10.96.0.10
-    # The API server, which the sidecar itself needs when events are enabled:
-    # its own egress is filtered by the policy it enforces.
-    - 10.96.0.1
   domains:
     - example.com
 
 # Overrides merged over the library chart's defaults.
 g0efilter:
   mode: https
-  logLevel: INFO
   policy:
     configMapName: g0efilter-policy
-  # Surfaces the first denials in `kubectl describe pod`.
-  events:
-    enabled: true
-    serviceAccountName: default
