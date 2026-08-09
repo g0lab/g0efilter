@@ -86,7 +86,8 @@ func webhookSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string
 		t.Errorf("init containers are %q; the webhook must inject the sidecar first", names)
 	}
 
-	from := cluster.Get(t, webhookNamespace, "pod", pod, "{.metadata.annotations.g0efilter\\.io/injected-from}")
+	from := cluster.Get(t, webhookNamespace, "pod", pod,
+		"{.metadata.annotations.g0efilter\\.g0lab\\.com/injected-from}")
 	if from != "web" {
 		t.Errorf("injected-from = %q, want web", from)
 	}
