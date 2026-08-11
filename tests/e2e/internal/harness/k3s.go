@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -225,9 +226,9 @@ func (c *K3sCluster) CanI(t *testing.T, serviceAccount, namespace, verb, resourc
 		args = append(args, "--namespace="+namespace)
 	}
 
-	out, err := c.tryKubectl(args...)
+	stdout, stderr, err := c.tryKubectlStreams(args...)
 
-	allowed, decisionErr := parseCanIDecision(out, err)
+	allowed, decisionErr := parseCanIDecision(stdout, stderr, err)
 	if decisionErr != nil {
 		t.Fatalf("kubectl %s: %v", strings.Join(args, " "), decisionErr)
 	}
@@ -235,23 +236,36 @@ func (c *K3sCluster) CanI(t *testing.T, serviceAccount, namespace, verb, resourc
 	return allowed
 }
 
-func parseCanIDecision(out string, commandErr error) (bool, error) {
-	switch strings.TrimSpace(out) {
+func parseCanIDecision(stdout, stderr string, commandErr error) (bool, error) {
+	switch strings.TrimSpace(stdout) {
 	case "yes":
 		if commandErr != nil {
-			return false, fmt.Errorf("returned yes with a command error: %w", commandErr)
+			return false, canICommandError(stderr, commandErr)
 		}
 
 		return true, nil
 	case "no":
-		return false, nil
-	default:
-		if commandErr != nil {
-			return false, commandErr
+		var exitErr interface{ ExitCode() int }
+		if commandErr == nil || (errors.As(commandErr, &exitErr) && exitErr.ExitCode() == 1) {
+			return false, nil
 		}
 
-		return false, fmt.Errorf("%w: %q", errUnexpectedRBACDecision, out)
+		return false, canICommandError(stderr, commandErr)
+	default:
+		if commandErr != nil {
+			return false, canICommandError(stderr, commandErr)
+		}
+
+		return false, fmt.Errorf("%w: %q", errUnexpectedRBACDecision, stdout)
 	}
+}
+
+func canICommandError(stderr string, _ error) error {
+	if detail := strings.TrimSpace(stderr); detail != "" {
+		return fmt.Errorf("%w: %s", errKubectlFailed, detail)
+	}
+
+	return errKubectlFailed
 }
 
 // Apply applies manifests from paths or flags.
@@ -420,6 +434,28 @@ func (c *K3sCluster) kubectl(t *testing.T, timeout time.Duration, args ...string
 // tryKubectl is the polling variant: it reports failure instead of ending the test.
 func (c *K3sCluster) tryKubectl(args ...string) (string, error) {
 	return c.tryKubectlTimeout(30*time.Second, args...)
+}
+
+func (c *K3sCluster) tryKubectlStreams(args ...string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	//nolint:gosec // literal arguments supplied by the tests
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+
+	cmd.Env = append(os.Environ(), "KUBECONFIG="+c.kubeconfig)
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	return stdout.String(), stderr.String(), err
 }
 
 func (c *K3sCluster) tryKubectlTimeout(timeout time.Duration, args ...string) (string, error) {
