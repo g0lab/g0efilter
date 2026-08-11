@@ -148,6 +148,10 @@ Pods also need to match an `EgressPolicy`; the namespace label alone does not
 trigger injection. See the [policy example](docs/kubernetes.md#writing-a-policy),
 and start with `enforcement: audit` to see what it would deny.
 
+Certificate Secret access is namespace-scoped and omitted when cert-manager owns
+the certificate. The controller chart can also restrict webhook ingress to explicit
+API-server CIDRs; see [webhook network isolation](docs/kubernetes.md#webhook-network-isolation).
+
 Three charts are published, both as a conventional Helm repository at
 `https://g0lab.github.io/g0efilter` and as OCI artifacts under
 `oci://ghcr.io/g0lab/helm`:

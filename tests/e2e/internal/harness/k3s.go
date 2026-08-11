@@ -211,6 +211,38 @@ func (c *K3sCluster) Kubectl(t *testing.T, args ...string) string {
 	return c.kubectl(t, kubectlTimeout, args...)
 }
 
+// CanI checks the effective RBAC of a service account without granting the test
+// process that identity.
+func (c *K3sCluster) CanI(t *testing.T, serviceAccount, namespace, verb, resource string) bool {
+	t.Helper()
+
+	args := []string{
+		"auth", "can-i", verb, resource,
+		"--as=system:serviceaccount:g0efilter-system:" + serviceAccount,
+	}
+	if namespace != "" {
+		args = append(args, "--namespace="+namespace)
+	}
+
+	out, _ := c.tryKubectl(args...)
+
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		t.Fatalf("kubectl %s returned no RBAC decision", strings.Join(args, " "))
+	}
+
+	switch fields[len(fields)-1] {
+	case "yes":
+		return true
+	case "no":
+		return false
+	default:
+		t.Fatalf("kubectl %s returned an unexpected RBAC decision: %q", strings.Join(args, " "), out)
+
+		return false
+	}
+}
+
 // Apply applies manifests from paths or flags.
 func (c *K3sCluster) Apply(t *testing.T, args ...string) {
 	t.Helper()

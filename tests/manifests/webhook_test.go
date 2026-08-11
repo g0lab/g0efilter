@@ -68,6 +68,71 @@ func TestCertManagerOverlayDelegatesTheCertificate(t *testing.T) {
 	}
 }
 
+func TestWebhookSelfSignedCertificateRBACIsScoped(t *testing.T) {
+	t.Parallel()
+
+	selfSigned := decodeDocs(t, renderKustomize(t, filepath.Join("..", "..", "deploy", "webhook")))
+
+	base, ok := findObject(selfSigned, "ClusterRole", "g0efilter-controller")
+	if !ok {
+		t.Fatal("the webhook overlay renders no base controller ClusterRole")
+	}
+
+	baseRules := normalise(t, base["rules"])
+	for _, forbidden := range []string{"secrets", "mutatingwebhookconfigurations"} {
+		if strings.Contains(baseRules, forbidden) {
+			t.Errorf("the base controller ClusterRole still grants %s:\n%s", forbidden, baseRules)
+		}
+	}
+
+	secretRole, ok := findObject(selfSigned, "Role", "g0efilter-controller-webhook-certificates")
+	if !ok {
+		t.Fatal("self-signed mode renders no namespace-scoped certificate Role")
+	}
+
+	secretRules := normalise(t, secretRole["rules"])
+	for _, want := range []string{"secrets", "g0efilter-webhook-cert", "create", "get", "update"} {
+		if !strings.Contains(secretRules, want) {
+			t.Errorf("the certificate Role is missing %q:\n%s", want, secretRules)
+		}
+	}
+
+	publisher, ok := findObject(selfSigned, "ClusterRole", "g0efilter-controller-webhook-certificates")
+	if !ok {
+		t.Fatal("self-signed mode renders no CA-publisher ClusterRole")
+	}
+
+	publisherRules := normalise(t, publisher["rules"])
+	for _, want := range []string{"mutatingwebhookconfigurations", "g0efilter-sidecar-injector"} {
+		if !strings.Contains(publisherRules, want) {
+			t.Errorf("the CA-publisher ClusterRole is missing %q:\n%s", want, publisherRules)
+		}
+	}
+}
+
+func TestWebhookCertManagerHasNoControllerCertificateRBAC(t *testing.T) {
+	t.Parallel()
+
+	docs := decodeDocs(t, renderKustomize(t,
+		filepath.Join("..", "..", "deploy", "webhook-cert-manager")))
+	for _, kind := range []string{"Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"} {
+		if _, found := findObject(docs, kind, "g0efilter-controller-webhook-certificates"); found {
+			t.Errorf("cert-manager mode retained the self-signed %s", kind)
+		}
+	}
+}
+
+func findObject(docs []map[string]any, kind, name string) (map[string]any, bool) {
+	for _, doc := range docs {
+		metadata, ok := doc["metadata"].(map[string]any)
+		if ok && doc["kind"] == kind && metadata["name"] == name {
+			return doc, true
+		}
+	}
+
+	return nil, false
+}
+
 // Without both selectors the webhook sees every namespace, and a failure would
 // stop the control plane itself being rescheduled.
 func assertNamespaceGating(t *testing.T, hook map[string]any) {

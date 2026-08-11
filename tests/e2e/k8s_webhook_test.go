@@ -181,3 +181,46 @@ func webhookPublishesItsCABundle(t *testing.T, cluster *harness.K3sCluster) {
 		t.Errorf("the certificate Secret is %q, want kubernetes.io/tls", secret)
 	}
 }
+
+func webhookCertificateRBACIsScoped(t *testing.T, cluster *harness.K3sCluster) {
+	t.Helper()
+
+	const account = "g0efilter-controller"
+
+	tests := []struct {
+		name      string
+		namespace string
+		verb      string
+		resource  string
+		want      bool
+	}{
+		{
+			name: "reads its serving certificate", namespace: "g0efilter-system",
+			verb: "get", resource: "secret/g0efilter-webhook-cert", want: true,
+		},
+		{
+			name: "cannot read another secret", namespace: "g0efilter-system",
+			verb: "get", resource: "secret/unrelated", want: false,
+		},
+		{
+			name: "cannot create secrets in workloads", namespace: webhookNamespace,
+			verb: "create", resource: "secrets", want: false,
+		},
+		{
+			name: "publishes its CA", verb: "update",
+			resource: "mutatingwebhookconfiguration/g0efilter-sidecar-injector", want: true,
+		},
+		{
+			name: "cannot update another webhook", verb: "update",
+			resource: "mutatingwebhookconfiguration/unrelated", want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cluster.CanI(t, account, tt.namespace, tt.verb, tt.resource); got != tt.want {
+				t.Errorf("CanI(%s %s) = %t, want %t", tt.verb, tt.resource, got, tt.want)
+			}
+		})
+	}
+}

@@ -59,6 +59,7 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	t.Run("HelmUninstallRemovesEverything", func(t *testing.T) { helmUninstallRemovesEverything(t, cluster) })
 
 	t.Run("WebhookPublishesItsCABundle", func(t *testing.T) { webhookPublishesItsCABundle(t, cluster) })
+	t.Run("WebhookCertificateRBACIsScoped", func(t *testing.T) { webhookCertificateRBACIsScoped(t, cluster) })
 
 	injected := webhookInjectsIntoAPlainDeployment(t, cluster)
 

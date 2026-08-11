@@ -98,6 +98,14 @@ metrics:
 health:
   port: 8081
 
+# Ingress isolation is opt-in because the API server's source addresses differ by
+# cluster and CNI. When enabled, webhook traffic is accepted only from these CIDRs;
+# health probes remain reachable and controller metrics are reachable only when their
+# Service is enabled.
+networkPolicy:
+  enabled: false
+  apiServerCIDRs: []
+
 resources:
   requests:
     cpu: 20m
