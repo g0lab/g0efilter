@@ -224,7 +224,10 @@ func (c *K3sCluster) CanI(t *testing.T, serviceAccount, namespace, verb, resourc
 		args = append(args, "--namespace="+namespace)
 	}
 
-	out, _ := c.tryKubectl(args...)
+	out, err := c.tryKubectl(args...)
+	if err != nil {
+		t.Fatalf("kubectl %s: %v", strings.Join(args, " "), err)
+	}
 
 	fields := strings.Fields(out)
 	if len(fields) == 0 {
@@ -408,7 +411,11 @@ func (c *K3sCluster) kubectl(t *testing.T, timeout time.Duration, args ...string
 
 // tryKubectl is the polling variant: it reports failure instead of ending the test.
 func (c *K3sCluster) tryKubectl(args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	return c.tryKubectlTimeout(30*time.Second, args...)
+}
+
+func (c *K3sCluster) tryKubectlTimeout(timeout time.Duration, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	//nolint:gosec // literal arguments supplied by the tests

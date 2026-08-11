@@ -41,17 +41,36 @@ func (k *K3sCluster) WaitForPodReady(t *testing.T, namespace, selector string) s
 	t.Helper()
 
 	deadline := time.Now().Add(readinessTimeout)
-	for time.Now().Before(deadline) {
-		out, err := k.tryKubectl("get", "-n", namespace, "pod", "-l", selector, "-o", "name")
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("no pod for %s appeared in %s\n%s", selector, namespace,
+				k.describePods(namespace))
+		}
+
+		out, err := k.tryKubectlTimeout(min(30*time.Second, remaining),
+			"get", "-n", namespace, "pod", "-l", selector, "-o", "name")
 		if err == nil && strings.TrimSpace(out) != "" {
 			break
 		}
 
-		time.Sleep(pollInterval)
+		remaining = time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("no pod for %s appeared in %s\n%s", selector, namespace,
+				k.describePods(namespace))
+		}
+
+		time.Sleep(min(pollInterval, remaining))
 	}
 
-	_, err := k.tryKubectl("wait", "--for=condition=Ready", "-n", namespace,
-		"pod", "-l", selector, "--timeout="+readinessTimeout.String())
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		t.Fatalf("no ready pod for %s in %s\n%s", selector, namespace,
+			k.describePods(namespace))
+	}
+
+	_, err := k.tryKubectlTimeout(remaining, "wait", "--for=condition=Ready", "-n", namespace,
+		"pod", "-l", selector, "--timeout="+remaining.String())
 	if err != nil {
 		t.Fatalf("no ready pod for %s in %s: %v\n%s", selector, namespace, err,
 			k.describePods(namespace))
