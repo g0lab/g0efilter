@@ -1,7 +1,7 @@
 const { spawnSync } = require("node:child_process");
 
-function curlOK(target) {
-  return spawnSync("curl", [
+function curlOK(target, retry) {
+  const args = [
     "--fail",
     "--silent",
     "--show-error",
@@ -9,21 +9,26 @@ function curlOK(target) {
     "10",
     "--max-time",
     "20",
-    target,
-    "-o",
-    "/dev/null",
-  ]).status === 0;
+  ];
+
+  if (retry) {
+    args.push("--retry", "2", "--retry-delay", "2", "--retry-all-errors");
+  }
+
+  args.push(target, "-o", "/dev/null");
+
+  return spawnSync("curl", args).status === 0;
 }
 
 const failures = [];
 
-if (curlOK("https://api.github.com")) {
+if (curlOK("https://api.github.com", true)) {
   console.log("OK: api.github.com reachable");
 } else {
   failures.push("expected api.github.com to be reachable");
 }
 
-if (curlOK("https://example.com")) {
+if (curlOK("https://example.com", false)) {
   failures.push("example.com should have been blocked");
 } else {
   console.log("OK: example.com blocked");

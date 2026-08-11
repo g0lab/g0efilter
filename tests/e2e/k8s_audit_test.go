@@ -92,15 +92,13 @@ func auditModeSetsTheEnvironment(t *testing.T, cluster *harness.K3sCluster, pod 
 func auditModeAllowsUnmatchedTraffic(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.Exec(t, auditNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+	out, ok := cluster.CurlExternal(t, auditNamespace, pod, "app", "https://github.com")
 	if !ok {
 		t.Errorf("audit mode blocked a destination outside the policy: %s\n%s", out,
 			cluster.PodLogs(t, auditNamespace, pod, "g0efilter"))
 	}
 
-	out, ok = cluster.Exec(t, auditNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://example.com")
+	out, ok = cluster.CurlExternal(t, auditNamespace, pod, "app", "https://example.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s", out)
 	}
@@ -149,6 +147,8 @@ func auditModeSwitchesToBlock(t *testing.T, cluster *harness.K3sCluster, oldPod 
 	out, ok := cluster.Exec(t, auditNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("the destination audited earlier is still allowed once enforcing: %s", out)
+		t.Fatalf("the destination audited earlier is still allowed once enforcing: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, auditNamespace, pod, "g0efilter", "github.com")
 }

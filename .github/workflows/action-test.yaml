@@ -102,7 +102,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed HTTPS domain works
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://api.github.com -o /dev/null
 
       - name: Non-allowlisted HTTPS domain is blocked
         run: |
@@ -113,7 +116,10 @@ jobs:
           echo "OK: example.com blocked"
 
       - name: Allowed HTTP host works
-        run: curl --silent --show-error --connect-timeout 10 --max-time 20 http://api.github.com -o /dev/null
+        run: >-
+          curl --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          http://api.github.com -o /dev/null
 
       - name: Non-allowlisted HTTP host is blocked
         run: |
@@ -166,10 +172,16 @@ jobs:
             /^example\.org$/
 
       - name: Wildcard matches a subdomain
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://www.example.com -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://www.example.com -o /dev/null
 
       - name: Regex-allowed domain works
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.org -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://example.org -o /dev/null
 
       - name: Wildcard does not match the apex
         run: |
@@ -199,7 +211,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed domain resolves and connects
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://api.github.com -o /dev/null
 
       - name: Non-allowlisted domain is blocked by dns mode
         run: |
@@ -223,7 +238,16 @@ jobs:
 
       # Pull before the filter starts: the registry is not allowlisted.
       - name: Pre-pull curl image
-        run: docker pull curlimages/curl:latest
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull curlimages/curl:latest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
 
       - name: Start g0efilter
         uses: ./
@@ -235,6 +259,7 @@ jobs:
         run: |
           docker run --rm --network host curlimages/curl:latest \
             --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --retry 2 --retry-delay 2 --retry-all-errors \
             https://api.github.com -o /dev/null
 
       - name: Non-allowlisted domain is blocked over host network
@@ -364,7 +389,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed domain resolves and connects
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://api.github.com -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://api.github.com -o /dev/null
 
       - name: Non-allowlisted domain is blocked
         run: |
@@ -427,7 +455,10 @@ jobs:
           egress-policy: audit
 
       - name: Non-allowlisted domain passes in audit mode
-        run: curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null
+        run: >-
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
+          --retry 2 --retry-delay 2 --retry-all-errors
+          https://example.com -o /dev/null
 
   invalid-input:
     name: Input validation

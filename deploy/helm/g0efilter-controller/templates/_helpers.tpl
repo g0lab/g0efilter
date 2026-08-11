@@ -66,4 +66,7 @@ g0efilter-sidecar-injector
 {{- if not (has $source (list "self-signed" "cert-manager")) -}}
 {{- fail (printf "webhook.certificate.source must be self-signed or cert-manager, got %q" $source) -}}
 {{- end -}}
+{{- if and .Values.networkPolicy.enabled .Values.webhook.enabled (empty .Values.networkPolicy.apiServerCIDRs) -}}
+{{- fail "networkPolicy.apiServerCIDRs must contain at least one API-server source CIDR when webhook network isolation is enabled" -}}
+{{- end -}}
 {{- end -}}

@@ -17,6 +17,48 @@ resources:
   - certificate.yaml
 
 patches:
+  # External certificate management needs neither Secret access nor permission to
+  # update the webhook configuration; cert-manager and cainjector own both.
+  - target:
+      kind: Role
+      name: g0efilter-controller-webhook-certificates
+    patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: g0efilter-controller-webhook-certificates
+
+  - target:
+      kind: RoleBinding
+      name: g0efilter-controller-webhook-certificates
+    patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: g0efilter-controller-webhook-certificates
+
+  - target:
+      kind: ClusterRole
+      name: g0efilter-controller-webhook-certificates
+    patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: g0efilter-controller-webhook-certificates
+
+  - target:
+      kind: ClusterRoleBinding
+      name: g0efilter-controller-webhook-certificates
+    patch: |-
+      $patch: delete
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: g0efilter-controller-webhook-certificates
+
   - target:
       kind: Deployment
       name: g0efilter-controller
