@@ -8,15 +8,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/k3s"
 )
 
 const (
-	// k3sImage is pinned so a cluster upgrade is a deliberate change.
-	k3sImage = "docker.io/rancher/k3s:v1.34.1-k3s1"
+	k3sImage = "docker.io/rancher/k3s:latest"
 
 	controllerImage = "g0efilter-controller:e2e"
 
@@ -26,9 +27,19 @@ const (
 	kubectlTimeout   = 2 * time.Minute
 	pollInterval     = 2 * time.Second
 	readinessTimeout = 3 * time.Minute
+
+	dockerBuildAttempts = 3
+	dockerRetryDelay    = 2 * time.Second
 )
 
 var errKubectlFailed = errors.New("kubectl failed")
+
+var controllerBuild struct { //nolint:gochecknoglobals // shared by parallel Kubernetes phases
+	sync.Once
+
+	err    error
+	output []byte
+}
 
 // K8sEnabled reports whether the Kubernetes phase should run. It is opt-in: it starts
 // a privileged k3s container, which is far heavier than the compose stack.
@@ -56,7 +67,7 @@ func StartK3s(t *testing.T) *K3sCluster {
 	ctx, cancel := context.WithTimeout(context.Background(), k3sStartTimeout)
 	defer cancel()
 
-	container, err := k3s.Run(ctx, k3sImage)
+	container, err := k3s.Run(ctx, k3sImage, testcontainers.WithAlwaysPull())
 	if err != nil {
 		t.Fatalf("start k3s: %v", err)
 	}
@@ -98,11 +109,81 @@ func StartK3s(t *testing.T) *K3sCluster {
 func buildControllerImage(t *testing.T) {
 	t.Helper()
 
-	t.Logf("building %s", controllerImage)
-
-	run(t, dockerTimeout, "docker", "build",
+	args := []string{
+		"build",
 		"-f", RepoPath("examples", "build", "Containerfile.controller"),
-		"-t", controllerImage, RepoPath())
+		"-t", controllerImage, RepoPath(),
+	}
+
+	controllerBuild.Do(func() {
+		t.Logf("building %s", controllerImage)
+		controllerBuild.output, controllerBuild.err = buildControllerWithRetry(t, args)
+	})
+
+	if controllerBuild.err != nil {
+		t.Fatalf("docker %s: %v\n%s", strings.Join(args, " "),
+			controllerBuild.err, controllerBuild.output)
+	}
+}
+
+func buildControllerWithRetry(t *testing.T, args []string) ([]byte, error) {
+	t.Helper()
+
+	for attempt := 1; attempt <= dockerBuildAttempts; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), dockerTimeout)
+		//nolint:gosec // fixed tool name with repository-owned arguments
+		cmd := exec.CommandContext(ctx, "docker", args...)
+		out, err := cmd.CombinedOutput()
+
+		cancel()
+
+		if err == nil || attempt == dockerBuildAttempts || !transientDockerFailure(out) {
+			if err != nil {
+				return out, fmt.Errorf("build controller image: %w", err)
+			}
+
+			return out, nil
+		}
+
+		t.Logf("docker build attempt %d/%d hit a transient registry failure; retrying in %s:\n%s",
+			attempt, dockerBuildAttempts, dockerRetryDelay, out)
+		time.Sleep(dockerRetryDelay)
+	}
+
+	panic("unreachable")
+}
+
+func transientDockerFailure(out []byte) bool {
+	message := strings.ToLower(string(out))
+
+	for _, marker := range []string{
+		"tls handshake timeout",
+		"i/o timeout",
+		"connection reset by peer",
+		"temporary failure in name resolution",
+		"no such host",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+
+	for _, status := range []string{
+		"403 forbidden",
+		"429 too many requests",
+		"500 internal server error",
+		"502 bad gateway",
+		"503 service unavailable",
+		"504 gateway timeout",
+	} {
+		if strings.Contains(message, status) &&
+			(strings.Contains(message, "unexpected status from") ||
+				strings.Contains(message, "failed to fetch anonymous token")) {
+			return true
+		}
+	}
+
+	return false
 }
 
 const dockerTimeout = 10 * time.Minute

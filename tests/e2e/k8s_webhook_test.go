@@ -96,8 +96,7 @@ func webhookSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string
 func webhookInjectedPodFilters(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.Exec(t, webhookNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://example.com")
+	out, ok := cluster.CurlExternal(t, webhookNamespace, pod, "app", "https://example.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, webhookNamespace, pod, "g0efilter"))
