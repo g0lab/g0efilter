@@ -2,6 +2,43 @@ package harness
 
 import "testing"
 
+func TestParseCanIDecision(t *testing.T) {
+	t.Parallel()
+
+	commandErr := errKubectlFailed
+
+	tests := []struct {
+		name    string
+		out     string
+		err     error
+		allowed bool
+		wantErr bool
+	}{
+		{name: "allowed", out: "yes\n", allowed: true},
+		{name: "denied exits nonzero", out: "no\n", err: commandErr},
+		{name: "denied may exit zero", out: "no\n"},
+		{name: "command failure", out: "Unable to connect to the server", err: commandErr, wantErr: true},
+		{name: "empty output", wantErr: true},
+		{name: "yes with command failure", out: "yes\n", err: commandErr, wantErr: true},
+		{name: "embedded decision is not trusted", out: "error: server returned no", err: commandErr, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			allowed, err := parseCanIDecision(tt.out, tt.err)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseCanIDecision() error = %v, wantErr %t", err, tt.wantErr)
+			}
+
+			if allowed != tt.allowed {
+				t.Errorf("parseCanIDecision() = %t, want %t", allowed, tt.allowed)
+			}
+		})
+	}
+}
+
 func TestTransientDockerFailure(t *testing.T) {
 	t.Parallel()
 

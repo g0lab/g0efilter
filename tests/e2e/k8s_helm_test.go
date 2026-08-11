@@ -64,8 +64,10 @@ func helmFiltersEgress(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	out, ok = cluster.Exec(t, helmNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("a destination outside the chart's policy was allowed: %s", out)
+		t.Fatalf("a destination outside the chart's policy was allowed: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, helmNamespace, pod, "g0efilter", "github.com")
 }
 
 // The chart's metrics wiring is otherwise only rendered, never served.

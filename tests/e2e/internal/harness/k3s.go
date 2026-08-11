@@ -33,6 +33,7 @@ const (
 )
 
 var errKubectlFailed = errors.New("kubectl failed")
+var errUnexpectedRBACDecision = errors.New("unexpected RBAC decision")
 
 var controllerBuild struct { //nolint:gochecknoglobals // shared by parallel Kubernetes phases
 	sync.Once
@@ -225,24 +226,31 @@ func (c *K3sCluster) CanI(t *testing.T, serviceAccount, namespace, verb, resourc
 	}
 
 	out, err := c.tryKubectl(args...)
-	if err != nil {
-		t.Fatalf("kubectl %s: %v", strings.Join(args, " "), err)
+
+	allowed, decisionErr := parseCanIDecision(out, err)
+	if decisionErr != nil {
+		t.Fatalf("kubectl %s: %v", strings.Join(args, " "), decisionErr)
 	}
 
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		t.Fatalf("kubectl %s returned no RBAC decision", strings.Join(args, " "))
-	}
+	return allowed
+}
 
-	switch fields[len(fields)-1] {
+func parseCanIDecision(out string, commandErr error) (bool, error) {
+	switch strings.TrimSpace(out) {
 	case "yes":
-		return true
-	case "no":
-		return false
-	default:
-		t.Fatalf("kubectl %s returned an unexpected RBAC decision: %q", strings.Join(args, " "), out)
+		if commandErr != nil {
+			return false, fmt.Errorf("returned yes with a command error: %w", commandErr)
+		}
 
-		return false
+		return true, nil
+	case "no":
+		return false, nil
+	default:
+		if commandErr != nil {
+			return false, commandErr
+		}
+
+		return false, fmt.Errorf("%w: %q", errUnexpectedRBACDecision, out)
 	}
 }
 

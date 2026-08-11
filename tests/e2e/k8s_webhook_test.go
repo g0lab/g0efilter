@@ -105,8 +105,10 @@ func webhookInjectedPodFilters(t *testing.T, cluster *harness.K3sCluster, pod st
 	out, ok = cluster.Exec(t, webhookNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("a destination outside the policy was allowed: %s", out)
+		t.Fatalf("a destination outside the policy was allowed: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, webhookNamespace, pod, "g0efilter", "github.com")
 }
 
 // A pod no policy selects has to be admitted untouched, or the webhook would break

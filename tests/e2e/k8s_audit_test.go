@@ -147,6 +147,8 @@ func auditModeSwitchesToBlock(t *testing.T, cluster *harness.K3sCluster, oldPod 
 	out, ok := cluster.Exec(t, auditNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("the destination audited earlier is still allowed once enforcing: %s", out)
+		t.Fatalf("the destination audited earlier is still allowed once enforcing: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, auditNamespace, pod, "g0efilter", "github.com")
 }
