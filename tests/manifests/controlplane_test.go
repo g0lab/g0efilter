@@ -11,13 +11,19 @@ const controllerChart = "g0efilter-controller"
 
 func controllerTemplate(t *testing.T, args ...string) map[string]map[string]any {
 	t.Helper()
+
+	return byKind(t, controllerDocs(t, args...))
+}
+
+func controllerDocs(t *testing.T, args ...string) []map[string]any {
+	t.Helper()
 	serialHelm(t)
 
 	base := make([]string, 0, 5+len(args))
 	base = append(base, "template", "g0efilter", repoPath("deploy", "helm", controllerChart),
 		"--namespace", "g0efilter-system")
 
-	return byKind(t, decodeDocs(t, run(t, "helm", append(base, args...)...)))
+	return decodeDocs(t, run(t, "helm", append(base, args...)...))
 }
 
 // The chart installs the same control plane as deploy/webhook. A difference means an
@@ -86,7 +92,8 @@ func TestControllerChartExcludesItsOwnNamespace(t *testing.T) {
 func TestControllerFullnameOverrideReachesWebhookRuntimeAndRBAC(t *testing.T) {
 	t.Parallel()
 
-	rendered := controllerTemplate(t, "--set", "fullnameOverride=custom")
+	docs := controllerDocs(t, "--set", "fullnameOverride=custom")
+	rendered := byKind(t, docs)
 	container := containerNamed(t, list(t, podSpec(t, rendered["Deployment"]), "containers"), "controller")
 	args := list(t, container, "args")
 
@@ -108,7 +115,12 @@ func TestControllerFullnameOverrideReachesWebhookRuntimeAndRBAC(t *testing.T) {
 		}
 	}
 
-	for _, raw := range list(t, rendered["ClusterRole"], "rules") {
+	certRole, ok := findObject(docs, "ClusterRole", "custom-webhook-certificates")
+	if !ok {
+		t.Fatal("the renamed release has no certificate ClusterRole")
+	}
+
+	for _, raw := range list(t, certRole, "rules") {
 		rule, ok := raw.(map[string]any)
 		if !ok {
 			continue
@@ -118,6 +130,73 @@ func TestControllerFullnameOverrideReachesWebhookRuntimeAndRBAC(t *testing.T) {
 			normalise(t, rule["resourceNames"]) != `["custom-sidecar-injector"]` {
 			t.Errorf("webhook resourceNames = %v", rule["resourceNames"])
 		}
+	}
+}
+
+func TestControllerChartSelfSignedCertificateRBAC(t *testing.T) {
+	t.Parallel()
+
+	selfSigned := controllerDocs(t)
+	for _, kind := range []string{"Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"} {
+		if _, ok := findObject(selfSigned, kind, "g0efilter-controller-webhook-certificates"); !ok {
+			t.Errorf("self-signed mode renders no certificate %s", kind)
+		}
+	}
+}
+
+func TestControllerChartCertManagerHasNoControllerCertificateRBAC(t *testing.T) {
+	t.Parallel()
+
+	external := controllerDocs(t, "--set", "webhook.certificate.source=cert-manager")
+	for _, kind := range []string{"Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"} {
+		if _, ok := findObject(external, kind, "g0efilter-controller-webhook-certificates"); ok {
+			t.Errorf("cert-manager mode retained the self-signed %s", kind)
+		}
+	}
+}
+
+func TestControllerChartWebhookNetworkPolicyIsDisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	defaults := controllerTemplate(t)
+	if _, ok := defaults["NetworkPolicy"]; ok {
+		t.Fatal("the cluster-specific NetworkPolicy was enabled without API-server CIDRs")
+	}
+}
+
+func TestControllerChartWebhookNetworkPolicyRequiresAPIServerCIDRs(t *testing.T) {
+	t.Parallel()
+
+	out := runHelmExpectingFailure(t,
+		"template", "g0efilter", repoPath("deploy", "helm", controllerChart),
+		"--namespace", "g0efilter-system",
+		"--set", "networkPolicy.enabled=true")
+	if !strings.Contains(out, "networkPolicy.apiServerCIDRs must contain at least one") {
+		t.Errorf("unexpected validation error:\n%s", out)
+	}
+}
+
+func TestControllerChartWebhookNetworkPolicy(t *testing.T) {
+	t.Parallel()
+
+	rendered := controllerTemplate(t,
+		"--set", "networkPolicy.enabled=true",
+		"--set", "networkPolicy.apiServerCIDRs[0]=10.0.0.0/8")
+
+	policy, ok := rendered["NetworkPolicy"]
+	if !ok {
+		t.Fatal("networkPolicy.enabled rendered no NetworkPolicy")
+	}
+
+	ingress := normalise(t, child(t, policy, "spec")["ingress"])
+	for _, want := range []string{"10.0.0.0/8", "9443", "8081"} {
+		if !strings.Contains(ingress, want) {
+			t.Errorf("NetworkPolicy ingress is missing %q:\n%s", want, ingress)
+		}
+	}
+
+	if strings.Contains(ingress, "8080") {
+		t.Errorf("disabled controller metrics are exposed by the NetworkPolicy:\n%s", ingress)
 	}
 }
 

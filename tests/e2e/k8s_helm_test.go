@@ -55,8 +55,7 @@ func helmSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string) {
 func helmFiltersEgress(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.Exec(t, helmNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://example.com")
+	out, ok := cluster.CurlExternal(t, helmNamespace, pod, "app", "https://example.com")
 	if !ok {
 		t.Errorf("the chart's allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, helmNamespace, pod, "g0efilter"))
@@ -65,8 +64,10 @@ func helmFiltersEgress(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	out, ok = cluster.Exec(t, helmNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("a destination outside the chart's policy was allowed: %s", out)
+		t.Fatalf("a destination outside the chart's policy was allowed: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, helmNamespace, pod, "g0efilter", "github.com")
 }
 
 // The chart's metrics wiring is otherwise only rendered, never served.

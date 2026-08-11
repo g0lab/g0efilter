@@ -93,10 +93,7 @@ func phase02IPv6Egress(t *testing.T, s *harness.Stack, mode harness.FilterMode) 
 		t.Skip("no IPv6 default route; nftables structure was verified but egress enforcement cannot be exercised")
 	}
 
-	res := s.Curl(t, "https://google.com", 5*time.Second, "-6")
-	if res.ExitCode == 0 {
-		t.Fatalf("IPv6 connection succeeded but no IPv6 is allow-listed: %+v", res)
-	}
+	s.AssertBlocked(t, "https://google.com", "-6")
 }
 
 func phase03UnblockReload(t *testing.T, s *harness.Stack) {
@@ -246,10 +243,7 @@ func phase04IPv6Unblock(t *testing.T, s *harness.Stack, mode harness.FilterMode)
 		return
 	}
 
-	res := s.Curl(t, "https://["+v6+"]", 10*time.Second, "-6")
-	if res.ExitCode != 0 {
-		t.Errorf("IPv6 route present but curl -6 to the allowed address failed: %+v", res)
-	}
+	s.AssertReachable(t, "https://["+v6+"]", "-6")
 }
 
 func phase05DashboardLogs(t *testing.T, s *harness.Stack) {

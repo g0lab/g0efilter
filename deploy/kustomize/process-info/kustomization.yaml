@@ -3,8 +3,8 @@
 # to what made the request:
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
-#     - github.com/g0lab/g0efilter//deploy/kustomize/process-info?ref=v0.8.4
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+#     - github.com/g0lab/g0efilter//deploy/kustomize/process-info?ref=v0.8.5
 #
 # Reading /proc needs a shared process namespace, and that is mutual: every
 # container in the pod can then see and signal the others' processes. Leave this off

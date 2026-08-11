@@ -59,6 +59,7 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	t.Run("HelmUninstallRemovesEverything", func(t *testing.T) { helmUninstallRemovesEverything(t, cluster) })
 
 	t.Run("WebhookPublishesItsCABundle", func(t *testing.T) { webhookPublishesItsCABundle(t, cluster) })
+	t.Run("WebhookCertificateRBACIsScoped", func(t *testing.T) { webhookCertificateRBACIsScoped(t, cluster) })
 
 	injected := webhookInjectsIntoAPlainDeployment(t, cluster)
 
@@ -264,8 +265,7 @@ func sidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string) {
 func filtersRealEgress(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.Exec(t, filteredNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://example.com")
+	out, ok := cluster.CurlExternal(t, filteredNamespace, pod, "app", "https://example.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, filteredNamespace, pod, "g0efilter"))

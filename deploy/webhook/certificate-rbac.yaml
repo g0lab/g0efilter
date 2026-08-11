@@ -1,0 +1,52 @@
+---
+# Self-signed mode stores only its serving certificate in the controller namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: g0efilter-controller-webhook-certificates
+rules:
+  # Create cannot be restricted by resourceNames, but this Role applies only in the
+  # controller namespace. Reads and updates are limited to the one serving Secret.
+  - apiGroups: ['']
+    resources: ['secrets']
+    verbs: ['create']
+  - apiGroups: ['']
+    resources: ['secrets']
+    resourceNames: ['g0efilter-webhook-cert']
+    verbs: ['get', 'update']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: g0efilter-controller-webhook-certificates
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: g0efilter-controller-webhook-certificates
+subjects:
+  - kind: ServiceAccount
+    name: g0efilter-controller
+---
+# The CA publisher needs one cluster-scoped object, restricted by resourceNames.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: g0efilter-controller-webhook-certificates
+rules:
+  - apiGroups: ['admissionregistration.k8s.io']
+    resources: ['mutatingwebhookconfigurations']
+    resourceNames: ['g0efilter-sidecar-injector']
+    verbs: ['get', 'update']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: g0efilter-controller-webhook-certificates
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: g0efilter-controller-webhook-certificates
+subjects:
+  - kind: ServiceAccount
+    name: g0efilter-controller
+    namespace: g0efilter-system

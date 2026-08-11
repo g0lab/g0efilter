@@ -40,9 +40,6 @@ const (
 	renewInterval = 24 * time.Hour
 )
 
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;create;update
-// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations,resourceNames=g0efilter-sidecar-injector,verbs=get;update
-
 // Bundle is a self-signed serving certificate and its key. It is its own CA, so
 // the same PEM is served and published as the caBundle.
 type Bundle struct {

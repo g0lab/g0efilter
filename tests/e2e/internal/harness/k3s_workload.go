@@ -40,8 +40,37 @@ func (k *K3sCluster) TryApplyManifest(t *testing.T, manifest string) (string, er
 func (k *K3sCluster) WaitForPodReady(t *testing.T, namespace, selector string) string {
 	t.Helper()
 
-	_, err := k.tryKubectl("wait", "--for=condition=Ready", "-n", namespace,
-		"pod", "-l", selector, "--timeout="+readinessTimeout.String())
+	deadline := time.Now().Add(readinessTimeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("no pod for %s appeared in %s\n%s", selector, namespace,
+				k.describePods(namespace))
+		}
+
+		out, err := k.tryKubectlTimeout(min(30*time.Second, remaining),
+			"get", "-n", namespace, "pod", "-l", selector, "-o", "name")
+		if err == nil && strings.TrimSpace(out) != "" {
+			break
+		}
+
+		remaining = time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatalf("no pod for %s appeared in %s\n%s", selector, namespace,
+				k.describePods(namespace))
+		}
+
+		time.Sleep(min(pollInterval, remaining))
+	}
+
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		t.Fatalf("no ready pod for %s in %s\n%s", selector, namespace,
+			k.describePods(namespace))
+	}
+
+	_, err := k.tryKubectlTimeout(remaining, "wait", "--for=condition=Ready", "-n", namespace,
+		"pod", "-l", selector, "--timeout="+remaining.String())
 	if err != nil {
 		t.Fatalf("no ready pod for %s in %s: %v\n%s", selector, namespace, err,
 			k.describePods(namespace))
@@ -92,6 +121,19 @@ func (k *K3sCluster) Exec(t *testing.T, namespace, pod, container string, comman
 	out, err := k.tryKubectl(args...)
 
 	return out, err == nil
+}
+
+// CurlExternal retries an expected-success request because public DNS, CDNs and
+// origins are outside the test's control. Block assertions deliberately use Exec:
+// an upstream outage must never count as proof that g0efilter denied a request.
+func (k *K3sCluster) CurlExternal(t *testing.T, namespace, pod, container, url string) (string, bool) {
+	t.Helper()
+
+	return k.Exec(t, namespace, pod, container,
+		"curl", "-fsS", "-o", "/dev/null",
+		"--connect-timeout", "5", "--max-time", "20",
+		"--retry", "2", "--retry-delay", "2", "--retry-all-errors",
+		url)
 }
 
 // PodLogs returns a container's logs.

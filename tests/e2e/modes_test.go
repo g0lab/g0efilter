@@ -191,10 +191,7 @@ allowlist:
 		// unmatched AAAA must sinkhole silently rather than report a block.
 		mark := s.AgentLogMark(t)
 
-		res := s.Curl(t, "https://one.one.one.one", 10*time.Second)
-		if res.ExitCode != 0 {
-			t.Fatalf("IPv4-allowlisted dual-stack host did not connect: %+v", res)
-		}
+		s.AssertReachable(t, "https://one.one.one.one")
 
 		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{
 			Event:  "dns.blocked",
@@ -335,11 +332,12 @@ allowlist:
 
 	mark := s.AgentLogMark(t)
 
+	s.AssertReachable(t, "https://github.com", "--resolve", "github.com:443:"+resolved)
 	s.AssertIPVerdictSince(t, mark, "ALLOWED", resolved, 443, "TCP")
 
 	mark = s.AgentLogMark(t)
 
-	s.AssertUnreachable(t, "http://github.com")
+	s.AssertUnreachable(t, "http://github.com", "--resolve", "github.com:80:"+resolved)
 	s.AssertIPVerdictSince(t, mark, "BLOCKED", resolved, 80, "TCP")
 
 	t.Run("no unconstrained element leaks for a constrained domain", func(t *testing.T) {
@@ -353,17 +351,17 @@ allowlist:
     - 'udp/one.one.one.one:443'
 `)
 
-		s.UDPDNSAnswer(t, "1.1.1.1", "one.one.one.one")
+		resolved := s.AssertUDPDNSAnswer(t, "1.1.1.1", "one.one.one.one")
 
 		mark := s.AgentLogMark(t)
 
-		s.UDPProbe(t, "1.1.1.1", 443)
-		s.AssertIPVerdictSince(t, mark, "ALLOWED", "1.1.1.1", 443, "UDP")
+		s.UDPProbe(t, resolved, 443)
+		s.AssertIPVerdictSince(t, mark, "ALLOWED", resolved, 443, "UDP")
 
 		mark = s.AgentLogMark(t)
 
-		s.AssertUnreachable(t, "https://1.1.1.1")
-		s.AssertIPVerdictSince(t, mark, "BLOCKED", "1.1.1.1", 443, "TCP")
+		s.AssertUnreachable(t, "https://"+resolved)
+		s.AssertIPVerdictSince(t, mark, "BLOCKED", resolved, 443, "TCP")
 	})
 
 	t.Run("an unenforceable constraint is rejected, not silently widened", func(t *testing.T) {

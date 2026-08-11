@@ -74,7 +74,7 @@ resources:
   - deployment.yaml
   - policy.yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
 ```
 
 Pin `ref` to a release tag. The component sets the image tag to match, so the
@@ -92,8 +92,8 @@ Layer the optional components after `sidecar`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
-  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.5
 ```
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
@@ -163,7 +163,7 @@ g0efilter:
   enforcement: audit
   logLevel: DEBUG
   image:
-    tag: v0.8.4
+    tag: v0.8.5
   policy:
     configMapName: my-policy
   dns:
@@ -215,7 +215,7 @@ helm install app oci://example.com/app \
 Outside this repository, point the script at a pinned component:
 
 ```sh
-export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4'
+export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5'
 ```
 
 This path needs no cooperation from the chart. It still requires the policy
@@ -257,6 +257,7 @@ The chart's most useful values:
 | `webhook.enabled` | `true` | With false the controller only renders policies into ConfigMaps and injects nothing. |
 | `webhook.failurePolicy` | `Fail` | Fails closed: an unreachable webhook blocks pod creation in opted-in namespaces rather than admitting unfiltered pods. |
 | `webhook.certificate.source` | `self-signed` | `cert-manager` hands issuing and rotation to cert-manager instead. Needs cainjector. |
+| `networkPolicy.enabled` | `false` | Restrict webhook ingress to `networkPolicy.apiServerCIDRs`. Requires cluster-specific API-server source CIDRs. |
 | `sidecar.image` | the release default | The image the webhook injects. |
 | `replicaCount` | `2` | Leader election keeps one replica reconciling; both serve admission. |
 | `metrics.service.enabled` | `false` | Also `metrics.serviceMonitor.enabled` for Prometheus Operator. |
@@ -414,11 +415,41 @@ kubectl apply -k deploy/webhook-cert-manager
 
 That overlay creates a `Certificate`, mounts its Secret, lets cainjector fill the
 `caBundle`, and passes `--webhook-cert-source=external` so the controller does
-not touch either.
+not touch either. It also removes the controller's certificate Secret and
+`MutatingWebhookConfiguration` permissions entirely.
 
 Self-signed is the default to avoid making a fail-closed webhook depend on
 cert-manager startup. Use cert-manager when cluster policy requires a managed
-issuer.
+issuer. In self-signed mode, Secret access is held in a namespace-scoped Role;
+the only cluster-scoped certificate permission is `get` and `update` on the
+named `MutatingWebhookConfiguration`.
+
+### Webhook network isolation
+
+The webhook Service is cluster-internal, but a ClusterIP alone does not prevent
+other pods from connecting to it. The controller only returns admission patches -
+the Kubernetes API server is still the component that applies them - but restricting
+the listener is useful defense in depth.
+
+API-server source addresses differ between managed clusters, self-hosted control
+planes and CNIs, so the chart cannot safely guess them. After obtaining the source
+CIDRs from the cluster provider, enable the ingress policy explicitly:
+
+```yaml
+networkPolicy:
+  enabled: true
+  apiServerCIDRs:
+    - 10.0.0.0/24 # replace with this cluster's API-server source CIDR
+```
+
+Enabling the policy with an empty CIDR list is rejected. The policy keeps the health
+probe port reachable, opens controller metrics only when its Service is enabled, and
+accepts webhook traffic only from the configured CIDRs. Confirm pod admission before
+rolling it out to every opted-in namespace: with `failurePolicy: Fail`, an incorrect
+CIDR stops new pods in those namespaces.
+
+The Kustomize webhook overlay does not install a guessed NetworkPolicy. Add an
+equivalent cluster-specific policy when using that installation path.
 
 **Opting out.** Set `g0efilter.g0lab.com/inject: "false"` as a pod annotation or label.
 Pods that already carry a `g0efilter` container, and host-network pods, are
@@ -441,8 +472,8 @@ Denials are logged. To also show the first few in `kubectl describe pod`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
-  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.5
 ```
 
 This grants the workload ServiceAccount `create` on Events in its namespace and
@@ -465,8 +496,8 @@ is missing, g0efilter logs one warning and keeps filtering.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
-  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.5
 ```
 
 Or `g0efilter.metrics.enabled: true` with the Helm chart. Both expose `/metrics` on
@@ -511,7 +542,7 @@ release:
 ```sh
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
   --from-literal=api-key="$(openssl rand -hex 32)" \
-  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.4 hash-password)"
+  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.5 hash-password)"
 ```
 
 ```yaml
@@ -551,8 +582,8 @@ The add-on replaces the ConfigMap mount with an emptyDir:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.4
-  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.4
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.5
 ```
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.

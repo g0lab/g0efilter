@@ -16,4 +16,6 @@ kubectl -n g0efilter-demo exec deployment/demo -c app -- curl -I --max-time 5 ht
 ```
 
 See the [Kubernetes guide](../../docs/kubernetes.md) for Helm and admission
-options.
+options. Admission installations can enable the controller chart's NetworkPolicy
+after supplying the cluster's API-server source CIDRs; it is intentionally not
+guessed by the portable Kustomize overlay.

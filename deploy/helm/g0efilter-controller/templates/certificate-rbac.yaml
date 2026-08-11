@@ -1,0 +1,65 @@
+{{- if and .Values.rbac.create .Values.webhook.enabled (eq .Values.webhook.certificate.source "self-signed") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+rules:
+  # Create cannot be restricted by resourceNames, but this Role applies only in the
+  # release namespace. Reads and updates are limited to the one serving Secret.
+  - apiGroups: ['']
+    resources: ['secrets']
+    verbs: ['create']
+  - apiGroups: ['']
+    resources: ['secrets']
+    resourceNames:
+      - {{ include "g0efilter-controller.certSecretName" . }}
+    verbs: ['get', 'update']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "g0efilter-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ['admissionregistration.k8s.io']
+    resources: ['mutatingwebhookconfigurations']
+    resourceNames:
+      - {{ include "g0efilter-controller.webhookConfigName" . }}
+    verbs: ['get', 'update']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "g0efilter-controller.fullname" . }}-webhook-certificates
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "g0efilter-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

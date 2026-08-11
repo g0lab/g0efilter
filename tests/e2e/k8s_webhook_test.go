@@ -96,8 +96,7 @@ func webhookSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string
 func webhookInjectedPodFilters(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.Exec(t, webhookNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://example.com")
+	out, ok := cluster.CurlExternal(t, webhookNamespace, pod, "app", "https://example.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, webhookNamespace, pod, "g0efilter"))
@@ -106,8 +105,10 @@ func webhookInjectedPodFilters(t *testing.T, cluster *harness.K3sCluster, pod st
 	out, ok = cluster.Exec(t, webhookNamespace, pod, "app",
 		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
 	if ok {
-		t.Errorf("a destination outside the policy was allowed: %s", out)
+		t.Fatalf("a destination outside the policy was allowed: %s", out)
 	}
+
+	cluster.WaitForPodLog(t, webhookNamespace, pod, "g0efilter", "github.com")
 }
 
 // A pod no policy selects has to be admitted untouched, or the webhook would break
@@ -180,5 +181,48 @@ func webhookPublishesItsCABundle(t *testing.T, cluster *harness.K3sCluster) {
 	secret := cluster.Get(t, "g0efilter-system", "secret", "g0efilter-webhook-cert", "{.type}")
 	if secret != "kubernetes.io/tls" { //nolint:gosec // a Secret type, not a credential
 		t.Errorf("the certificate Secret is %q, want kubernetes.io/tls", secret)
+	}
+}
+
+func webhookCertificateRBACIsScoped(t *testing.T, cluster *harness.K3sCluster) {
+	t.Helper()
+
+	const account = "g0efilter-controller"
+
+	tests := []struct {
+		name      string
+		namespace string
+		verb      string
+		resource  string
+		want      bool
+	}{
+		{
+			name: "reads its serving certificate", namespace: "g0efilter-system",
+			verb: "get", resource: "secret/g0efilter-webhook-cert", want: true,
+		},
+		{
+			name: "cannot read another secret", namespace: "g0efilter-system",
+			verb: "get", resource: "secret/unrelated", want: false,
+		},
+		{
+			name: "cannot create secrets in workloads", namespace: webhookNamespace,
+			verb: "create", resource: "secrets", want: false,
+		},
+		{
+			name: "publishes its CA", verb: "update",
+			resource: "mutatingwebhookconfiguration/g0efilter-sidecar-injector", want: true,
+		},
+		{
+			name: "cannot update another webhook", verb: "update",
+			resource: "mutatingwebhookconfiguration/unrelated", want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cluster.CanI(t, account, tt.namespace, tt.verb, tt.resource); got != tt.want {
+				t.Errorf("CanI(%s %s) = %t, want %t", tt.verb, tt.resource, got, tt.want)
+			}
+		})
 	}
 }

@@ -2,6 +2,7 @@ package harness
 
 import (
 	"math"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
@@ -126,7 +127,7 @@ func (s *Stack) AssertAllowed(t *testing.T, url string) CurlResult {
 // request landing in that window fails without the traffic being blocked. The
 // assertion is unchanged - it still requires a real connection - but it will not
 // fail on a reload it raced.
-func (s *Stack) curlUntilConnected(t *testing.T, url, want string) CurlResult {
+func (s *Stack) curlUntilConnected(t *testing.T, url, want string, extra ...string) CurlResult {
 	t.Helper()
 
 	var res CurlResult
@@ -134,7 +135,7 @@ func (s *Stack) curlUntilConnected(t *testing.T, url, want string) CurlResult {
 	deadline := time.Now().Add(connectRetryWindow)
 
 	for attempt := 1; ; attempt++ {
-		res = s.Curl(t, url, allowedTimeout)
+		res = s.Curl(t, url, allowedTimeout, extra...)
 		if res.ExitCode == 0 {
 			return res
 		}
@@ -149,18 +150,18 @@ func (s *Stack) curlUntilConnected(t *testing.T, url, want string) CurlResult {
 }
 
 // AssertReachable requires the request to connect, without corroborating a
-// verdict. Only for paths that record none by design: plain dns mode accepts
-// direct-IP traffic in the kernel without logging it. Prefer AssertAllowed.
-func (s *Stack) AssertReachable(t *testing.T, url string) CurlResult {
+// verdict itself. Use it for paths that record none by design, or pair it with
+// an explicit verdict assertion. Prefer AssertAllowed otherwise.
+func (s *Stack) AssertReachable(t *testing.T, url string, extra ...string) CurlResult {
 	t.Helper()
 
-	return s.curlUntilConnected(t, url, "reachable")
+	return s.curlUntilConnected(t, url, "reachable", extra...)
 }
 
 // AssertBlocked requires the request to fail and the agent to record a block for
 // it. The failure alone proves nothing - a broken resolver, a stopped tester or
 // an unrelated network fault produces the same curl exit code.
-func (s *Stack) AssertBlocked(t *testing.T, url string) CurlResult {
+func (s *Stack) AssertBlocked(t *testing.T, url string, extra ...string) CurlResult {
 	t.Helper()
 
 	deadline := time.Now().Add(connectRetryWindow)
@@ -168,7 +169,7 @@ func (s *Stack) AssertBlocked(t *testing.T, url string) CurlResult {
 	for attempt := 1; ; attempt++ {
 		mark := s.AgentLogMark(t)
 
-		res := s.Curl(t, url, blockedTimeout)
+		res := s.Curl(t, url, blockedTimeout, extra...)
 		if res.ExitCode == 0 {
 			t.Fatalf("expected %s to be blocked, but it connected: %+v", url, res)
 		}
@@ -193,10 +194,10 @@ func (s *Stack) AssertBlocked(t *testing.T, url string) CurlResult {
 // AssertUnreachable requires the request to fail without corroborating a verdict.
 // Kernel drops are logged against the destination IP rather than the hostname -
 // pair this with AssertIPBlocked. Prefer AssertBlocked.
-func (s *Stack) AssertUnreachable(t *testing.T, url string) CurlResult {
+func (s *Stack) AssertUnreachable(t *testing.T, url string, extra ...string) CurlResult {
 	t.Helper()
 
-	res := s.Curl(t, url, blockedTimeout)
+	res := s.Curl(t, url, blockedTimeout, extra...)
 	if res.ExitCode == 0 {
 		t.Fatalf("expected %s to be unreachable, but it connected: %+v", url, res)
 	}
@@ -297,9 +298,9 @@ func (s *Stack) AssertIPVerdictSince(
 	}, verdictTimeout)
 }
 
-// UDPDNSAnswer resolves qname through server over UDP/53 and returns the first
-// answer address, or "". Unlike a fire-and-forget datagram this requires a real
-// response carrying application data, so it proves a bidirectional round-trip.
+// UDPDNSAnswer resolves qname through server over UDP/53 and prefers an IPv4
+// answer, falling back to the first address. Unlike a fire-and-forget datagram
+// this requires response data, so it proves a bidirectional round-trip.
 func (s *Stack) UDPDNSAnswer(t *testing.T, server, qname string) string {
 	t.Helper()
 
@@ -308,6 +309,7 @@ func (s *Stack) UDPDNSAnswer(t *testing.T, server, qname string) string {
 	// busybox prints the server it queried as "Address:<tab>host:port" before the
 	// answer section, so only read addresses that follow a "Name:" line.
 	seenName := false
+	firstAnswer := ""
 
 	for line := range strings.SplitSeq(res.Output, "\n") {
 		line = strings.TrimSpace(line)
@@ -316,23 +318,41 @@ func (s *Stack) UDPDNSAnswer(t *testing.T, server, qname string) string {
 		case strings.HasPrefix(line, "Name:"):
 			seenName = true
 		case seenName && strings.HasPrefix(line, "Address:"):
-			return strings.TrimSpace(strings.TrimPrefix(line, "Address:"))
+			answer := strings.TrimSpace(strings.TrimPrefix(line, "Address:"))
+			if net.ParseIP(answer).To4() != nil {
+				return answer
+			}
+
+			if firstAnswer == "" {
+				firstAnswer = answer
+			}
 		}
 	}
 
-	return ""
+	return firstAnswer
 }
 
 // AssertUDPDNSAnswer requires a real, non-sinkhole answer over UDP/53.
 func (s *Stack) AssertUDPDNSAnswer(t *testing.T, server, qname string) string {
 	t.Helper()
 
-	addr := s.UDPDNSAnswer(t, server, qname)
-	if addr == "" || addr == "0.0.0.0" || addr == "::" {
-		t.Fatalf("no UDP/53 answer for %s from %s (got %q)", qname, server, addr)
-	}
+	deadline := time.Now().Add(connectRetryWindow)
 
-	return addr
+	var addr string
+
+	for attempt := 1; ; attempt++ {
+		addr = s.UDPDNSAnswer(t, server, qname)
+		if addr != "" && addr != "0.0.0.0" && addr != "::" {
+			return addr
+		}
+
+		if time.Now().After(deadline) {
+			t.Fatalf("no UDP/53 answer for %s from %s after %d attempts (got %q)",
+				qname, server, attempt, addr)
+		}
+
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // AssertUDPDNSSinkholed requires the round-trip to succeed but return the
