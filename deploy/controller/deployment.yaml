@@ -76,7 +76,7 @@ spec:
               app.kubernetes.io/name: g0efilter-controller
       containers:
         - name: controller
-          image: docker.io/g0lab/g0efilter-controller:v0.8.4
+          image: docker.io/g0lab/g0efilter-controller:v0.8.5
           args:
             - --leader-elect
             - --metrics-bind-address=:8080
