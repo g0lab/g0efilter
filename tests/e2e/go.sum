@@ -362,8 +362,8 @@ github.com/testcontainers/testcontainers-go v0.44.0 h1:/Fwh6HY1mIikhnm9e7HwoxGyc
 github.com/testcontainers/testcontainers-go v0.44.0/go.mod h1:IcnwQrYTO86xHXu5bvMaBH7ATlbS3Qn1M1QWW3c66rE=
 github.com/testcontainers/testcontainers-go/modules/compose v0.44.0 h1:8YcW51jhgpkkiRVe10Wj9TCBthJmoNpU2fK5WSf7TQ8=
 github.com/testcontainers/testcontainers-go/modules/compose v0.44.0/go.mod h1:0du5YaH5n8Of4bDM/RwIt421Q14kvqrXZ0mB8EjuMoo=
-github.com/testcontainers/testcontainers-go/modules/k3s v0.43.0 h1:hT/Yc1Na3cA0iiXJB0OxdIwQUd9Mj8DFFmKeqjjUycA=
-github.com/testcontainers/testcontainers-go/modules/k3s v0.43.0/go.mod h1:fRCROXI12PmqMU5uCd3oA8agsU6dozrIKcXkOIPphE8=
+github.com/testcontainers/testcontainers-go/modules/k3s v0.44.0 h1:NWvw3DJkUzGIYdDxHWfaPqvT3zPWPj+oIE5h2x4KT+4=
+github.com/testcontainers/testcontainers-go/modules/k3s v0.44.0/go.mod h1:mC5hA8VlVLeuYXzRScoJAqMel81ndUtALJagr7+QFX0=
 github.com/theupdateframework/go-tuf v0.7.0 h1:CqbQFrWo1ae3/I0UCblSbczevCCbS31Qvs5LdxRWqRI=
 github.com/theupdateframework/go-tuf/v2 v2.4.2 h1:w7976/W8uTwlsegP5nRymlpjPgrwSh+AXUf85is6nJk=
 github.com/theupdateframework/go-tuf/v2 v2.4.2/go.mod h1:JqBrIUnNLAaNq/8GmBcEMFWfAFBbqp/MkJEJseXKbks=
