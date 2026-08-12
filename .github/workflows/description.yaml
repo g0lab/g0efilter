@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@d7fa6ef3f34db2948be993a114b474b80b6066f8 # v0
+        uses: g0lab/g0efilter@99c5fbbdff95cd8824c08b10c31f07037f4da38c # v0
         with:
           egress-policy: block
           allowed-domains: |
