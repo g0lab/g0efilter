@@ -73,6 +73,9 @@ func getValidateIPTests() []struct {
 		{"non-numeric", "not.an.ip.address", true},
 		{"bracketed IPv6 with port", "[::1]:80", true},
 		{"scoped IPv6", "fe80::1%eth0", true},
+		{"zero-padded prefix length", "10.0.0.0/08", true},
+		{"zero prefix length padded", "0.0.0.0/00", true},
+		{"zero-padded IPv6 prefix length", "2001:db8::/032", true},
 	}
 }
 

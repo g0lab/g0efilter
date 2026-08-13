@@ -4,7 +4,6 @@ package filter
 import (
 	"net"
 	"net/netip"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -137,23 +136,7 @@ func entryAddress(entry string) string {
 		return host
 	}
 
-	return canonicalPrefixLength(entry)
-}
-
-// net.ParseCIDR tolerates a zero-padded prefix length and net/netip does not, so
-// the padding is normalised away rather than reported as a widening.
-func canonicalPrefixLength(entry string) string {
-	addr, bits, found := strings.Cut(entry, "/")
-	if !found || bits == "" || strings.TrimLeft(bits, "0123456789") != "" {
-		return entry
-	}
-
-	length, err := strconv.Atoi(bits)
-	if err != nil {
-		return entry
-	}
-
-	return addr + "/" + strconv.Itoa(length)
+	return entry
 }
 
 // referenceCovers re-parses one allowlist entry with net/netip, an address
@@ -198,6 +181,8 @@ func FuzzIPAllowlistNeverWidens(f *testing.F) {
 		{"", "1.2.3.4"},
 		{"not-an-ip", "1.2.3.4"},
 		{"tCP/1.2.3.4:1", "1.2.3.4"},
+		{"0.0.0.0/00:1", "0.0.0.0"},
+		{"10.0.0.0/08", "11.0.0.1"},
 		{"[2001:db8::1]", "2001:db8::1"},
 	} {
 		f.Add(seed.entries, seed.ip)
