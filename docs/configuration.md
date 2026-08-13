@@ -27,7 +27,7 @@
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
 | `DECISION_LOG_FILE` | Optional JSON Lines file containing `ALLOWED`, `BLOCKED`, and `AUDIT` decisions, including process fields when available | unset |
-| `BRIDGE_INTERFACES` | Comma-separated bridge names/patterns whose forwarded traffic is filtered, for example `docker0,br-*`. Traffic that stays on a listed bridge is not filtered | unset |
+| `BRIDGE_INTERFACES` | Comma-separated bridge names/patterns whose forwarded traffic is filtered, for example `docker0,br-*`. Traffic leaving on a listed bridge is container-to-container, so it is not filtered | unset |
 | `HOSTNAME` | Identifies this instance in shipped logs | unset |
 | `TENANT_ID` | Optional tenant identifier added to netfilter log events | unset |
 | `DASHBOARD_HOST` | Dashboard URL for log shipping | unset |

@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -88,6 +89,28 @@ func TestLookupTCP(t *testing.T) {
 
 	if info.ContainerID != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
 		t.Errorf("container ID = %q", info.ContainerID)
+	}
+}
+
+func TestContainerIDIsFoundBeyondTheLoggedCgroupLength(t *testing.T) {
+	t.Parallel()
+
+	root := fakeProc(t)
+	id := strings.Repeat("ab", 32)
+	mustWrite(t, filepath.Join(root, "4242", "cgroup"),
+		"0::/"+strings.Repeat("deep/", 80)+"docker-"+id+".scope\n")
+
+	info, ok := NewWithRoot(root, Options{}).Lookup("172.18.0.5", 51000, "tcp")
+	if !ok {
+		t.Fatal("expected lookup to succeed")
+	}
+
+	if info.ContainerID != id {
+		t.Errorf("container ID = %q, want %q", info.ContainerID, id)
+	}
+
+	if len(info.Cgroup) > maxCgroupLen {
+		t.Errorf("logged cgroup is %d bytes, want at most %d", len(info.Cgroup), maxCgroupLen)
 	}
 }
 

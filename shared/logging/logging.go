@@ -162,7 +162,7 @@ type zerologHandler struct {
 }
 
 func (z *zerologHandler) Enabled(_ context.Context, l slog.Level) bool {
-	// Deliver sub-threshold records too when a hook needs them.
+	// Deliver sub-threshold records too when a hook or the decision log needs them.
 	return l >= z.termLevel || z.hook != nil || z.recorder != nil
 }
 
@@ -192,7 +192,14 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 	}
 
 	if z.recorder != nil {
-		return z.recorder.record(record.Time, record.Level, record.Message, attrs)
+		err := z.recorder.record(record.Time, record.Level, record.Message, attrs)
+		if err != nil {
+			// slog discards handler errors, so a lost decision is only visible if it
+			// is reported on the terminal instead.
+			z.zl.Error().Str("event", "decision_log.write_failed").Err(err).Send()
+
+			return err
+		}
 	}
 
 	return nil

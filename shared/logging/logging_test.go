@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -174,6 +175,26 @@ func TestDecisionLogFileFromEnvironment(t *testing.T) {
 		t.Fatalf("decision file = %q", data)
 	}
 }
+
+//nolint:paralleltest // mutates the process-global zerolog logger
+func TestDecisionWriteFailureIsReportedOnTerminal(t *testing.T) {
+	var terminal bytes.Buffer
+
+	lg := logging.New("info", &terminal, logging.WithDecisionWriter(failingWriter{}))
+	lg.Warn("flow.blocked", "action", "BLOCKED")
+
+	if !strings.Contains(terminal.String(), "decision_log.write_failed") {
+		t.Fatalf("terminal = %q, want a reported decision write failure", terminal.String())
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errWriteRefused
+}
+
+var errWriteRefused = errors.New("refused")
 
 //nolint:paralleltest // mutates the process-global zerolog logger and hook
 func TestWithAttrsCarriedToHookAndTerminal(t *testing.T) {

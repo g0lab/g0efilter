@@ -266,13 +266,19 @@ func (p *ProcProvider) processInfo(pid int) Info {
 
 	cgroup := readCgroup(filepath.Join(dir, "cgroup"))
 
+	// The container ID is read from the whole path; only the logged field is capped.
+	containerID := containerIDFromCgroup(cgroup)
+	if len(cgroup) > maxCgroupLen {
+		cgroup = cgroup[:maxCgroupLen]
+	}
+
 	return Info{
 		PID:         pid,
 		Name:        name,
 		Cmdline:     cmdline,
 		Executable:  exe,
 		Cgroup:      cgroup,
-		ContainerID: containerIDFromCgroup(cgroup),
+		ContainerID: containerID,
 	}
 }
 
@@ -285,10 +291,6 @@ func readCgroup(path string) string {
 	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
 		parts := strings.SplitN(line, ":", 3)
 		if len(parts) == 3 && parts[2] != "" && parts[2] != "/" {
-			if len(parts[2]) > maxCgroupLen {
-				return parts[2][:maxCgroupLen]
-			}
-
 			return parts[2]
 		}
 	}

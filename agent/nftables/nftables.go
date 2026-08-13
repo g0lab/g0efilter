@@ -1253,8 +1253,9 @@ func bridgeJumpRules(interfaces []string, target string) string {
 	return rules.String()
 }
 
-// bridgeLocalRules exempt traffic that stays on a managed bridge: container to
-// container is not egress, and dropping it would break linked containers.
+// bridgeLocalRules exempt traffic leaving on any managed bridge: the destination
+// is another local container rather than the network, and dropping it would break
+// linked containers. Cross-bridge traffic is left to Docker's own isolation.
 func bridgeLocalRules(interfaces []string, verdict string) string {
 	var rules strings.Builder
 	for _, name := range interfaces {

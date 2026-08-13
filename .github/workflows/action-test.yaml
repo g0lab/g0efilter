@@ -343,7 +343,16 @@ jobs:
                 docker network rm g0efilter-e2e-peers >/dev/null 2>&1 || true' EXIT
           docker run -d --name g0efilter-e2e-peer --network g0efilter-e2e-peers \
             curlimages/curl:latest nc -l -p 8080
-          peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer)
+          for attempt in 1 2 3 4 5; do
+            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer)
+            [ -n "$peer" ] && break
+            sleep 1
+          done
+          if [ -z "$peer" ]; then
+            echo "the peer container never reported an address"
+            docker logs g0efilter-e2e-peer || true
+            exit 1
+          fi
           if ! docker run --rm --network g0efilter-e2e-peers curlimages/curl:latest \
             sh -c "echo ping | nc -w 5 $peer 8080"; then
             echo "container to container traffic on one bridge must not be filtered"
