@@ -12,7 +12,7 @@ import (
 func TestResolvedElementArgsV4(t *testing.T) {
 	t.Parallel()
 
-	args, err := resolvedElementArgs("add", "140.82.112.3", 300*time.Second, policy.DomainRule{})
+	args, err := resolvedElementArgs("add", "g0efilter", "140.82.112.3", 300*time.Second, policy.DomainRule{})
 	if err != nil {
 		t.Fatalf("resolvedElementArgs: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestResolvedElementArgsV4(t *testing.T) {
 func TestResolvedElementArgsV6(t *testing.T) {
 	t.Parallel()
 
-	args, err := resolvedElementArgs("add", "2606:4700:4700::1111", 120*time.Second, policy.DomainRule{})
+	args, err := resolvedElementArgs("add", "g0efilter", "2606:4700:4700::1111", 120*time.Second, policy.DomainRule{})
 	if err != nil {
 		t.Fatalf("resolvedElementArgs: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestResolvedElementArgsV6(t *testing.T) {
 func TestResolvedElementArgsDeleteHasNoTimeout(t *testing.T) {
 	t.Parallel()
 
-	args, err := resolvedElementArgs("delete", "1.2.3.4", 0, policy.DomainRule{})
+	args, err := resolvedElementArgs("delete", "g0efilter", "1.2.3.4", 0, policy.DomainRule{})
 	if err != nil {
 		t.Fatalf("resolvedElementArgs: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestResolvedElementArgsRejectsInvalidIP(t *testing.T) {
 	// DNS answers are untrusted: anything that isn't a clean IP must be rejected
 	// before it reaches an nft invocation.
 	for _, bad := range []string{"", "not-an-ip", "1.2.3.4; drop table", "999.1.1.1", "github.com"} {
-		_, err := resolvedElementArgs("add", bad, time.Minute, policy.DomainRule{})
+		_, err := resolvedElementArgs("add", "g0efilter", bad, time.Minute, policy.DomainRule{})
 		if err == nil {
 			t.Errorf("resolvedElementArgs(%q) = nil error, want rejection", bad)
 		}
@@ -147,7 +147,7 @@ func TestGenerateRulesetDNSStrictDefaultAllowDegrades(t *testing.T) {
 func TestResolvedElementArgsConstrained(t *testing.T) {
 	t.Parallel()
 
-	args, err := resolvedElementArgs("add", "140.82.112.3", 300*time.Second,
+	args, err := resolvedElementArgs("add", "g0efilter", "140.82.112.3", 300*time.Second,
 		policy.DomainRule{Pattern: "example.com", Proto: "tcp", Port: 443})
 	if err != nil {
 		t.Fatalf("resolvedElementArgs: %v", err)
@@ -164,7 +164,7 @@ func TestResolvedElementArgsConstrained(t *testing.T) {
 func TestResolvedElementArgsConstrainedV6(t *testing.T) {
 	t.Parallel()
 
-	args, err := resolvedElementArgs("add", "2606:4700:4700::1111", 120*time.Second,
+	args, err := resolvedElementArgs("add", "g0efilter", "2606:4700:4700::1111", 120*time.Second,
 		policy.DomainRule{Pattern: "example.com", Proto: "udp", Port: 53})
 	if err != nil {
 		t.Fatalf("resolvedElementArgs: %v", err)
@@ -185,7 +185,7 @@ func TestResolvedElementArgsRejectsBadConstraint(t *testing.T) {
 		{Pattern: "example.com", Proto: "tcp", Port: 70000},
 		{Pattern: "example.com", Proto: "tcp", Port: -1},
 	} {
-		_, err := resolvedElementArgs("add", "1.2.3.4", time.Minute, bad)
+		_, err := resolvedElementArgs("add", "g0efilter", "1.2.3.4", time.Minute, bad)
 		if err == nil {
 			t.Errorf("resolvedElementArgs(%+v) = nil error, want rejection", bad)
 		}

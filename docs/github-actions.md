@@ -43,8 +43,11 @@ job needs.
 
 > [!NOTE]
 > Only GitHub-hosted Ubuntu runners are supported. Later containers are filtered
-> only when they use host networking. Jobs that use `container:` are not
-> supported.
+> when they use host networking, Docker's default bridge, or a `br-*`
+> user-defined bridge. Traffic between containers is left to Docker's own
+> isolation rules.
+> Jobs that use `container:` are not supported because the Action is initialized
+> inside that job container rather than on the runner host.
 
 ## Job report
 
