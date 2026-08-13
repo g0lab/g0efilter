@@ -35,6 +35,8 @@ func fakeProc(t *testing.T) string {
 
 	mustWrite(t, filepath.Join(root, "4242", "comm"), "curl\n")
 	mustWrite(t, filepath.Join(root, "4242", "cmdline"), "curl\x00-sS\x00https://github.com\x00")
+	mustWrite(t, filepath.Join(root, "4242", "cgroup"),
+		"0::/system.slice/docker-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.scope\n")
 
 	return root
 }
@@ -69,7 +71,7 @@ func mustSymlink(t *testing.T, target, path string) {
 func TestLookupTCP(t *testing.T) {
 	t.Parallel()
 
-	p := NewWithRoot(fakeProc(t))
+	p := NewWithRoot(fakeProc(t), Options{IncludeCmdline: true})
 
 	info, ok := p.Lookup("172.18.0.5", 51000, "tcp")
 	if !ok {
@@ -83,12 +85,29 @@ func TestLookupTCP(t *testing.T) {
 	if info.Cmdline != "curl -sS https://github.com" {
 		t.Errorf("cmdline = %q", info.Cmdline)
 	}
+
+	if info.ContainerID != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		t.Errorf("container ID = %q", info.ContainerID)
+	}
+}
+
+func TestCmdlineIsOptIn(t *testing.T) {
+	t.Parallel()
+
+	info, ok := NewWithRoot(fakeProc(t), Options{}).Lookup("172.18.0.5", 51000, "tcp")
+	if !ok {
+		t.Fatal("expected lookup to succeed")
+	}
+
+	if info.Cmdline != "" {
+		t.Errorf("cmdline = %q, want omitted", info.Cmdline)
+	}
 }
 
 func TestLookupUDP(t *testing.T) {
 	t.Parallel()
 
-	p := NewWithRoot(fakeProc(t))
+	p := NewWithRoot(fakeProc(t), Options{})
 
 	info, ok := p.Lookup("172.18.0.5", 53001, "udp")
 	if !ok || info.PID != 4242 {
@@ -99,7 +118,7 @@ func TestLookupUDP(t *testing.T) {
 func TestLookupMissDegradesGracefully(t *testing.T) {
 	t.Parallel()
 
-	p := NewWithRoot(fakeProc(t))
+	p := NewWithRoot(fakeProc(t), Options{})
 
 	if _, ok := p.Lookup("172.18.0.5", 40000, "tcp"); ok {
 		t.Error("unknown port must not resolve")
@@ -114,7 +133,7 @@ func TestLookupCaches(t *testing.T) {
 	t.Parallel()
 
 	root := fakeProc(t)
-	p := NewWithRoot(root)
+	p := NewWithRoot(root, Options{})
 
 	if _, ok := p.Lookup("172.18.0.5", 51000, "tcp"); !ok {
 		t.Fatal("first lookup failed")
@@ -134,7 +153,7 @@ func TestLookupCaches(t *testing.T) {
 func TestCacheBoundedUnderUniqueFlowChurn(t *testing.T) {
 	t.Parallel()
 
-	p := NewWithRoot(t.TempDir())
+	p := NewWithRoot(t.TempDir(), Options{})
 
 	// Every lookup is a fresh flow, so nothing is expired when the cap is hit;
 	// the fallback eviction must still bound the cache.

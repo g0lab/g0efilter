@@ -19,15 +19,24 @@ import (
 const (
 	cacheTTL        = 30 * time.Second
 	maxCmdlineLen   = 256
+	maxCgroupLen    = 256
 	maxCacheEntries = 4096
 )
 
 // Info identifies the process behind a connection.
 type Info struct {
-	PID        int
-	Name       string
-	Cmdline    string
-	Executable string
+	PID         int
+	Name        string
+	Cmdline     string
+	Executable  string
+	Cgroup      string
+	ContainerID string
+}
+
+// Options controls which process metadata is collected. Command lines are
+// disabled by default because arguments commonly contain credentials.
+type Options struct {
+	IncludeCmdline bool
 }
 
 // Provider looks up the owning process of a local connection. Implementations
@@ -46,6 +55,7 @@ type cacheEntry struct {
 // cached by source ip:port because the inode-to-PID scan is O(procs x fds).
 type ProcProvider struct {
 	root string
+	opts Options
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
@@ -53,14 +63,15 @@ type ProcProvider struct {
 }
 
 // New returns a Provider reading from /proc.
-func New() *ProcProvider {
-	return NewWithRoot("/proc")
+func New(opts Options) *ProcProvider {
+	return NewWithRoot("/proc", opts)
 }
 
 // NewWithRoot returns a Provider reading from an alternate proc root (for tests).
-func NewWithRoot(root string) *ProcProvider {
+func NewWithRoot(root string, opts Options) *ProcProvider {
 	return &ProcProvider{
 		root:  root,
+		opts:  opts,
 		mu:    sync.Mutex{},
 		cache: make(map[string]cacheEntry),
 		now:   time.Now,
@@ -238,11 +249,13 @@ func (p *ProcProvider) processInfo(pid int) Info {
 
 	cmdline := ""
 
-	cmdBytes, err := os.ReadFile(filepath.Join(dir, "cmdline")) //nolint:gosec // proc path
-	if err == nil {
-		cmdline = strings.TrimSpace(strings.ReplaceAll(string(cmdBytes), "\x00", " "))
-		if len(cmdline) > maxCmdlineLen {
-			cmdline = cmdline[:maxCmdlineLen]
+	if p.opts.IncludeCmdline {
+		cmdBytes, err := os.ReadFile(filepath.Join(dir, "cmdline")) //nolint:gosec // proc path
+		if err == nil {
+			cmdline = strings.TrimSpace(strings.ReplaceAll(string(cmdBytes), "\x00", " "))
+			if len(cmdline) > maxCmdlineLen {
+				cmdline = cmdline[:maxCmdlineLen]
+			}
 		}
 	}
 
@@ -251,7 +264,56 @@ func (p *ProcProvider) processInfo(pid int) Info {
 		exe = "" // often permission-denied for other users' processes
 	}
 
-	return Info{PID: pid, Name: name, Cmdline: cmdline, Executable: exe}
+	cgroup := readCgroup(filepath.Join(dir, "cgroup"))
+
+	return Info{
+		PID:         pid,
+		Name:        name,
+		Cmdline:     cmdline,
+		Executable:  exe,
+		Cgroup:      cgroup,
+		ContainerID: containerIDFromCgroup(cgroup),
+	}
+}
+
+func readCgroup(path string) string {
+	data, err := os.ReadFile(path) //nolint:gosec // proc path
+	if err != nil {
+		return ""
+	}
+
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
+		parts := strings.SplitN(line, ":", 3)
+		if len(parts) == 3 && parts[2] != "" && parts[2] != "/" {
+			if len(parts[2]) > maxCgroupLen {
+				return parts[2][:maxCgroupLen]
+			}
+
+			return parts[2]
+		}
+	}
+
+	return ""
+}
+
+func containerIDFromCgroup(cgroup string) string {
+	for segment := range strings.FieldsFuncSeq(cgroup, func(r rune) bool {
+		return r == '/' || r == ':'
+	}) {
+		segment = strings.TrimSuffix(segment, ".scope")
+		segment = strings.TrimPrefix(segment, "docker-")
+		segment = strings.TrimPrefix(segment, "cri-containerd-")
+		segment = strings.TrimPrefix(segment, "crio-")
+
+		if len(segment) == 64 {
+			_, err := hex.DecodeString(segment)
+			if err == nil {
+				return segment
+			}
+		}
+	}
+
+	return ""
 }
 
 // hexV4 renders an IPv4 address the way /proc/net/tcp does: 32-bit little-endian hex.

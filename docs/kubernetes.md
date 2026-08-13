@@ -99,9 +99,10 @@ components:
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
 from observed traffic.
 
-`process-info` sets `shareProcessNamespace: true`, which also lets every container in
-the pod see and signal the others' processes. Leave it off unless the attribution is
-worth that.
+`process-info` sets `shareProcessNamespace: true`, which also lets every
+container in the pod see and signal the others' processes. Leave it off unless
+the attribution is worth that. Command arguments are not logged unless
+`PROCESS_CMDLINE=true` is set on the sidecar.
 
 A complete overlay is in [examples/kubernetes](../examples/kubernetes); render it
 with `kubectl kustomize examples/kubernetes`.

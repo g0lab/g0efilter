@@ -553,10 +553,13 @@ func setupProcInfo(cfg config, lg *slog.Logger) config {
 		return cfg
 	}
 
-	cfg.procInfo = procinfo.New()
+	includeCmdline := strings.EqualFold(getenvDefault("PROCESS_CMDLINE", "false"), "true")
+
+	cfg.procInfo = procinfo.New(procinfo.Options{IncludeCmdline: includeCmdline})
 
 	lg.Info("process_info.enabled",
-		"note", "flow logs carry pid/process attribution; requires a shared PID namespace with clients")
+		"cmdline", includeCmdline,
+		"note", "flow logs carry best-effort pid/process attribution; requires a shared PID namespace with clients")
 
 	return cfg
 }

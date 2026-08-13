@@ -120,8 +120,12 @@ would block. Audit mode does not change the policy file.
 
 ## Process details
 
-Set `PROCESS_INFO=true` to add the owning PID and command to flow logs. The
-agent must share a PID namespace with the workload. Otherwise, the process name
-is reported as `unknown`.
+Set `PROCESS_INFO=true` to add the owning PID, process name, executable, cgroup,
+and container ID to flow logs when available. The agent must share a PID
+namespace with the workload. Otherwise, the process name is reported as
+`unknown`. Command lines are omitted because arguments can contain secrets; set
+`PROCESS_CMDLINE=true` only when that exposure is acceptable.
+
+Process identity is observability metadata and is not a policy selector.
 
 See [example policies](../examples/policy/) for complete files.

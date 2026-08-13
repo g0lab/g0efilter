@@ -61,6 +61,20 @@ func TestGetenvDefault(t *testing.T) {
 	}
 }
 
+func TestSetupProcInfoIsOptIn(t *testing.T) {
+	//nolint:exhaustruct // only procInfo is under test
+	if setupProcInfo(config{}, discardLogger()).procInfo != nil {
+		t.Fatal("process attribution must stay off unless PROCESS_INFO=true")
+	}
+
+	t.Setenv("PROCESS_INFO", "true")
+
+	//nolint:exhaustruct // only procInfo is under test
+	if setupProcInfo(config{}, discardLogger()).procInfo == nil {
+		t.Fatal("process provider was not configured")
+	}
+}
+
 func TestParseDurationDefault(t *testing.T) {
 	t.Parallel()
 

@@ -117,12 +117,24 @@ func procFields(opts Options, sourceIP string, sourcePort int, proto string) []a
 		return []any{"process_name", unknownValue}
 	}
 
-	return []any{
+	fields := []any{
 		"pid", info.PID,
 		"process_name", info.Name,
-		"cmdline", info.Cmdline,
 		"executable", info.Executable,
 	}
+	fields = appendOptionalField(fields, "cmdline", info.Cmdline)
+	fields = appendOptionalField(fields, "cgroup", info.Cgroup)
+	fields = appendOptionalField(fields, "container_id", info.ContainerID)
+
+	return fields
+}
+
+func appendOptionalField(fields []any, key, value string) []any {
+	if value == "" {
+		return fields
+	}
+
+	return append(fields, key, value)
 }
 
 // audited reports whether a non-permitted host should pass anyway under audit mode.
