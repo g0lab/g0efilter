@@ -124,4 +124,8 @@ Set `PROCESS_INFO=true` to add the owning PID and command to flow logs. The
 agent must share a PID namespace with the workload. Otherwise, the process name
 is reported as `unknown`.
 
+Set `DECISION_LOG_FILE` to retain policy decisions as JSON Lines. This is a
+separate machine-readable record, so allowed decisions are captured even when
+the terminal log level hides them.
+
 See [example policies](../examples/policy/) for complete files.

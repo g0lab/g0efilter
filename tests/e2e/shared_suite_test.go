@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -55,6 +56,18 @@ func phase01Baseline(t *testing.T, s *harness.Stack, mode harness.FilterMode) {
 
 		if !strings.Contains(event.Event, ".blocked") {
 			t.Errorf("unexpected event name %q for a block: %s", event.Event, event.Raw)
+		}
+	})
+
+	t.Run("DECISION_LOG_FILE records decisions as JSON Lines", func(t *testing.T) {
+		record := s.WaitForDecisionRecord(t, func(record map[string]any) bool {
+			return record["action"] == "BLOCKED" && strings.Contains(fmt.Sprint(record), "google.com")
+		}, 15*time.Second)
+
+		for _, key := range []string{"time", "level", "event"} {
+			if _, ok := record[key]; !ok {
+				t.Errorf("decision record has no %q: %v", key, record)
+			}
 		}
 	})
 
