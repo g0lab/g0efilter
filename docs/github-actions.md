@@ -74,6 +74,10 @@ Keep custom allow rules small and use restrictive job
 [`permissions:`](https://docs.github.com/actions/tutorials/authenticate-with-github_token#modifying-the-permissions-for-the-github_token).
 Network filtering does not limit what the job token can do.
 
+g0efilter reads TLS SNI and HTTP Host metadata but does not decrypt TLS, inject
+a certificate authority, wrap container runtimes, or inspect encrypted paths
+and request bodies.
+
 ## Lockdown mode
 
 A later step can normally remove the filter through passwordless `sudo` or the
