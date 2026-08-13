@@ -45,7 +45,11 @@ func clampTTL(ttl time.Duration) time.Duration {
 // timeout. IPs come from untrusted DNS answers, so they are re-validated and the
 // family checked against the target set before touching the kernel. A non-zero
 // rule targets the "addr . proto . port" concatenation set instead.
-func resolvedElementArgs(verb, ip string, ttl time.Duration, rule policy.DomainRule) ([]string, error) {
+func resolvedElementArgs(
+	verb, tablePrefix, ip string,
+	ttl time.Duration,
+	rule policy.DomainRule,
+) ([]string, error) {
 	parsed := net.ParseIP(strings.TrimSpace(ip))
 	if parsed == nil {
 		return nil, fmt.Errorf("%w: %q", errInvalidResolvedIP, ip)
@@ -56,9 +60,9 @@ func resolvedElementArgs(verb, ip string, ttl time.Duration, rule policy.DomainR
 		return nil, err
 	}
 
-	family, table, set := "ip", "g0efilter_v4", "resolved_allow_v4"
+	family, table, set := "ip", tablePrefix+"_v4", "resolved_allow_v4"
 	if parsed.To4() == nil {
-		family, table, set = "ip6", "g0efilter_v6", "resolved_allow_v6"
+		family, table, set = "ip6", tablePrefix+"_v6", "resolved_allow_v6"
 	}
 
 	element := parsed.String()
@@ -94,7 +98,25 @@ func validateConstraint(rule policy.DomainRule) error {
 // addResolvedElement inserts one IP, replacing any existing entry so the timeout
 // refreshes on re-resolution (nft "add element" fails with EEXIST on live entries).
 func addResolvedElement(ctx context.Context, ip string, ttl time.Duration, rule policy.DomainRule) error {
-	addArgs, err := resolvedElementArgs("add", ip, ttl, rule)
+	err := addResolvedToTable(ctx, "g0efilter", ip, ttl, rule)
+	if err != nil {
+		return err
+	}
+
+	if len(bridgeInterfacesFromEnv()) == 0 {
+		return nil
+	}
+
+	return addResolvedToTable(ctx, "g0efilter_bridge", ip, ttl, rule)
+}
+
+func addResolvedToTable(
+	ctx context.Context,
+	tablePrefix, ip string,
+	ttl time.Duration,
+	rule policy.DomainRule,
+) error {
+	addArgs, err := resolvedElementArgs("add", tablePrefix, ip, ttl, rule)
 	if err != nil {
 		return err
 	}
@@ -104,9 +126,9 @@ func addResolvedElement(ctx context.Context, ip string, ttl time.Duration, rule 
 		return nil
 	}
 
-	delArgs, argsErr := resolvedElementArgs("delete", ip, 0, rule)
-	if argsErr != nil {
-		return argsErr
+	delArgs, err := resolvedElementArgs("delete", tablePrefix, ip, 0, rule)
+	if err != nil {
+		return err
 	}
 
 	_ = runNft(ctx, delArgs)

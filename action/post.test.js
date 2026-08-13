@@ -190,6 +190,10 @@ test("teardown removes the container and deletes each managed nft table", () => 
     ["sudo", ["nft", "delete", "table", "ip", "g0efilter_nat_v4"]],
     ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_v6"]],
     ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_nat_v6"]],
+    ["sudo", ["nft", "delete", "table", "ip", "g0efilter_bridge_v4"]],
+    ["sudo", ["nft", "delete", "table", "ip", "g0efilter_bridge_nat_v4"]],
+    ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_bridge_v6"]],
+    ["sudo", ["nft", "delete", "table", "ip6", "g0efilter_bridge_nat_v6"]],
   ]);
 });
 

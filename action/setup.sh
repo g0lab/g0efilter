@@ -174,6 +174,7 @@ DOCKER_ARGS=(
   -e FILTER_MODE="$MODE"
   -e ENFORCE="$ENFORCE"
   -e LOG_LEVEL="$LOG_LEVEL_VALUE"
+  -e 'BRIDGE_INTERFACES=docker0,br-*'
 )
 
 # Host :53 is systemd-resolved; the NAT redirect still captures DNS to the
@@ -184,7 +185,7 @@ if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
-	DOCKER_ARGS+=(-e DNS_PORT=65053)
+  DOCKER_ARGS+=(-e DNS_PORT=65053)
 fi
 
 docker run "${DOCKER_ARGS[@]}" "$IMAGE"

@@ -15,6 +15,7 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/docker" <<'EOF'
 #!/usr/bin/env bash
+[ -n "${DOCKER_CALLS:-}" ] && printf '%s\n' "$*" >> "$DOCKER_CALLS"
 case "$1" in
   logs) echo "startup.ready" ;;
   ps)   echo "container123" ;;
@@ -43,6 +44,7 @@ run_setup() {
   out="$(env -i \
     PATH="$WORK/bin:/usr/bin:/bin" \
     RUNNER_TEMP="$WORK/tmp" \
+    DOCKER_CALLS="$WORK/docker.log" \
     "$@" \
     bash "$SETUP" 2>&1)"
   rc=$?
@@ -77,6 +79,18 @@ run_setup 0 "" "egress-policy audit accepted" EGRESS_POLICY=audit
 run_setup 0 "" "log-level lowercase accepted" LOG_LEVEL=debug
 run_setup 0 "" "log-level WARNING alias accepted" LOG_LEVEL=WARNING
 run_setup 0 "" "log-level TRACE accepted" LOG_LEVEL=TRACE
+
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1
+if grep -Fq -- 'BRIDGE_INTERFACES=docker0,br-*' "$WORK/docker.log"; then
+  echo "ok: Docker bridge interfaces are filtered"
+  pass=$((pass + 1))
+else
+  echo "FAIL: Docker bridge interfaces are not filtered"
+  fail=$((fail + 1))
+fi
+
 run_setup 0 "Lockdown applied" "lockdown-runner true applies lockdown" \
   LOCKDOWN_RUNNER=true RUNNER_ENVIRONMENT=github-hosted
 run_setup 1 "requires a GitHub-hosted runner" "lockdown-runner rejects non-hosted runner" \
