@@ -18,7 +18,6 @@ library-chart values:
 | `kustomize/events` | Records the first denials as Events on the pod. The only feature that grants Kubernetes API access. |
 | `kustomize/learning` | Runs in learning mode against a writable emptyDir, to build a policy by observation. |
 | `kustomize/metrics` | Serves Prometheus metrics on port 9095 with scrape annotations. |
-| `kustomize/process-info` | Adds PID and process names using a shared process namespace. |
 
 `tests/manifests/` checks parity. See
 [docs/kubernetes.md](../docs/kubernetes.md) for usage.

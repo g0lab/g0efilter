@@ -61,12 +61,6 @@ type SidecarSpec struct {
 	// +optional
 	LogLevel string `json:"logLevel,omitempty"`
 
-	// ProcessInfo adds the originating pid and process name to flow logs. The webhook
-	// enables a shared process namespace unless the pod uses hostPID, and rejects an
-	// explicit shareProcessNamespace: false.
-	// +optional
-	ProcessInfo bool `json:"processInfo,omitempty"`
-
 	// TenantID labels this sidecar's netfilter log events with a tenant identifier.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
@@ -137,7 +131,7 @@ type SidecarSpec struct {
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=32
 	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['ALLOWLIST_IPS','ALLOWLIST_DOMAINS','DENYLIST_IPS','DENYLIST_DOMAINS','DEFAULT_ACTION','LEARNING_MODE','POLICY_PATH','POLICY_CONFIGMAP']))",message="extraEnv must not set ALLOWLIST_*, DENYLIST_*, DEFAULT_ACTION, LEARNING_MODE, POLICY_PATH or POLICY_CONFIGMAP: they would stop the sidecar enforcing this policy"
-	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','PROCESS_INFO','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_HOST','NOTIFICATION_KEY','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))",message="extraEnv must not set a variable this spec already controls; use the matching field instead"
+	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_HOST','NOTIFICATION_KEY','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))",message="extraEnv must not set a variable this spec already controls; use the matching field instead"
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
 }
 

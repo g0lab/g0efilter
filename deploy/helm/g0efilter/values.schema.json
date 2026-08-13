@@ -54,10 +54,6 @@
         "ERROR"
       ]
     },
-    "processInfo": {
-      "description": "Needs shareProcessNamespace on the pod, which the consuming chart must set.",
-      "type": "boolean"
-    },
     "tenantId": {
       "type": "string"
     },

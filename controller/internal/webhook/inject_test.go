@@ -420,41 +420,6 @@ func TestSidecarSpecOverridesTheDefaults(t *testing.T) {
 	}
 }
 
-func TestProcessInfoRejectsAnExplicitPrivatePIDNamespace(t *testing.T) {
-	t.Parallel()
-
-	spec := v1alpha1.SidecarSpec{ProcessInfo: true} //nolint:exhaustruct // one field under test
-	subject := pod(map[string]string{"app": "web"}, nil)
-	disabled := false
-	subject.Spec.ShareProcessNamespace = &disabled
-
-	response, _ := admit(t, newInjector(t, policy("web", map[string]string{"app": "web"}, spec)), subject)
-	if response.Allowed {
-		t.Fatal("a pod with an incompatible PID namespace was admitted")
-	}
-
-	if !strings.Contains(response.Result.Message, "shareProcessNamespace") {
-		t.Errorf("denial = %q", response.Result.Message)
-	}
-}
-
-func TestProcessInfoPreservesHostPID(t *testing.T) {
-	t.Parallel()
-
-	spec := v1alpha1.SidecarSpec{ProcessInfo: true} //nolint:exhaustruct // one field under test
-	subject := pod(map[string]string{"app": "web"}, nil)
-	subject.Spec.HostPID = true
-
-	_, patched := admit(t, newInjector(t, policy("web", map[string]string{"app": "web"}, spec)), subject)
-	if patched == nil {
-		t.Fatal("the hostPID pod was not patched")
-	}
-
-	if patched.Spec.ShareProcessNamespace != nil {
-		t.Errorf("shareProcessNamespace = %v, want unset", *patched.Spec.ShareProcessNamespace)
-	}
-}
-
 func envOf(container corev1.Container) map[string]string {
 	out := make(map[string]string, len(container.Env))
 	for _, entry := range container.Env {

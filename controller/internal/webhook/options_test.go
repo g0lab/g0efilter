@@ -85,7 +85,6 @@ func TestUnsetOptionsRenderNoEnvironment(t *testing.T) {
 func everyOption() v1alpha1.SidecarSpec {
 	//nolint:exhaustruct // image, mode and resources are covered elsewhere
 	return v1alpha1.SidecarSpec{
-		ProcessInfo:      true,
 		TenantID:         "tenant-a",
 		Events:           true,
 		EventsMaxDenials: new(int32(3)),
@@ -129,7 +128,6 @@ func TestTheFullOptionSurfaceRenders(t *testing.T) {
 	env := envOf(sidecar)
 
 	for name, want := range map[string]string{
-		"PROCESS_INFO":                 "true",
 		"TENANT_ID":                    "tenant-a",
 		"KUBE_EVENTS":                  "true",
 		"KUBE_EVENTS_MAX":              "3",
@@ -156,11 +154,6 @@ func TestTheFullOptionSurfaceRenders(t *testing.T) {
 		if env[name] != want {
 			t.Errorf("%s = %q, want %q", name, env[name], want)
 		}
-	}
-
-	// Process attribution reads /proc, which needs the shared namespace.
-	if patched.Spec.ShareProcessNamespace == nil || !*patched.Spec.ShareProcessNamespace {
-		t.Error("processInfo is set but the process namespace is not shared")
 	}
 
 	assertSecretRef(t, sidecar, "DASHBOARD_API_KEY", "dashboard-key", "api-key")

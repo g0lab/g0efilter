@@ -39,10 +39,6 @@ a pod template's initContainers: anything ordered before it has unfiltered egres
       valueFrom:
         fieldRef:
           fieldPath: metadata.namespace
-    {{- if $c.processInfo }}
-    - name: PROCESS_INFO
-      value: "true"
-    {{- end }}
     {{- with $c.tenantId }}
     - name: TENANT_ID
       value: {{ . | quote }}
