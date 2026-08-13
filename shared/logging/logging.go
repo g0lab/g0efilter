@@ -5,6 +5,8 @@ package logging
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -36,8 +38,9 @@ var globalLoggerMutex sync.Mutex
 
 //nolint:gochecknoglobals // Registered hook stopped by Shutdown.
 var (
-	defaultHook   Hook
-	defaultHookMu sync.Mutex
+	defaultHook     Hook
+	defaultHookMu   sync.Mutex
+	defaultRecorder *decisionRecorder
 )
 
 // Hook observes every log record for side effects beyond terminal output, such
@@ -51,13 +54,59 @@ type Hook interface {
 type Option func(*options)
 
 type options struct {
-	hook Hook
+	hook           Hook
+	decisionWriter io.Writer
 }
 
 // WithHook attaches a Hook that receives every record. Passing a nil hook is a
 // no-op (terminal-only logging).
 func WithHook(h Hook) Option {
 	return func(o *options) { o.hook = h }
+}
+
+// WithDecisionWriter writes enforcement decisions as JSON Lines. It is mainly
+// useful to embedders and tests; DECISION_LOG_FILE configures the same output.
+func WithDecisionWriter(w io.Writer) Option {
+	return func(o *options) { o.decisionWriter = w }
+}
+
+type decisionRecorder struct {
+	mu     sync.Mutex
+	writer io.Writer
+	closer io.Closer
+}
+
+func (d *decisionRecorder) record(recordTime time.Time, level slog.Level, msg string, attrs map[string]any) error {
+	action := extractAction(attrs)
+	if action != actions.ActionAllowed && action != actions.ActionBlocked && action != actions.ActionAudit {
+		return nil
+	}
+
+	event := make(map[string]any, len(attrs)+4)
+	event["time"] = recordTime.UTC().Format(time.RFC3339Nano)
+	event["level"] = level.String()
+	event["event"] = msg
+
+	for key, value := range attrs {
+		if key != "time" && key != "level" && key != "event" {
+			event[key] = value
+		}
+	}
+
+	line, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("encode decision record: %w", err)
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err = d.writer.Write(append(line, '\n'))
+	if err != nil {
+		return fmt.Errorf("write decision record: %w", err)
+	}
+
+	return nil
 }
 
 func setGlobalLogger(zl zerolog.Logger) {
@@ -108,12 +157,13 @@ type zerologHandler struct {
 	zl        zerolog.Logger
 	termLevel slog.Level
 	hook      Hook
+	recorder  *decisionRecorder
 	baseAttrs map[string]any // attributes from With() calls
 }
 
 func (z *zerologHandler) Enabled(_ context.Context, l slog.Level) bool {
 	// Deliver sub-threshold records too when a hook needs them.
-	return l >= z.termLevel || z.hook != nil
+	return l >= z.termLevel || z.hook != nil || z.recorder != nil
 }
 
 func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
@@ -139,6 +189,10 @@ func (z *zerologHandler) Handle(ctx context.Context, record slog.Record) error {
 
 	if z.hook != nil {
 		z.hook.Handle(ctx, record.Time, record.Message, attrs)
+	}
+
+	if z.recorder != nil {
+		return z.recorder.record(record.Time, record.Level, record.Message, attrs)
 	}
 
 	return nil
@@ -227,6 +281,7 @@ func (z *zerologHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		zl:        logger,
 		termLevel: z.termLevel,
 		hook:      z.hook,
+		recorder:  z.recorder,
 		baseAttrs: newBaseAttrs,
 	}
 }
@@ -271,12 +326,43 @@ func New(level string, out io.Writer, opts ...Option) *slog.Logger {
 		setDefaultHook(cfg.hook)
 	}
 
+	recorder := newDecisionRecorder(cfg.decisionWriter)
+
+	defaultHookMu.Lock()
+	previous := defaultRecorder
+	defaultRecorder = recorder
+	defaultHookMu.Unlock()
+
+	closeRecorder(previous)
+
 	return slog.New(&zerologHandler{
 		zl:        zl,
 		termLevel: lvl,
 		hook:      cfg.hook,
+		recorder:  recorder,
 		baseAttrs: make(map[string]any),
 	})
+}
+
+func newDecisionRecorder(writer io.Writer) *decisionRecorder {
+	if writer != nil {
+		return &decisionRecorder{writer: writer}
+	}
+
+	path := strings.TrimSpace(os.Getenv("DECISION_LOG_FILE"))
+	if path == "" {
+		return nil
+	}
+
+	file := &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    defaultLogMaxSizeMB,
+		MaxBackups: defaultLogMaxBackups,
+		MaxAge:     defaultLogMaxAgeDays,
+		Compress:   true,
+	}
+
+	return &decisionRecorder{writer: file, closer: file}
 }
 
 // NewFromEnv creates a terminal logger from LOG_LEVEL.
@@ -295,9 +381,23 @@ func setDefaultHook(h Hook) {
 func Shutdown(timeout time.Duration) {
 	defaultHookMu.Lock()
 	h := defaultHook
+	recorder := defaultRecorder
 	defaultHookMu.Unlock()
 
 	if h != nil {
 		h.Stop(timeout)
 	}
+
+	closeRecorder(recorder)
+}
+
+func closeRecorder(recorder *decisionRecorder) {
+	if recorder == nil || recorder.closer == nil {
+		return
+	}
+
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+
+	_ = recorder.closer.Close()
 }

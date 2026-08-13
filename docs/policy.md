@@ -128,4 +128,8 @@ namespace with the workload. Otherwise, the process name is reported as
 
 Process identity is observability metadata and is not a policy selector.
 
+Set `DECISION_LOG_FILE` to retain policy decisions as JSON Lines. This is a
+separate machine-readable record, so allowed decisions are captured even when
+the terminal log level hides them.
+
 See [example policies](../examples/policy/) for complete files.
