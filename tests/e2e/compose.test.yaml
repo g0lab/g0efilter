@@ -10,6 +10,8 @@ services:
     security_opt:
       - no-new-privileges
     read_only: true
+    tmpfs:
+      - /tmp
     environment:
       FILTER_MODE: ${FILTER_MODE:-https}
       DEFAULT_ACTION: ${DEFAULT_ACTION:-deny}
@@ -22,6 +24,7 @@ services:
       ENABLE_REMOTE_UNBLOCK: 'true'
       UNBLOCK_POLL_INTERVAL: 2s
       POLICY_PATH: /app/policy/policy.yaml
+      DECISION_LOG_FILE: /tmp/decisions.jsonl
       DASHBOARD_HOST: http://127.0.0.1:8081
       DASHBOARD_API_KEY: ${API_KEY:-your-secure-api-key-here}
     cap_add:
