@@ -3,8 +3,8 @@
 # nothing is blocked and every observed domain and IP is appended to the policy file.
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
-#     - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.5
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.6
+#     - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.6
 #
 # Learning mode has to write to the policy file, so the read-only ConfigMap mount is
 # replaced with an emptyDir that the sidecar seeds itself. That means the learned
