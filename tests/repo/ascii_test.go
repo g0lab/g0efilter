@@ -70,13 +70,17 @@ func trackedFiles(t *testing.T) []string {
 			continue
 		}
 
-		_, err := os.Stat(filepath.Join("..", "..", name))
+		info, err := os.Stat(filepath.Join("..", "..", name))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 
 		if err != nil {
 			t.Fatalf("stat %s: %v", name, err)
+		}
+
+		if info.IsDir() {
+			continue
 		}
 
 		if !skipExtensions[strings.ToLower(filepath.Ext(name))] {
