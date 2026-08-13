@@ -257,6 +257,10 @@ const TEARDOWN_TABLES = [
   ["ip", "g0efilter_nat_v4"],
   ["ip6", "g0efilter_v6"],
   ["ip6", "g0efilter_nat_v6"],
+  ["ip", "g0efilter_bridge_v4"],
+  ["ip", "g0efilter_bridge_nat_v4"],
+  ["ip6", "g0efilter_bridge_v6"],
+  ["ip6", "g0efilter_bridge_nat_v6"],
 ];
 
 // Rules live in the host netns; a leftover container or ruleset would brick the
