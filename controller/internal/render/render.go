@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"regexp"
 	"sort"
 	"strings"
@@ -262,7 +263,7 @@ func validateNetwork(value string) error {
 	}
 
 	if strings.Contains(value, "/") {
-		_, _, err := net.ParseCIDR(value)
+		_, err := netip.ParsePrefix(value)
 		if err != nil {
 			return fmt.Errorf("%w: %q", ErrInvalidNetwork, value)
 		}
