@@ -45,7 +45,6 @@ type sidecarSettings struct {
 	mode          string
 	enforcement   string
 	logLevel      string
-	processInfo   bool
 	tenantID      string
 	events        bool
 	eventsMax     *int32
@@ -71,7 +70,6 @@ func resolve(spec v1alpha1.SidecarSpec, defaults Defaults) sidecarSettings {
 		mode:          or(spec.Mode, defaultMode),
 		enforcement:   or(spec.Enforcement, defaultEnforcement),
 		logLevel:      or(spec.LogLevel, defaultLogLevel),
-		processInfo:   spec.ProcessInfo,
 		tenantID:      spec.TenantID,
 		events:        spec.Events,
 		eventsMax:     spec.EventsMaxDenials,
@@ -211,7 +209,6 @@ func env(settings sidecarSettings, configMapName string) []corev1.EnvVar {
 		fieldRef("POD_NAMESPACE", "metadata.namespace"),
 	}
 
-	vars = appendIf(vars, settings.processInfo, plain("PROCESS_INFO", "true"))
 	vars = appendIf(vars, settings.tenantID != "", plain("TENANT_ID", settings.tenantID))
 
 	vars = append(vars, observabilityEnv(settings)...)

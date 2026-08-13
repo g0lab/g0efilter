@@ -23,11 +23,6 @@ enforcement: block
 
 logLevel: INFO
 
-# Add the originating pid and process name to flow logs. This needs
-# `shareProcessNamespace: true` on the pod, which the consuming chart has to set: it
-# also lets every container in the pod see and signal the others' processes.
-processInfo: false
-
 # Tenant identifier added to netfilter log events.
 tenantId: ''
 

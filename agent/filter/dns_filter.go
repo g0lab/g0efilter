@@ -478,7 +478,7 @@ func (handler *dnsHandler) dnsLogFields(
 		fields = append(fields, actions.KeyAlert, true)
 	}
 
-	return append(fields, procFields(handler.opts, remoteAddr, remotePort, "udp")...)
+	return fields
 }
 
 // logAuditedQuery logs a would-be-blocked query that audit mode resolves anyway.

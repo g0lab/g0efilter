@@ -26,7 +26,6 @@ import (
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/nftables"
 	"github.com/g0lab/g0efilter/agent/policy"
-	"github.com/g0lab/g0efilter/agent/procinfo"
 	"github.com/g0lab/g0efilter/agent/telemetry"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/g0lab/g0efilter/shared/logging"
@@ -94,7 +93,6 @@ func Run(version, date, commit string) error {
 	defer stopSignals()
 
 	cfg = setupLearning(ctx, cfg, lg)
-	cfg = setupProcInfo(cfg, lg)
 
 	pol, initialHash, err := loadInitialPolicy(ctx, cfg, lg)
 	if err != nil {
@@ -157,7 +155,6 @@ type config struct {
 	dnsRateBurst        int
 	maxConns            int
 	connMaxLifetime     int
-	procInfo            *procinfo.ProcProvider
 	enableRemoteUnblock bool
 	dashboardHost       string
 	dashboardAPIKey     string
@@ -547,20 +544,6 @@ func enforceLabel(audit bool) string {
 	return "block"
 }
 
-// setupProcInfo enables /proc-based process attribution when PROCESS_INFO=true.
-func setupProcInfo(cfg config, lg *slog.Logger) config {
-	if !strings.EqualFold(getenvDefault("PROCESS_INFO", "false"), "true") {
-		return cfg
-	}
-
-	cfg.procInfo = procinfo.New()
-
-	lg.Info("process_info.enabled",
-		"note", "flow logs carry pid/process attribution; requires a shared PID namespace with clients")
-
-	return cfg
-}
-
 func validatePorts(cfg config, lg *slog.Logger) error {
 	if cfg.mode == actions.ModeHTTPS && cfg.httpPort == cfg.httpsPort {
 		return fmt.Errorf("%w: HTTP_PORT and HTTPS_PORT cannot be the same (%s)", errPortConflict, cfg.httpPort)
@@ -730,11 +713,6 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 		DNSHardening: cfg.dnsHardening,
 		DNSRateQPS:   cfg.dnsRateQPS,
 		DNSRateBurst: cfg.dnsRateBurst,
-	}
-
-	// Assign conditionally: wrapping a nil pointer would make the interface non-nil
-	if cfg.procInfo != nil {
-		opts.ProcInfo = cfg.procInfo
 	}
 
 	if cfg.mode == actions.ModeDNSStrict {

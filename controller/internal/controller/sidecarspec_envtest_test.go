@@ -179,7 +179,6 @@ func TestCRDAcceptsTheFullSidecarSpec(t *testing.T) {
 		Mode:             "dns-strict",
 		Enforcement:      "audit",
 		LogLevel:         "DEBUG",
-		ProcessInfo:      true,
 		TenantID:         "tenant-a",
 		Events:           true,
 		EventsMaxDenials: &maxDenials,

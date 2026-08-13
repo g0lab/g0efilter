@@ -88,7 +88,6 @@ Layer the optional components after `sidecar`:
 | `metrics` | Serve Prometheus metrics on 9095 and add the scrape annotations |
 | `events` | Record the first denials as Kubernetes Events, with the RBAC to do it |
 | `learning` | Observe and append what is seen to a writable policy, blocking nothing |
-| `process-info` | Add the originating pid and process name to flow logs |
 
 ```yaml
 components:
@@ -98,10 +97,6 @@ components:
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
 from observed traffic.
-
-`process-info` sets `shareProcessNamespace: true`, which also lets every container in
-the pod see and signal the others' processes. Leave it off unless the attribution is
-worth that.
 
 A complete overlay is in [examples/kubernetes](../examples/kubernetes); render it
 with `kubectl kustomize examples/kubernetes`.
@@ -185,10 +180,6 @@ unlimited, and `events.maxDenials: 0` records no Events at all.
 Values are validated against
 [values.schema.json](../deploy/helm/g0efilter/values.schema.json), so a misspelled
 key or an invalid mode fails the render instead of silently doing nothing.
-
-`processInfo` is the one option the library chart cannot fully apply on its own: it
-needs `shareProcessNamespace: true` on the pod template, which belongs to your chart
-rather than to the sidecar.
 
 If events are enabled, also render the RBAC and mount the token:
 
@@ -330,7 +321,6 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `mode` | `FILTER_MODE` | `https`, `dns` or `dns-strict`. |
 | `enforcement` | `ENFORCE` | `block` or `audit`. Always rendered, so a pod's posture is readable without knowing the default. |
 | `logLevel` | `LOG_LEVEL` | |
-| `processInfo` | `PROCESS_INFO` | Uses `hostPID` when set; otherwise the webhook enables the shared process namespace and rejects an explicit `shareProcessNamespace: false`. |
 | `tenantId` | `TENANT_ID` | Tenant identifier on netfilter log events. |
 | `events` | `KUBE_EVENTS` | Needs `create` on events for the pod's ServiceAccount. |
 | `eventsMaxDenials` | `KUBE_EVENTS_MAX` | Caps Events per pod. `0` records none. |
