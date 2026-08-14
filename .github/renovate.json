@@ -73,9 +73,9 @@
       "groupName": "kubernetes manifests"
     },
     {
-      "description": "Same-version updates get their own branch rather than joining an ecosystem group. A digest or pin leaves newValue unchanged, so grouping one alongside a version bump for the same dependency gives the branch two targets and Renovate discards the collision.",
+      "description": "Same-version updates get their own branch rather than joining an ecosystem group. A digest or pin leaves newValue unchanged, so grouping one alongside a version bump for the same dependency gives the branch two targets and Renovate discards the collision. Split per manager so one dependency Renovate cannot rewrite does not abandon every other digest.",
       "matchUpdateTypes": ["digest", "pin", "pinDigest"],
-      "groupName": "digests"
+      "groupName": "{{manager}} digests"
     },
     {
       "description": "A major is a breaking change: its own PR, ungrouped, reviewed by a human.",
@@ -107,6 +107,11 @@
       "description": "curl and k3s are throwaway test and demo peers, wanted at whatever latest is rather than at a recorded version. Un-ignoring examples/ would otherwise start pinning them.",
       "matchPackageNames": ["/curl/", "/k3s/"],
       "enabled": false
+    },
+    {
+      "description": "workarounds:all teaches Renovate that chart-testing-action's version input tracks the helm/chart-testing CLI, so the dep resolves against that repo while the only text to rewrite is the action's uses line. A digest from the CLI repo does not exist in the action repo, so pinning one can never be applied and fails the whole branch.",
+      "matchDepNames": ["chart-testing"],
+      "pinDigests": false
     }
   ],
   "lockFileMaintenance": {
