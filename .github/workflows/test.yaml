@@ -10,24 +10,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'agent/**'
-      - 'controller/**'
-      - 'dashboard/**'
-      - 'deploy/**'
-      - 'examples/helm/**'
-      - 'examples/kubernetes/**'
-      - 'shared/**'
-      - 'tests/e2e/**'
-      - 'scripts/**'
-      - 'go.work'
-      - 'agent/go.mod'
-      - 'agent/go.sum'
-      - 'dashboard/go.mod'
-      - 'dashboard/go.sum'
-      - 'shared/go.mod'
-      - 'shared/go.sum'
-      - '.github/workflows/test.yaml'
 
 permissions:
   contents: read
@@ -40,9 +22,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: E2E relevance
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.paths.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != 'pull_request' ]; then
+            echo 'relevant=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE \
+            '^(agent|controller|dashboard|deploy|shared|scripts|tests/e2e)/|^examples/(helm|kubernetes)/|^go\.work$|^\.github/workflows/test\.yaml$'; then
+            echo 'relevant=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'relevant=false' >> "$GITHUB_OUTPUT"
+          fi
+
   # Build once for the parallel E2E jobs.
   build:
     name: Build images
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -188,3 +200,24 @@ jobs:
         run: |
           go test -count=1 -v -p 1 -parallel=1 -timeout=35m \
             -run 'TestPhase18Kubernetes|TestPhase19KubernetesWorkload' ./...
+
+  # The single required check: skipped counts as a pass, so an irrelevant pull request
+  # reports green without running the suite. tests/repo asserts every job feeds in here.
+  result:
+    name: E2E
+    needs:
+      - changes
+      - build
+      - e2e
+      - kubernetes
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "results: $RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*) exit 1 ;;
+          esac

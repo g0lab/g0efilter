@@ -56,6 +56,15 @@ scripts/gen-controller.sh > /dev/null
 git diff --exit-code -- deploy/crds controller/api deploy/controller \
   deploy/helm/g0efilter-controller/templates
 
+# A bad ${{ }} expression stops GitHub loading the workflow at all, so its checks never
+# report and a required one blocks every pull request.
+echo ">>> workflow lint"
+if command -v actionlint > /dev/null 2>&1; then
+  actionlint
+else
+  echo "SKIPPED: actionlint is not installed (go install github.com/rhysd/actionlint/cmd/actionlint@latest)"
+fi
+
 echo ">>> chart lint"
 if command -v ct > /dev/null 2>&1; then
   if ct list-changed --config .github/chart-testing.yaml | grep -q .; then

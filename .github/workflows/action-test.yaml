@@ -7,21 +7,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'agent/**'
-      - 'shared/**'
-      - 'action.yml'
-      - 'action/**'
-      - '.github/actions/**'
-      - '.github/test-actions/**'
-      - 'tests/e2e/Containerfile.agent'
-      - 'go.work'
-      - 'agent/go.mod'
-      - 'agent/go.sum'
-      - 'shared/go.mod'
-      - 'shared/go.sum'
-      - 'scripts/test-action.sh'
-      - '.github/workflows/action-test.yaml'
 
 permissions:
   contents: read
@@ -31,8 +16,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Action test relevance
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.paths.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != 'pull_request' ]; then
+            echo 'relevant=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git diff --name-only "$BASE" "$HEAD" | grep -qE \
+            '^(agent|shared|action)/|^action\.yml$|^\.github/(actions|test-actions)/|^tests/e2e/Containerfile\.agent$|^go\.work$|^scripts/test-action\.sh$|^\.github/workflows/action-test\.yaml$'; then
+            echo 'relevant=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'relevant=false' >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build agent image
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -644,3 +659,36 @@ jobs:
           fi
 
           echo "OK: invalid mode, egress-policy, and log-level all rejected"
+
+  # The single required check: skipped counts as a pass, so an irrelevant pull request
+  # reports green without running the suite. tests/repo asserts every job feeds in here.
+  result:
+    name: Action tests
+    needs:
+      - changes
+      - build
+      - unit
+      - block
+      - post-egress
+      - domain-patterns
+      - dns
+      - docker-host-network
+      - docker-bridges
+      - ipv6
+      - non-web-ports
+      - fail-closed
+      - dns-strict
+      - lockdown
+      - audit
+      - invalid-input
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "results: $RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*) exit 1 ;;
+          esac

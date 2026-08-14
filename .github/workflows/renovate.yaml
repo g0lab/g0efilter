@@ -1,0 +1,48 @@
+---
+name: Renovate
+
+on:
+  schedule:
+    - cron: '0 9,21 * * *'
+
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    environment: renovate
+    timeout-minutes: 30
+    steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@99f2bb0aeb715a64b1ba9e30a66a327ce9852589 # v0.9.0
+        with:
+          egress-policy: audit
+          allowed-domains: |
+            ghcr.io
+            proxy.golang.org
+            sum.golang.org
+            registry.npmjs.org
+            index.docker.io
+            registry-1.docker.io
+            auth.docker.io
+            production.cloudflare.docker.com
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Renovate
+        uses: renovatebot/github-action@e09d604f8f803bb527bd8321ed5be06c460b8682 # v46.2.2
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+          configurationFile: .github/renovate.json
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}

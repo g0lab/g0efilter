@@ -141,6 +141,12 @@ func destinationAddr(info BlockedConnectionInfo) (netip.Addr, bool) {
 		if err == nil {
 			return addr, true
 		}
+
+		// A component may report the destination only as host:port.
+		addrPort, err := netip.ParseAddrPort(candidate)
+		if err == nil {
+			return addrPort.Addr(), true
+		}
 	}
 
 	return netip.Addr{}, false
