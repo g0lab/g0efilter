@@ -44,7 +44,8 @@ func TestBridgeRulesFilterDockerNetworksWithoutTrustingTheBypassMark(t *testing.
 	for _, want := range []string{
 		`oifname "docker0" accept`,
 		`oifname "br-*" accept`,
-		`oifname "docker0" return`,
+		`fib daddr . iif oifname "docker0" return`,
+		`fib daddr . iif oifname "br-*" return`,
 	} {
 		if !strings.Contains(ruleset, want) {
 			t.Errorf("bridge ruleset missing same-bridge exemption %q", want)

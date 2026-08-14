@@ -99,15 +99,13 @@ func validateConstraint(rule policy.DomainRule) error {
 // refreshes on re-resolution (nft "add element" fails with EEXIST on live entries).
 func addResolvedElement(ctx context.Context, ip string, ttl time.Duration, rule policy.DomainRule) error {
 	err := addResolvedToTable(ctx, "g0efilter", ip, ttl, rule)
-	if err != nil {
+
+	if !bridgeFilteringEnabled() {
 		return err
 	}
 
-	if len(bridgeInterfacesFromEnv()) == 0 {
-		return nil
-	}
-
-	return addResolvedToTable(ctx, "g0efilter_bridge", ip, ttl, rule)
+	// Both tables are attempted even on failure, or the two sets diverge.
+	return errors.Join(err, addResolvedToTable(ctx, "g0efilter_bridge", ip, ttl, rule))
 }
 
 func addResolvedToTable(

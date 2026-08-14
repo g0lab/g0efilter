@@ -359,6 +359,17 @@ func bridgeInterfacesFromEnv() []string {
 	return configured
 }
 
+// bridgeFilteringEnabled skips the slice bridgeInterfacesFromEnv builds, per resolved IP.
+func bridgeFilteringEnabled() bool {
+	for value := range strings.SplitSeq(os.Getenv("BRIDGE_INTERFACES"), ",") {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 func validateBridgeInterfaces(interfaces []string) ([]string, error) {
 	validated := make([]string, 0, len(interfaces))
 
@@ -1265,6 +1276,16 @@ func bridgeLocalRules(interfaces []string, verdict string) string {
 	return rules.String()
 }
 
+// bridgeLocalNATRules suit prerouting, where routing has not run and oifname is empty.
+func bridgeLocalNATRules(interfaces []string, verdict string) string {
+	var rules strings.Builder
+	for _, name := range interfaces {
+		_, _ = fmt.Fprintf(&rules, "        fib daddr . iif oifname %q %s\n", name, verdict)
+	}
+
+	return rules.String()
+}
+
 func bridgeFilterRules(cfg RulesetConfig, addressExpr, suffix string) string {
 	var rules strings.Builder
 	rules.WriteString(bridgeLocalRules(cfg.BridgeInterfaces, "accept"))
@@ -1313,7 +1334,7 @@ func bridgeFilterRules(cfg RulesetConfig, addressExpr, suffix string) string {
 func bridgeNATRules(cfg RulesetConfig, addressExpr, suffix string) string {
 	var rules strings.Builder
 
-	rules.WriteString(bridgeLocalRules(cfg.BridgeInterfaces, "return"))
+	rules.WriteString(bridgeLocalNATRules(cfg.BridgeInterfaces, "return"))
 
 	mode := strings.ToLower(cfg.Mode)
 	if mode == actions.ModeDNS || mode == actions.ModeDNSStrict {

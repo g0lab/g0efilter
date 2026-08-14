@@ -359,6 +359,30 @@ jobs:
             exit 1
           fi
 
+      # bridge_redirect only touches 80 and 443, so other ports cannot catch a dead exemption.
+      - name: Containers on one bridge reach each other on a redirected port
+        run: |
+          docker network create g0efilter-e2e-peers80
+          trap 'docker rm -f g0efilter-e2e-peer80 >/dev/null 2>&1 || true
+                docker network rm g0efilter-e2e-peers80 >/dev/null 2>&1 || true' EXIT
+          docker run -d --name g0efilter-e2e-peer80 --user 0 \
+            --network g0efilter-e2e-peers80 curlimages/curl:latest nc -l -p 80
+          for attempt in 1 2 3 4 5; do
+            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer80)
+            [ -n "$peer" ] && break
+            sleep 1
+          done
+          if [ -z "$peer" ]; then
+            echo "the peer container never reported an address"
+            docker logs g0efilter-e2e-peer80 || true
+            exit 1
+          fi
+          if ! docker run --rm --network g0efilter-e2e-peers80 curlimages/curl:latest \
+            sh -c "echo ping | nc -w 5 $peer 80"; then
+            echo "same-bridge traffic on port 80 was redirected into the proxy"
+            exit 1
+          fi
+
   ipv6:
     name: IPv6
     needs: build
