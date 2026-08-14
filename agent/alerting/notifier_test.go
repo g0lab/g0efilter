@@ -2,6 +2,8 @@ package alerting_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,8 +32,7 @@ func TestNewNotifier(t *testing.T) {
 func testNewNotifierNilCase(t *testing.T) {
 	t.Helper()
 	// Ensure clean environment
-	_ = os.Unsetenv("NOTIFICATION_HOST")
-	_ = os.Unsetenv("NOTIFICATION_KEY")
+	_ = os.Unsetenv("NOTIFICATION_URLS")
 
 	notifier := alerting.NewNotifier()
 	if notifier != nil {
@@ -41,25 +42,23 @@ func testNewNotifierNilCase(t *testing.T) {
 
 func testNewNotifierMissingToken(t *testing.T) {
 	t.Helper()
-	// Test with missing token
-	t.Setenv("NOTIFICATION_HOST", "http://test.com")
+	// An unusable URL must disable alerting rather than half-configure it.
+	t.Setenv("NOTIFICATION_URLS", "carrier-pigeon://roost/token")
 
 	notifier := alerting.NewNotifier()
 	if notifier != nil {
-		t.Error("Expected nil notifier when token is missing")
+		t.Error("Expected nil notifier for an unsupported scheme")
 	}
 }
 
 func testNewNotifierValidConfig(t *testing.T) {
 	t.Helper()
-	// Test with both variables set
-	t.Setenv("NOTIFICATION_HOST", "http://test.com")
-	t.Setenv("NOTIFICATION_KEY", "test-token")
+	t.Setenv("NOTIFICATION_URLS", "gotify://test.com/"+gotifyTestToken)
 	t.Setenv("HOSTNAME", "test-hostname")
 
 	notifier := alerting.NewNotifier()
 	if notifier == nil {
-		t.Error("Expected notifier when both host and token are set")
+		t.Error("Expected notifier when NOTIFICATION_URLS is set")
 	}
 
 	// Test that we can call Close without panic
@@ -141,49 +140,68 @@ type RequestData struct {
 	UserAgent   string
 }
 
+// Stands in for a Gotify server: shoutrrr posts a JSON body with the token in the query.
 func createMockNotificationServer(t *testing.T, requestChan chan<- *RequestData) *httptest.Server {
 	t.Helper()
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Parse the request immediately while it's still valid
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 		data := &RequestData{
 			Method:      r.Method,
 			ContentType: r.Header.Get("Content-Type"),
-			FormValues:  make(map[string]string),
-			AuthToken:   r.Header.Get("X-Gotify-Key"),
+			FormValues:  decodePayload(t, r),
+			AuthToken:   r.URL.Query().Get("token"),
 			UserAgent:   r.Header.Get("User-Agent"),
 		}
 
-		// Parse form data (URL-encoded for Gotify)
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-
-		err := r.ParseForm()
-		if err != nil {
-			t.Errorf("Failed to parse form: %v", err)
-		} else {
-			// Extract form values
-			for key := range r.Form {
-				data.FormValues[key] = r.FormValue(key)
-			}
-		}
-
-		// Store the parsed request data
 		select {
 		case requestChan <- data:
 		default:
 			t.Error("Request channel full")
 		}
 
-		w.WriteHeader(http.StatusOK)
+		writeGotifyReply(w)
 	}))
 }
+
+// writeGotifyReply sends the JSON body shoutrrr's Gotify service decodes.
+func writeGotifyReply(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{}`))
+}
+
+func decodePayload(t *testing.T, r *http.Request) map[string]string {
+	t.Helper()
+
+	raw := map[string]any{}
+
+	err := json.NewDecoder(r.Body).Decode(&raw)
+	if err != nil {
+		t.Errorf("Failed to decode payload: %v", err)
+	}
+
+	fields := make(map[string]string, len(raw))
+	for key, value := range raw {
+		fields[key] = fmt.Sprint(value)
+	}
+
+	return fields
+}
+
+func decodeField(t *testing.T, r *http.Request, field string) string {
+	t.Helper()
+
+	return decodePayload(t, r)[field]
+}
+
+// gotifyTestToken satisfies shoutrrr's Gotify format check: 15 chars from 'A'.
+const gotifyTestToken = "Aaa.bbb.ccc.ddd" //nolint:gosec // A test fixture, not a credential.
 
 func setupTestNotifier(t *testing.T, serverURL string) *alerting.Notifier {
 	t.Helper()
 
-	// Set up environment
-	t.Setenv("NOTIFICATION_HOST", serverURL)
-	t.Setenv("NOTIFICATION_KEY", "test-token")
+	t.Setenv("NOTIFICATION_URLS", gotifyURL(serverURL))
 	t.Setenv("HOSTNAME", "test-host")
 
 	notifier := alerting.NewNotifier()
@@ -192,6 +210,10 @@ func setupTestNotifier(t *testing.T, serverURL string) *alerting.Notifier {
 	}
 
 	return notifier
+}
+
+func gotifyURL(serverURL string) string {
+	return "gotify://" + strings.TrimPrefix(serverURL, "http://") + "/" + gotifyTestToken + "?disabletls=yes"
 }
 
 func validateNotificationRequestData(t *testing.T, data *RequestData, expectedInfo alerting.BlockedConnectionInfo) {
@@ -211,26 +233,16 @@ func validateRequestBasics(t *testing.T, data *RequestData) {
 		t.Errorf("Expected POST request, got %s", data.Method)
 	}
 
-	// Validate content type (should be URL-encoded for Gotify)
-	if !strings.Contains(data.ContentType, "application/x-www-form-urlencoded") {
-		t.Errorf("Expected URL-encoded form data content type, got %s", data.ContentType)
+	if !strings.Contains(data.ContentType, "application/json") {
+		t.Errorf("Expected JSON content type, got %s", data.ContentType)
 	}
-
-	// Validate required form fields
-	validateFormFieldFromData(t, data, "priority", "8")
 }
 
 func validateRequestHeaders(t *testing.T, data *RequestData) {
 	t.Helper()
 
-	// Validate authentication header
-	if data.AuthToken != "test-token" {
-		t.Errorf("Expected X-Gotify-Key header 'test-token', got '%s'", data.AuthToken)
-	}
-
-	// Validate User-Agent header
-	if data.UserAgent != "g0efilter/1.0" {
-		t.Errorf("Expected User-Agent 'g0efilter/1.0', got '%s'", data.UserAgent)
+	if data.AuthToken != gotifyTestToken {
+		t.Errorf("Expected token %q, got %q", gotifyTestToken, data.AuthToken)
 	}
 }
 
@@ -277,15 +289,6 @@ func validateNotificationMessage(t *testing.T, data *RequestData, expectedInfo a
 	}
 }
 
-func validateFormFieldFromData(t *testing.T, data *RequestData, fieldName, expectedValue string) {
-	t.Helper()
-
-	value := data.FormValues[fieldName]
-	if value != expectedValue {
-		t.Errorf("Expected %s '%s', got '%s'", fieldName, expectedValue, value)
-	}
-}
-
 //nolint:tparallel // some subtests use t.Setenv and cannot be parallel
 func TestNotifierClose(t *testing.T) {
 	t.Run("NilNotifier", func(t *testing.T) {
@@ -307,8 +310,7 @@ func testNotifierCloseNil(t *testing.T) {
 func testNotifierCloseValid(t *testing.T) {
 	t.Helper()
 	// Test closing valid notifier
-	t.Setenv("NOTIFICATION_HOST", "http://test.com")
-	t.Setenv("NOTIFICATION_KEY", "test-token")
+	t.Setenv("NOTIFICATION_URLS", "gotify://test.com/"+gotifyTestToken)
 
 	notifier := alerting.NewNotifier()
 	if notifier == nil {
@@ -421,11 +423,9 @@ func runFormattingTest(t *testing.T, tc formattingTestCase) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		messageChan <- decodeField(t, r, "message")
 
-		_ = r.ParseForm() // Parse URL-encoded form data
-		messageChan <- r.FormValue("message")
-
-		w.WriteHeader(http.StatusOK)
+		writeGotifyReply(w)
 	}))
 	defer server.Close()
 
@@ -462,14 +462,15 @@ func TestComponentMapping(t *testing.T) {
 	titleChan := make(chan string, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // Limit request body size to prevent memory exhaustion
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-		_ = r.ParseForm() // Parse URL-encoded form data
-		messageChan <- r.FormValue("message")
+		payload := decodePayload(t, r)
 
-		titleChan <- r.FormValue("title")
+		messageChan <- payload["message"]
 
-		w.WriteHeader(http.StatusOK)
+		titleChan <- payload["title"]
+
+		writeGotifyReply(w)
 	}))
 	defer server.Close()
 
@@ -522,11 +523,10 @@ func TestNotificationRateLimiting(t *testing.T) {
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			atomic.AddInt64(&notificationCount, 1)
-			w.WriteHeader(http.StatusOK)
+			writeGotifyReply(w)
 		}))
 
-		t.Setenv("NOTIFICATION_HOST", server.URL)
-		t.Setenv("NOTIFICATION_KEY", "test-token")
+		t.Setenv("NOTIFICATION_URLS", gotifyURL(server.URL))
 		t.Setenv("NOTIFICATION_BACKOFF_SECONDS", "1")
 
 		notifier := alerting.NewNotifier()
@@ -687,8 +687,7 @@ func TestNotificationBackoffConfiguration(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup environment
-			t.Setenv("NOTIFICATION_HOST", "http://test.com")
-			t.Setenv("NOTIFICATION_KEY", "test-token")
+			t.Setenv("NOTIFICATION_URLS", "gotify://test.com/"+gotifyTestToken)
 
 			if tc.envValue != "" {
 				t.Setenv("NOTIFICATION_BACKOFF_SECONDS", tc.envValue)

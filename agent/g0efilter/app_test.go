@@ -111,8 +111,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 		dashboardHost:       "",
 		dashboardAPIKey:     "",
 		unblockPollInterval: 10 * time.Second,
-		notificationHost:    "",
-		notificationKey:     "",
+		notificationURLs:    "",
 	}
 
 	got := loadConfig()
@@ -137,8 +136,7 @@ func TestLoadConfigCustomValues(t *testing.T) {
 	t.Setenv("DASHBOARD_HOST", "dash.example.com")
 	t.Setenv("DASHBOARD_API_KEY", "secret123")
 	t.Setenv("UNBLOCK_POLL_INTERVAL", "30s")
-	t.Setenv("NOTIFICATION_HOST", "notify.example.com")
-	t.Setenv("NOTIFICATION_KEY", "nkey456")
+	t.Setenv("NOTIFICATION_URLS", "ntfy://ntfy.example.com/topic")
 	t.Setenv("MAX_CONNECTIONS", "2000")
 	t.Setenv("CONN_MAX_LIFETIME_MS", "120000")
 
@@ -161,8 +159,7 @@ func TestLoadConfigCustomValues(t *testing.T) {
 		dashboardHost:       "dash.example.com",
 		dashboardAPIKey:     "secret123",
 		unblockPollInterval: 30 * time.Second,
-		notificationHost:    "notify.example.com",
-		notificationKey:     "nkey456",
+		notificationURLs:    "ntfy://ntfy.example.com/topic",
 	}
 
 	got := loadConfig()

@@ -159,8 +159,7 @@ type config struct {
 	dashboardHost       string
 	dashboardAPIKey     string
 	unblockPollInterval time.Duration
-	notificationHost    string
-	notificationKey     string
+	notificationURLs    string
 	metrics             *metrics.Metrics
 	policyErrors        policyErrorReporter
 }
@@ -221,8 +220,7 @@ func loadConfig() config {
 		dashboardHost:       strings.TrimSpace(getenvDefault("DASHBOARD_HOST", "")),
 		dashboardAPIKey:     strings.TrimSpace(getenvDefault("DASHBOARD_API_KEY", "")),
 		unblockPollInterval: parseDurationDefault(getenvDefault("UNBLOCK_POLL_INTERVAL", "10s"), 10*time.Second),
-		notificationHost:    strings.TrimSpace(getenvDefault("NOTIFICATION_HOST", "")),
-		notificationKey:     strings.TrimSpace(getenvDefault("NOTIFICATION_KEY", "")),
+		notificationURLs:    strings.TrimSpace(getenvDefault("NOTIFICATION_URLS", "")),
 	}
 }
 
@@ -498,14 +496,15 @@ func logDashboardInfo(lg *slog.Logger, cfg config) {
 	lg.Info("dashboard.logging_enabled", "host", disp)
 }
 
+// The URLs carry tokens, so only the service count is logged.
 func logNotificationInfo(lg *slog.Logger, cfg config) {
-	if cfg.notificationHost != "" && cfg.notificationKey != "" {
-		lg.Info("notifications.enabled", "host", cfg.notificationHost)
+	if cfg.notificationURLs == "" {
+		lg.Info("notifications.disabled")
 
 		return
 	}
 
-	lg.Info("notifications.disabled")
+	lg.Info("notifications.enabled", "services", len(strings.Fields(cfg.notificationURLs)))
 }
 
 func normalizeMode(cfg config, lg *slog.Logger) config {

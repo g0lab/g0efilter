@@ -8,8 +8,7 @@ import (
 // The notifier must dial with the SO_MARK bypass or its own requests get
 // filtered when the notification server isn't allowlisted (issue #110).
 func TestNotifierUsesMarkedDialer(t *testing.T) {
-	t.Setenv("NOTIFICATION_HOST", "http://notify.example.com")
-	t.Setenv("NOTIFICATION_KEY", "test-key")
+	t.Setenv("NOTIFICATION_URLS", "gotify://notify.example.com/Aaa.bbb.ccc.ddd")
 
 	n := NewNotifier()
 	if n == nil {

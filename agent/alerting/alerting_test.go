@@ -121,7 +121,7 @@ func TestIsIgnored(t *testing.T) {
 		t.Parallel()
 
 		n := &Notifier{ignoreList: nil}
-		if n.isIgnored("google.com") {
+		if n.isIgnored(toDestination("google.com")) {
 			t.Error("Expected false for empty ignore list")
 		}
 	})
@@ -129,8 +129,8 @@ func TestIsIgnored(t *testing.T) {
 	t.Run("Empty destination", func(t *testing.T) {
 		t.Parallel()
 
-		n := &Notifier{ignoreList: []string{"google.com"}}
-		if n.isIgnored("") {
+		n := &Notifier{ignoreList: compileIgnoreRules([]string{"google.com"})}
+		if n.isIgnored(toDestination("")) {
 			t.Error("Expected false for empty destination")
 		}
 	})
@@ -139,7 +139,7 @@ func TestIsIgnored(t *testing.T) {
 		t.Parallel()
 
 		n := &Notifier{
-			ignoreList: []string{"google.com", "*.facebook.com", "example.org"},
+			ignoreList: compileIgnoreRules([]string{"google.com", "*.facebook.com", "example.org"}),
 		}
 
 		checkIgnoredDomains(t, n)
@@ -149,18 +149,21 @@ func TestIsIgnored(t *testing.T) {
 		t.Parallel()
 
 		n := &Notifier{
-			ignoreList: []string{"google.com"}, // stored as lowercase
+			ignoreList: compileIgnoreRules([]string{"google.com"}),
 		}
 
-		// Destination gets normalized in isIgnored
-		if !n.isIgnored("GOOGLE.COM") {
+		if !n.isIgnored(toDestination("GOOGLE.COM")) {
 			t.Error("Expected case-insensitive match for GOOGLE.COM")
 		}
 
-		if !n.isIgnored("Google.Com") {
+		if !n.isIgnored(toDestination("Google.Com")) {
 			t.Error("Expected case-insensitive match for Google.Com")
 		}
 	})
+}
+
+func toDestination(destination string) BlockedConnectionInfo {
+	return BlockedConnectionInfo{Destination: destination}
 }
 
 func checkIgnoredDomains(t *testing.T, n *Notifier) {
@@ -180,7 +183,7 @@ func checkIgnoredDomains(t *testing.T, n *Notifier) {
 	}
 
 	for _, tt := range tests {
-		result := n.isIgnored(tt.destination)
+		result := n.isIgnored(toDestination(tt.destination))
 		if result != tt.expected {
 			t.Errorf("isIgnored(%q) = %v, want %v", tt.destination, result, tt.expected)
 		}
@@ -190,8 +193,7 @@ func checkIgnoredDomains(t *testing.T, n *Notifier) {
 func TestNotifierWithIgnoreList(t *testing.T) {
 	t.Run("Integration: ignored destination skips notification", func(t *testing.T) {
 		t.Setenv("NOTIFICATION_IGNORE_DOMAINS", "google.com,*.facebook.com")
-		t.Setenv("NOTIFICATION_HOST", "http://localhost:8080")
-		t.Setenv("NOTIFICATION_KEY", "test-key")
+		t.Setenv("NOTIFICATION_URLS", "gotify://localhost:8080/Aaa.bbb.ccc.ddd")
 
 		notifier := NewNotifier()
 		if notifier == nil {
@@ -202,21 +204,19 @@ func TestNotifierWithIgnoreList(t *testing.T) {
 
 		defer notifier.Close()
 
-		// Verify ignore list was loaded
 		if len(notifier.ignoreList) != 2 {
 			t.Fatalf("Expected 2 patterns in ignore list, got %d", len(notifier.ignoreList))
 		}
 
-		// Test that ignored domains return true
-		if !notifier.isIgnored("google.com") {
+		if !notifier.isIgnored(toDestination("google.com")) {
 			t.Error("Expected google.com to be ignored")
 		}
 
-		if !notifier.isIgnored("api.facebook.com") {
+		if !notifier.isIgnored(toDestination("api.facebook.com")) {
 			t.Error("Expected api.facebook.com to be ignored")
 		}
 
-		if notifier.isIgnored("twitter.com") {
+		if notifier.isIgnored(toDestination("twitter.com")) {
 			t.Error("Expected twitter.com NOT to be ignored")
 		}
 	})
