@@ -23,7 +23,8 @@ workload and applies IP and domain rules without decrypting TLS traffic.
 - Start with either a default-deny allowlist or a default-allow denylist.
 - Test and build policies with audit and learning modes.
 - Reload policies without restarting the container.
-- Use the optional dashboard, remote unblock, process details, and Gotify alerts.
+- Use the optional dashboard, remote unblock, process details, and alerts to
+  Gotify, ntfy, Telegram, Slack and every other shoutrrr supported service.
 - Manage Kubernetes policies and inject sidecars with the optional controller.
 
 ## Quick start

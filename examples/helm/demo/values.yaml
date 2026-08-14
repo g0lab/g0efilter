@@ -17,3 +17,13 @@ g0efilter:
   mode: https
   policy:
     configMapName: g0efilter-policy
+
+  # Optional: alert on blocked egress. The URLs embed an access token, so they
+  # are read from a Secret rather than set here:
+  #   kubectl create secret generic g0efilter-notifications \
+  #     --from-literal=urls='ntfy://ntfy.sh/my-topic'
+  # notifications:
+  #   urlsSecret:
+  #     name: g0efilter-notifications
+  #     key: urls
+  #   ignoreDomains: [local]

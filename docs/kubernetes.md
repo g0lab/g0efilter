@@ -332,10 +332,9 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `dashboard.startDelay` | `DASHBOARD_START_DELAY` | A duration, e.g. `10s`. |
 | `dashboard.remoteUnblock` | `ENABLE_REMOTE_UNBLOCK` | |
 | `dashboard.unblockPollInterval` | `UNBLOCK_POLL_INTERVAL` | |
-| `notifications.host` | `NOTIFICATION_HOST` | Gotify server. |
-| `notifications.keySecretRef` | `NOTIFICATION_KEY` | Read from a Secret in the pod's namespace. |
+| `notifications.urlsSecretRef` | `NOTIFICATION_URLS` | shoutrrr service URLs, from a Secret because they carry tokens. |
 | `notifications.backoffSeconds` | `NOTIFICATION_BACKOFF_SECONDS` | |
-| `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | Wildcards allowed. |
+| `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | See [notifications](configuration.md#notifications). |
 | `dns.upstreams` | `DNS_UPSTREAMS` | `host:port` list. |
 | `dns.hardening` | `DNS_HARDENING` | On unless set to false. |
 | `dns.rateQps`, `dns.rateBurst` | `DNS_RATE_QPS`, `DNS_RATE_BURST` | One budget for the whole pod, not per client. |
@@ -349,12 +348,27 @@ destination; `enforcement` decides what happens once a verdict exists.
 
 The API server must be allowed when Kubernetes Events are enabled. Dashboard,
 remote-unblock, notification, and upstream-DNS connections use marked sockets
-that bypass the packet filter. In `dns` modes, hostname lookups still pass through
-the DNS policy, so allow dashboard and notification hostnames when they are names
-rather than IP addresses.
+that bypass the packet filter, and their hostname lookups are marked too, so
+they do not need allowlisting in any mode.
 
 Credentials use Secret references because `EgressPolicy` is not a Secret. Kubelet
-resolves them in the pod's namespace; the controller never reads them.
+resolves them in the pod's namespace; the controller never reads them. Notification
+URLs embed an access token, so they are a Secret reference for the same reason:
+
+```sh
+kubectl create secret generic g0efilter-notifications \
+  --from-literal=urls='ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID'
+```
+
+```yaml
+spec:
+  sidecar:
+    notifications:
+      urlsSecretRef:
+        name: g0efilter-notifications
+        key: urls
+      ignoreDomains: [local]
+```
 
 `extraEnv` cannot override derived settings or replace the rendered policy with
 `ALLOWLIST_*`, `DENYLIST_*`, `DEFAULT_ACTION`, `LEARNING_MODE`, `POLICY_PATH`, or
