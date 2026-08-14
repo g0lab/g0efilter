@@ -8,16 +8,34 @@
   "timezone": "Australia/Sydney",
   "separateMajorMinor": true,
   "pinDigests": true,
+  "platformCommit": "enabled",
   "platformAutomerge": true,
   "rebaseWhen": "conflicted",
   "commitBodyTable": true,
   "prHourlyLimit": 0,
   "prConcurrentLimit": 0,
   "branchConcurrentLimit": 0,
+  "description": [
+    "ignorePaths restates :ignoreModulesAndTests without **/examples/**, so the example Containerfiles and manifests track the same versions the shipped images do. The field is not mergeable, so dropping one entry means listing them all."
+  ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**"
+  ],
   "dockerfile": {
     "managerFilePatterns": ["/(^|/)Containerfile[^/]*$/"]
   },
   "packageRules": [
+    {
+      "description": "config:recommended pulls in :semanticPrefixFixDepsChoreOthers, which types production dependencies as fix and everything else as chore. Release notes then split identical dependency bumps across Fixed and Changed, so type them all as chore.",
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "chore"
+    },
     {
       "description": "Auto-merge non-major updates once they have aged a day. GitHub's own auto-merge holds each PR until the required checks pass, so groups land independently rather than one per run.",
       "matchUpdateTypes": ["minor", "patch"],
@@ -82,6 +100,11 @@
     {
       "description": "The Go toolchain is pinned in the workflows as well, so it is bumped deliberately rather than by a PR that would desync the two.",
       "matchDatasources": ["golang-version"],
+      "enabled": false
+    },
+    {
+      "description": "curl and k3s are throwaway test and demo peers, wanted at whatever latest is rather than at a recorded version. Un-ignoring examples/ would otherwise start pinning them.",
+      "matchPackageNames": ["/curl/", "/k3s/"],
       "enabled": false
     }
   ],
