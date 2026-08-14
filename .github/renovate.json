@@ -1,0 +1,93 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "timezone": "Australia/Sydney",
+  "separateMajorMinor": true,
+  "pinDigests": true,
+  "platformAutomerge": true,
+  "rebaseWhen": "conflicted",
+  "commitBodyTable": true,
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "branchConcurrentLimit": 0,
+  "dockerfile": {
+    "managerFilePatterns": ["/(^|/)Containerfile[^/]*$/"]
+  },
+  "packageRules": [
+    {
+      "description": "Auto-merge non-major updates once they have aged a day. GitHub's own auto-merge holds each PR until the required checks pass, so groups land independently rather than one per run.",
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "1 day",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "A digest bump is the same tag rebuilt, usually for a CVE patch, and carries no release notes to age. Soaking it would also never converge: each rebuild restarts the clock.",
+      "matchUpdateTypes": ["digest", "pin", "pinDigest"],
+      "minimumReleaseAge": "0",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "One PR per ecosystem, as Dependabot grouped them. Majors stay separate so a breaking change is never bundled with an automerged bump.",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchManagers": ["gomod"],
+      "groupName": "gomod"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchManagers": ["npm"],
+      "groupName": "npm"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "docker"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchManagers": ["helmv3", "kustomize"],
+      "groupName": "kubernetes manifests"
+    },
+    {
+      "description": "A major is a breaking change: its own PR, ungrouped, reviewed by a human.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "description": "Never offer pre-release container tags.",
+      "matchDatasources": ["docker"],
+      "allowedVersions": "!/-(alpha|beta|rc|pre|preview)/"
+    },
+    {
+      "description": "No workflow tests .devcontainer, so these land as a PR for a human rather than automerging unchecked.",
+      "matchManagers": ["devcontainer"],
+      "groupName": "devcontainer",
+      "automerge": false
+    },
+    {
+      "description": "scripts/set-version.sh owns every g0efilter pin and tests/repo asserts they equal VERSION, so Renovate must not move them.",
+      "matchPackageNames": ["/g0efilter/"],
+      "enabled": false
+    },
+    {
+      "description": "The Go toolchain is pinned in the workflows as well, so it is bumped deliberately rather than by a PR that would desync the two.",
+      "matchDatasources": ["golang-version"],
+      "enabled": false
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "automergeType": "pr"
+  }
+}
