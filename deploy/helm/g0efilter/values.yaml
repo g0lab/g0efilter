@@ -70,15 +70,17 @@ dashboard:
   remoteUnblock: false
   unblockPollInterval: ''
 
-# Gotify alerts for blocked traffic. The marked connection bypasses filtering, but
-# DNS modes still need the policy to resolve a hostname in `host`.
+# Alerts for blocked traffic. The sidecar reaches these services without the
+# policy allowing them.
 notifications:
-  host: ''
-  keySecret:
+  # Whitespace-separated shoutrrr service URLs, in a Secret because they carry tokens.
+  urlsSecret:
     name: ''
-    key: token
+    key: urls
   backoffSeconds: null
-  # Destinations that never raise an alert, even when blocked. Wildcards are allowed.
+  # Blocks that never raise an alert, even when enforced. Accepts domains and
+  # wildcards, addresses and CIDRs, the address classes multicast, loopback,
+  # link-local, private, unspecified and local, component:<name>, and ip-only.
   ignoreDomains: []
 
 # The sidecar's DNS proxy. Only has an effect in dns and dns-strict mode.

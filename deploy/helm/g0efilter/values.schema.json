@@ -194,11 +194,8 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "host": {
-          "description": "The policy must allow this destination: the sidecar filters its own egress.",
-          "type": "string"
-        },
-        "keySecret": {
+        "urlsSecret": {
+          "description": "Secret holding whitespace-separated shoutrrr service URLs.",
           "type": "object",
           "additionalProperties": false,
           "properties": {

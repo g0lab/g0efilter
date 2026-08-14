@@ -263,12 +263,8 @@ func dashboardEnv(spec v1alpha1.DashboardSpec) []corev1.EnvVar {
 func notificationsEnv(spec v1alpha1.NotificationsSpec) []corev1.EnvVar {
 	var vars []corev1.EnvVar
 
-	if spec.Host != "" {
-		vars = append(vars, plain("NOTIFICATION_HOST", spec.Host))
-	}
-
-	if spec.KeySecretRef != nil {
-		vars = append(vars, secretRef("NOTIFICATION_KEY", spec.KeySecretRef))
+	if spec.URLsSecretRef != nil {
+		vars = append(vars, secretRef("NOTIFICATION_URLS", spec.URLsSecretRef))
 	}
 
 	vars = appendInt32(vars, "NOTIFICATION_BACKOFF_SECONDS", spec.BackoffSeconds)

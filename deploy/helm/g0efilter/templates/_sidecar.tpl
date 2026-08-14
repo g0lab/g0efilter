@@ -88,16 +88,12 @@ a pod template's initContainers: anything ordered before it has unfiltered egres
     - name: UNBLOCK_POLL_INTERVAL
       value: {{ . | quote }}
     {{- end }}
-    {{- with $c.notifications.host }}
-    - name: NOTIFICATION_HOST
-      value: {{ . | quote }}
-    {{- end }}
-    {{- with $c.notifications.keySecret.name }}
-    - name: NOTIFICATION_KEY
+    {{- with $c.notifications.urlsSecret.name }}
+    - name: NOTIFICATION_URLS
       valueFrom:
         secretKeyRef:
           name: {{ . | quote }}
-          key: {{ $c.notifications.keySecret.key | quote }}
+          key: {{ $c.notifications.urlsSecret.key | quote }}
     {{- end }}
     {{- include "g0efilter.optionalInt" (list "NOTIFICATION_BACKOFF_SECONDS" $c.notifications.backoffSeconds) }}
     {{- with $c.notifications.ignoreDomains }}
