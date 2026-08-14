@@ -164,3 +164,27 @@ func TestIgnorePatternCaseIsNormalized(t *testing.T) {
 		t.Error("a mixed-case pattern must match a lowercase destination")
 	}
 }
+
+// IGMP membership reports to 224.0.0.22 are the noisiest thing a runner emits, and a
+// component may report the destination only as host:port.
+func TestAddressClassesMatchEitherDestinationForm(t *testing.T) {
+	t.Parallel()
+
+	rules := compileIgnoreRules([]string{"local"})
+
+	for _, info := range []BlockedConnectionInfo{
+		{DestinationIP: "224.0.0.22"},
+		{Destination: "224.0.0.22"},
+		{Destination: "224.0.0.22:0"},
+		{Destination: "[ff02::16]:0"},
+		{DestinationIP: "224.0.0.22", DestinationPort: "0"},
+	} {
+		if !rules.matches(info) {
+			t.Errorf("local did not match %+v", info)
+		}
+	}
+
+	if rules.matches(BlockedConnectionInfo{Destination: "example.com:443"}) {
+		t.Error("local must not match a public hostname")
+	}
+}
