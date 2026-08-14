@@ -1,6 +1,7 @@
 package alerting
 
 import (
+	"log/slog"
 	"net/netip"
 	"strings"
 )
@@ -42,6 +43,7 @@ func (r ignoreRules) matches(info BlockedConnectionInfo) bool {
 
 //nolint:ireturn // A rule set is heterogeneous by design; that is the extension point.
 func parseIgnoreRule(pattern string) (ignoreRule, bool) {
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
 	if pattern == "" {
 		return nil, false
 	}
@@ -70,6 +72,13 @@ func parseIgnoreRule(pattern string) (ignoreRule, bool) {
 	addr, err := netip.ParseAddr(pattern)
 	if err == nil {
 		return prefixRule{prefix: netip.PrefixFrom(addr, addr.BitLen())}, true
+	}
+
+	// A domain holds neither character: this is a malformed CIDR or a host:port.
+	if strings.ContainsAny(pattern, "/:") {
+		slog.Warn("notification.ignore_rule_invalid", "pattern", pattern)
+
+		return nil, false
 	}
 
 	return domainRule{pattern: pattern}, true

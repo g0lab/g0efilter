@@ -143,3 +143,24 @@ func TestIgnoreRulesAreORed(t *testing.T) {
 		t.Error("expected an unrelated block to alert")
 	}
 }
+
+// A malformed CIDR must be rejected, not kept as a domain rule that never matches.
+func TestUnusableIgnorePatternsAreRejected(t *testing.T) {
+	t.Parallel()
+
+	for _, pattern := range []string{"10.0.0.0/33", "1.2.3.4:443", "10.0.0.0/", "component:"} {
+		rule, ok := parseIgnoreRule(pattern)
+		if ok {
+			t.Errorf("parseIgnoreRule(%q) = %#v, want rejected", pattern, rule)
+		}
+	}
+}
+
+func TestIgnorePatternCaseIsNormalized(t *testing.T) {
+	t.Parallel()
+
+	rules := compileIgnoreRules([]string{"  *.Telemetry.Example.COM  "})
+	if !rules.matches(BlockedConnectionInfo{Destination: "api.telemetry.example.com"}) {
+		t.Error("a mixed-case pattern must match a lowercase destination")
+	}
+}
