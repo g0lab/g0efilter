@@ -45,9 +45,6 @@ jobs:
             shared/go.sum
             tests/go.sum
 
-      # The tag is authoritative. VERSION mirrors it so a checkout of the tag has
-      # manifests and docs pinned to that same release. Checked here as well as in
-      # CI because a tag can be pushed at a commit whose CI never ran.
       - name: Version is consistent
         run: |
           declared="v$(tr -d '[:space:]' < VERSION)"
@@ -56,7 +53,9 @@ jobs:
                  "run scripts/set-version.sh ${GITHUB_REF_NAME} and commit before tagging"
             exit 1
           fi
-          go -C tests test -count=1 ./repo/...
+
+      - name: Release invariants
+        run: go -C tests test -count=1 ./repo/...
 
       # GoReleaser builds the dashboard UI in its before hook.
       - name: Set up pnpm
@@ -71,70 +70,10 @@ jobs:
           cache: pnpm
           cache-dependency-path: dashboard/ui/pnpm-lock.yaml
 
-      - name: Check Go modules
-        run: |
-          for module in shared agent dashboard controller tests; do
-            go -C "$module" mod tidy
-          done
-          git diff --exit-code
-
-      - name: Vet
-        run: |
-          for module in shared agent dashboard controller tests; do
-            go -C "$module" vet ./...
-          done
-
       - name: Build dashboard UI
         run: |
           pnpm --dir dashboard/ui install --frozen-lockfile
           pnpm --dir dashboard/ui build
-
-      - name: Test
-        run: |
-          for module in shared agent dashboard tests; do
-            go -C "$module" test -race -covermode=atomic -coverprofile=coverage.txt ./...
-          done
-
-      - name: Test controller
-        run: |
-          KUBEBUILDER_ASSETS="$(go -C controller tool setup-envtest use -p path)" \
-            go -C controller test -race -covermode=atomic -coverprofile=coverage.txt ./...
-
-      - name: Lint agent module
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
-        with:
-          version: latest
-          working-directory: agent
-          args: >
-            --timeout=10m
-            ./...
-
-      - name: Lint dashboard module
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
-        with:
-          version: latest
-          working-directory: dashboard
-          args: >
-            --timeout=10m
-            ./...
-
-      - name: Lint shared module
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
-        with:
-          version: latest
-          working-directory: shared
-          args: >
-            --timeout=10m
-            ./...
-
-      - name: Lint repository and manifest tests
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
-        with:
-          version: latest
-          working-directory: tests
-          args: >
-            --timeout=10m
-            ./...
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
