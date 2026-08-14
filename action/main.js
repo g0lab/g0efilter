@@ -10,6 +10,12 @@ const input = (name, fallback = "") => {
   return v === undefined || v === "" ? fallback : v;
 };
 
+// A URL composed in the workflow carries a token but is not masked by GitHub on its own.
+const notificationUrls = input("notification-urls");
+for (const url of notificationUrls.split(/\s+/).filter(Boolean)) {
+  process.stdout.write(`::add-mask::${url}\n`);
+}
+
 const res = spawnSync("bash", [path.join(__dirname, "setup.sh")], {
   stdio: "inherit",
   env: {
@@ -21,6 +27,9 @@ const res = spawnSync("bash", [path.join(__dirname, "setup.sh")], {
     LOG_LEVEL: input("log-level", "INFO"),
     G0EFILTER_IMAGE: input("image"),
     LOCKDOWN_RUNNER: input("lockdown-runner", "false"),
+    IDENTITY: input("identity"),
+    NOTIFICATION_URLS: notificationUrls,
+    NOTIFICATION_IGNORE: input("notification-ignore", "local"),
   },
 });
 

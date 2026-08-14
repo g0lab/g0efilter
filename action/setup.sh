@@ -177,6 +177,25 @@ DOCKER_ARGS=(
   -e 'BRIDGE_INTERFACES=docker0,br-*'
 )
 
+# The runner hostname is ephemeral and meaningless in an alert.
+IDENTITY="${IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="${GITHUB_REPOSITORY:-g0efilter}/${GITHUB_WORKFLOW:-workflow}"
+fi
+DOCKER_ARGS+=(-e HOSTNAME="$IDENTITY")
+
+# Name-only -e: the value comes from this process's environment, so the token
+# never lands in argv, where any user could read it via ps.
+if [ -n "${NOTIFICATION_URLS:-}" ]; then
+  export NOTIFICATION_URLS
+  DOCKER_ARGS+=(-e NOTIFICATION_URLS)
+  echo "Blocked-egress notifications enabled"
+fi
+
+if [ -n "${NOTIFICATION_IGNORE:-}" ]; then
+  DOCKER_ARGS+=(-e NOTIFICATION_IGNORE_DOMAINS="$(printf '%s' "$NOTIFICATION_IGNORE" | tr '\n' ',')")
+fi
+
 # Host :53 is systemd-resolved; the NAT redirect still captures DNS to the
 # proxy's alt port. Forward to the host's real resolvers - the default
 # 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with

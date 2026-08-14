@@ -193,6 +193,54 @@ env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" bash "$SETUP" > /d
 ! grep -q "^    - ''$" "$WORK/tmp/g0efilter/policy/policy.yaml"
 check $? "no empty allowlist entries with no inputs"
 
+# Alerts name the workflow, not the throwaway runner hostname.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  GITHUB_REPOSITORY=g0lab/g0efilter GITHUB_WORKFLOW=build \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'HOSTNAME=g0lab/g0efilter/build' "$WORK/docker.log"
+check $? "identity defaults to repository and workflow"
+
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" IDENTITY=prod-runner \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'HOSTNAME=prod-runner' "$WORK/docker.log"
+check $? "identity input overrides the default"
+
+# A URL in argv is readable by any user running ps, so it goes via the environment.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  NOTIFICATION_URLS="ntfy://ntfy.example.com/secret-topic" \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- '-e NOTIFICATION_URLS' "$WORK/docker.log"
+check $? "notification urls are passed by name, not by value"
+
+! grep -Fq -- 'secret-topic' "$WORK/docker.log"
+check $? "the notification token never reaches the docker command line"
+
+# The action takes newline-separated rules; the filter parses commas.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  NOTIFICATION_IGNORE="$(printf 'local\n*.telemetry.example.com')" \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local,*.telemetry.example.com' "$WORK/docker.log"
+check $? "notification ignore rules are converted to the filter's format"
+
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1
+! grep -Fq -- 'NOTIFICATION_URLS' "$WORK/docker.log"
+check $? "no notification config when the input is unset"
+
 echo "---"
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]

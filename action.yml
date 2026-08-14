@@ -58,6 +58,36 @@ inputs:
     required: false
     default: 'false'
 
+  notification-urls:
+    description: >-
+      Whitespace-separated shoutrrr URLs to alert on blocked egress, for
+      example `ntfy://ntfy.sh/my-topic` or
+      `telegram://BOT_TOKEN@telegram?chats=CHAT_ID`. Pass these from
+      `secrets`: each URL is masked in the log and handed to the container
+      through the environment, never on the command line. Supports every
+      shoutrrr service (gotify, ntfy, telegram, slack, discord, ...).
+    required: false
+    default: ''
+
+  identity:
+    description: >-
+      Names this runner in notifications and shipped logs. Defaults to
+      `<owner>/<repo>/<workflow>`, which is more useful than the ephemeral
+      runner hostname.
+    required: false
+    default: ''
+
+  notification-ignore:
+    description: >-
+      Newline-separated rules for blocks that should not alert. Accepts
+      domains (`example.com`, `*.example.com`), addresses and CIDRs
+      (`10.0.0.0/8`), address classes (`multicast`, `loopback`,
+      `link-local`, `private`, `local`), `component:<name>` and `ip-only`.
+      Defaults to `local`, which drops the IPv6 neighbour-discovery noise a
+      runner always produces.
+    required: false
+    default: 'local'
+
   image:
     description: >-
       g0efilter container image to run. Defaults to the image matching the
