@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Go test runner, used by CI and runnable locally:
 #   scripts/test-go.sh
-# Confirms every production module is tidy, vets, runs the race-enabled suites
-# with coverage, and runs golangci-lint with the same arguments used by CI.
-# Requires the Go toolchain and golangci-lint.
+# Confirms every module is tidy, vets, runs the race-enabled suites with coverage,
+# checks the generated controller output, and lints as CI does. Keep this a superset
+# of the per-module steps in .github/workflows/ci-go.yaml.
+# Requires the Go toolchain and golangci-lint; chart linting also needs ct.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -42,3 +43,26 @@ GOWORK=off go -C controller vet ./...
 KUBEBUILDER_ASSETS="$(GOWORK=off go -C controller tool setup-envtest use -p path)" \
   GOWORK=off go -C controller test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./...
 (cd controller && GOWORK=off golangci-lint run --timeout=10m ./...)
+
+# The suite itself needs Docker and ~35m, so it runs separately (tests/e2e/README.md).
+echo ">>> e2e module (vet and lint only)"
+GOWORK=off go -C tests/e2e mod tidy
+git diff --exit-code -- tests/e2e/go.mod tests/e2e/go.sum
+GOWORK=off go -C tests/e2e vet ./...
+(cd tests/e2e && GOWORK=off golangci-lint run --timeout=10m ./...)
+
+echo ">>> generated controller output is up to date"
+scripts/gen-controller.sh > /dev/null
+git diff --exit-code -- deploy/crds controller/api deploy/controller \
+  deploy/helm/g0efilter-controller/templates
+
+echo ">>> chart lint"
+if command -v ct > /dev/null 2>&1; then
+  if ct list-changed --config .github/chart-testing.yaml | grep -q .; then
+    ct lint --config .github/chart-testing.yaml
+  else
+    echo "no chart changes"
+  fi
+else
+  echo "SKIPPED: ct is not installed, so a missing Chart.yaml version bump will only fail in CI"
+fi
