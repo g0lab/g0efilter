@@ -21,13 +21,24 @@ import (
 )
 
 const (
-	agentService     = "g0efilter"
-	dashboardService = "g0efilter-dashboard"
-	testerService    = "tester"
+	agentService      = "g0efilter"
+	dashboardService  = "g0efilter-dashboard"
+	testerService     = "tester"
+	notifySinkService = "notify-sink"
 
 	startupTimeout  = 3 * time.Minute
 	shutdownTimeout = 45 * time.Second
 )
+
+// NotifySinkURLs address the sink by service name, so reaching it needs a DNS lookup.
+// Both land on /cgi-bin/message, the only path busybox httpd runs as CGI.
+const NotifySinkURLs = "gotify://notify-sink:8080/cgi-bin/" + NotifySinkGotifyToken + "?disabletls=yes " +
+	"ntfy://notify-sink:8080/cgi-bin/message?scheme=http"
+
+// NotifySinkGotifyToken passes shoutrrr's Gotify format check; the sink records it.
+const NotifySinkGotifyToken = "Aaa.bbb.ccc.ddd" //nolint:gosec // A test fixture, not a credential.
+
+const notifySinkLog = "/tmp/received.txt"
 
 // DashboardPort is the in-container port the dashboard listens on. Exported so
 // tests that exec curl inside a container do not restate it.
@@ -38,9 +49,10 @@ type Stack struct {
 	Config  StackConfig
 	Compose compose.ComposeStack
 
-	Agent     *testcontainers.DockerContainer
-	Dashboard *testcontainers.DockerContainer
-	Tester    *testcontainers.DockerContainer
+	Agent      *testcontainers.DockerContainer
+	Dashboard  *testcontainers.DockerContainer
+	Tester     *testcontainers.DockerContainer
+	NotifySink *testcontainers.DockerContainer
 
 	DashboardURL string
 	PolicyFile   string
@@ -173,6 +185,7 @@ func start(t *testing.T, cfg StackConfig, shared bool) *Stack {
 	s.Agent = serviceContainer(ctx, t, stack, agentService)
 	s.Dashboard = serviceContainer(ctx, t, stack, dashboardService)
 	s.Tester = serviceContainer(ctx, t, stack, testerService)
+	s.NotifySink = serviceContainer(ctx, t, stack, notifySinkService)
 	s.DashboardURL = dashboardURL(ctx, t, s.Agent)
 
 	return s
@@ -192,6 +205,7 @@ func (c StackConfig) composeEnv() map[string]string {
 		"DASHBOARD_EPHEMERAL":            strconv.FormatBool(c.Ephemeral),
 		"DASHBOARD_FLEET_ENABLED":        strconv.FormatBool(c.FleetEnabled),
 		"DASHBOARD_CORS_ALLOWED_ORIGINS": c.CORSOrigin,
+		"NOTIFICATION_URLS":              c.NotifyURLs,
 		"G0EFILTER_IMAGE":                c.AgentImage,
 		"G0EFILTER_DASHBOARD_IMAGE":      c.DashboardImage,
 		"E2E_TESTER_IMAGE":               c.TesterImage,
@@ -303,6 +317,21 @@ func (s *Stack) RestartDashboard(t *testing.T) {
 
 		return res.ExitCode == 0, "dashboard has not recovered after restart"
 	})
+}
+
+// NotificationsReceived returns the notification bodies the sink has recorded.
+func (s *Stack) NotificationsReceived(t *testing.T) string {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	res := Exec(ctx, s.NotifySink, "cat", notifySinkLog)
+	if res.ExitCode != 0 {
+		return ""
+	}
+
+	return res.Output
 }
 
 // acquire gives t exclusive use of the stack until it finishes. Subtests of the

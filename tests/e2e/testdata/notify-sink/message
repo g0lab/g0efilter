@@ -1,0 +1,13 @@
+#!/bin/sh
+# busybox httpd CGI: records the POST so the test can assert delivery. The query
+# carries gotify's token, which is how the two services are told apart.
+{
+	echo "query=${QUERY_STRING}"
+	head -c "${CONTENT_LENGTH:-0}"
+	echo
+} >>/tmp/received.txt
+
+# JSON, because shoutrrr's gotify and ntfy services decode the reply.
+echo "Content-Type: application/json"
+echo ""
+echo "{}"

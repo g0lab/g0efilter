@@ -43,6 +43,8 @@ type StackConfig struct {
 	FleetEnabled bool
 	CORSOrigin   string
 
+	NotifyURLs string
+
 	// PolicyDir is bind-mounted at /app/policy. Leave empty to have the harness
 	// allocate one per stack; its lifetime then matches the stack, not the test
 	// that happened to start it (shared stacks outlive their first test).
@@ -69,6 +71,7 @@ func BaselineConfig(t *testing.T, mode FilterMode) StackConfig {
 		Ephemeral:      false,
 		FleetEnabled:   false,
 		CORSOrigin:     "",
+		NotifyURLs:     "",
 		PolicyDir:      "",
 		AgentImage:     Env("G0EFILTER_IMAGE", defaultAgentImage),
 		DashboardImage: Env("G0EFILTER_DASHBOARD_IMAGE", defaultDashboardImage),
@@ -92,6 +95,17 @@ func AuditConfig(t *testing.T, mode FilterMode) StackConfig {
 
 	cfg := BaselineConfig(t, mode)
 	cfg.Enforce = "audit"
+
+	return cfg
+}
+
+// NotifyConfig points the agent at the sink, which is never allow-listed: the
+// agent has to reach its own notification server without policy permitting it.
+func NotifyConfig(t *testing.T, mode FilterMode) StackConfig {
+	t.Helper()
+
+	cfg := BaselineConfig(t, mode)
+	cfg.NotifyURLs = NotifySinkURLs
 
 	return cfg
 }
@@ -126,6 +140,7 @@ func (c StackConfig) fingerprint() string {
 		string(c.Mode), c.DefaultAction, strconv.FormatBool(c.LearningMode), c.Enforce,
 		c.APIKey, c.AuthMode, c.AdminHash, strconv.FormatBool(c.CookieSecure),
 		strconv.FormatBool(c.Ephemeral), strconv.FormatBool(c.FleetEnabled), c.CORSOrigin,
+		c.NotifyURLs,
 		c.PolicyDir, c.AgentImage, c.DashboardImage, c.TesterImage,
 	}, "|")
 }

@@ -26,6 +26,7 @@ services:
       DECISION_LOG_FILE: /tmp/decisions.jsonl
       DASHBOARD_HOST: http://127.0.0.1:8081
       DASHBOARD_API_KEY: ${API_KEY:-your-secure-api-key-here}
+      NOTIFICATION_URLS: ${NOTIFICATION_URLS:-}
     cap_add:
       - NET_ADMIN
 
@@ -73,6 +74,20 @@ services:
     depends_on:
       - g0efilter
     network_mode: 'service:g0efilter'
+
+  # Keeps its own network namespace so g0efilter has to resolve it by name.
+  notify-sink:
+    image: ${E2E_NOTIFY_SINK_IMAGE:-busybox:stable}
+    command: ['httpd', '-f', '-p', '8080', '-h', '/www']
+    volumes:
+      - './testdata/notify-sink:/www/cgi-bin:ro'
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   dashboard-data:

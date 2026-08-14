@@ -1,6 +1,7 @@
 package e2e_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -233,6 +234,53 @@ allowlist:
 `)
 
 		s.AssertBlocked(t, "https://one.one.one.one")
+	})
+}
+
+// The SO_MARK exempting the agent's own traffic covers only the connection socket,
+// so DNS mode used to sinkhole the notification host's lookup and strand every alert.
+func TestPhase20Notifications(t *testing.T) {
+	t.Parallel()
+
+	mode := harness.ModeFromEnv(t)
+	s := harness.StartStack(t, harness.NotifyConfig(t, mode))
+
+	s.WritePolicyAndWait(t, `---
+allowlist:
+  domains:
+    - 'github.com'
+`)
+
+	mark := s.AgentLogMark(t)
+
+	s.AssertBlocked(t, "https://example.com")
+
+	t.Run("every service reaches a server the policy does not allow-list", func(t *testing.T) {
+		s.WaitForAgentEvent(t, mark, harness.EventMatcher{Event: "notification.sent"}, 30*time.Second)
+
+		harness.Eventually(t, 30*time.Second, time.Second, func() (bool, string) {
+			got := s.NotificationsReceived(t)
+
+			// gotify identifies itself by the token it puts in the query.
+			gotify := strings.Contains(got, "query=token="+harness.NotifySinkGotifyToken)
+			delivered := strings.Count(got, "Blocked ")
+
+			return gotify && delivered >= 2,
+				"sink recorded gotify=" + strconv.FormatBool(gotify) +
+					" deliveries=" + strconv.Itoa(delivered) + ", got: " + got
+		})
+	})
+
+	t.Run("no service reports a delivery failure", func(t *testing.T) {
+		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{Event: "notification.post_failed"}, 3*time.Second)
+		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{Event: "notification.target_failed"}, 3*time.Second)
+	})
+
+	t.Run("the notification host resolves instead of being sinkholed", func(t *testing.T) {
+		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{
+			Event:  "dns.blocked",
+			Fields: map[string]string{"qname": "notify-sink"},
+		}, 3*time.Second)
 	})
 }
 
