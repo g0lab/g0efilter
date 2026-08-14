@@ -4,7 +4,7 @@
 # chart's `dashboard` values.
 image:
   repository: docker.io/g0lab/g0efilter-dashboard
-  tag: v0.9.0
+  tag: v0.9.1
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -58,7 +58,7 @@ secrets:
   #
   # Leaving apiKey and adminPasswordHash empty is supported - the dashboard generates
   # each once and prints it to its log on first start. Generate a hash yourself with:
-  #   docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.0 hash-password
+  #   docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.1 hash-password
   apiKey: ''
   adminPasswordHash: ''
   jwtSecret: ''

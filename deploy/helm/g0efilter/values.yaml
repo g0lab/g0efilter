@@ -9,7 +9,7 @@
 image:
   repository: docker.io/g0lab/g0efilter
   # Must be v0.8.0 or later: earlier images start as root and need more capabilities.
-  tag: v0.9.0
+  tag: v0.9.1
   pullPolicy: IfNotPresent
 
 # https, dns or dns-strict. Selects the data path, not how strictly a verdict is

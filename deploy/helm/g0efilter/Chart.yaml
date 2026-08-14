@@ -3,8 +3,8 @@ apiVersion: v2
 name: g0efilter
 description: Library chart that injects the g0efilter egress-filter sidecar into a pod template.
 type: library
-version: 0.9.0
-appVersion: '0.9.0'
+version: 0.9.1
+appVersion: '0.9.1'
 home: https://github.com/g0lab/g0efilter
 sources:
   - https://github.com/g0lab/g0efilter
