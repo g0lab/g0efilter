@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,12 +26,19 @@ import (
 
 const (
 	minPacketSize = 20
+	loopbackIPv4  = "127.0.0.1"
+
+	// IFNAMSIZ leaves 15 usable bytes for an interface name.
+	maxInterfaceNameLen = 15
 )
 
 var (
 	errPortOutOfRange            = errors.New("port out of range")
 	errUnsupportedPortConstraint = errors.New("unsupported port constraint")
+	errInvalidBridgeInterface    = errors.New("invalid bridge interface pattern")
 )
+
+var interfacePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+\*?$`)
 
 // Version returns the nftables version string.
 func Version(ctx context.Context) (string, error) {
@@ -245,6 +253,14 @@ table ip6 g0efilter_v6
 delete table ip6 g0efilter_v6
 table ip6 g0efilter_nat_v6
 delete table ip6 g0efilter_nat_v6
+table ip g0efilter_bridge_v4
+delete table ip g0efilter_bridge_v4
+table ip g0efilter_bridge_nat_v4
+delete table ip g0efilter_bridge_nat_v4
+table ip6 g0efilter_bridge_v6
+delete table ip6 g0efilter_bridge_v6
+table ip6 g0efilter_bridge_nat_v6
+delete table ip6 g0efilter_bridge_nat_v6
 `
 
 // PolicyRules describes the inputs for ruleset generation and application.
@@ -279,7 +295,7 @@ func ApplyPolicyRulesWithContext(
 	}
 
 	if len(rules.AllowIPs) == 0 {
-		rules.AllowIPs = []string{"127.0.0.1"}
+		rules.AllowIPs = []string{loopbackIPv4}
 	}
 
 	httpsPort, httpPort, dnsPort, err := parseProxyPorts(httpsPortStr, httpPortStr, dnsPortStr)
@@ -294,19 +310,25 @@ func ApplyPolicyRulesWithContext(
 
 	denyV4, denyV6 := splitByFamily(rules.DenyIPs)
 
+	bridgeInterfaces, err := validateBridgeInterfaces(bridgeInterfacesFromEnv())
+	if err != nil {
+		return err
+	}
+
 	ruleset := GenerateRuleset(RulesetConfig{
-		AllowV4:      allowV4,
-		AllowV6:      allowV6,
-		AllowPortV4:  allowPortV4,
-		AllowPortV6:  allowPortV6,
-		DenyV4:       denyV4,
-		DenyV6:       denyV6,
-		HTTPSPort:    httpsPort,
-		HTTPPort:     httpPort,
-		DNSPort:      dnsPort,
-		Mode:         mode,
-		DefaultAllow: rules.DefaultAllow,
-		Audit:        rules.Audit,
+		AllowV4:          allowV4,
+		AllowV6:          allowV6,
+		AllowPortV4:      allowPortV4,
+		AllowPortV6:      allowPortV6,
+		DenyV4:           denyV4,
+		DenyV6:           denyV6,
+		HTTPSPort:        httpsPort,
+		HTTPPort:         httpPort,
+		DNSPort:          dnsPort,
+		Mode:             mode,
+		DefaultAllow:     rules.DefaultAllow,
+		Audit:            rules.Audit,
+		BridgeInterfaces: bridgeInterfaces,
 	})
 	if !strings.HasSuffix(ruleset, "\n") {
 		ruleset += "\n"
@@ -321,6 +343,56 @@ func ApplyPolicyRulesWithContext(
 	}
 
 	return applyRuleset(ctx, ruleset)
+}
+
+// bridgeInterfacesFromEnv is the single source of the bridge list, so the
+// ruleset and the dns-strict resolved sets can never disagree about it.
+func bridgeInterfacesFromEnv() []string {
+	var configured []string
+
+	for value := range strings.SplitSeq(os.Getenv("BRIDGE_INTERFACES"), ",") {
+		if value = strings.TrimSpace(value); value != "" {
+			configured = append(configured, value)
+		}
+	}
+
+	return configured
+}
+
+// bridgeFilteringEnabled skips the slice bridgeInterfacesFromEnv builds, per resolved IP.
+func bridgeFilteringEnabled() bool {
+	for value := range strings.SplitSeq(os.Getenv("BRIDGE_INTERFACES"), ",") {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func validateBridgeInterfaces(interfaces []string) ([]string, error) {
+	validated := make([]string, 0, len(interfaces))
+
+	seen := make(map[string]struct{}, len(interfaces))
+	for _, name := range interfaces {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+
+		if len(name) > maxInterfaceNameLen || !interfacePattern.MatchString(name) {
+			return nil, fmt.Errorf("%w: %q", errInvalidBridgeInterface, name)
+		}
+
+		if _, ok := seen[name]; ok {
+			continue
+		}
+
+		seen[name] = struct{}{}
+		validated = append(validated, name)
+	}
+
+	return validated, nil
 }
 
 // ApplyNftRules applies nftables rules using a background context.
@@ -1019,6 +1091,7 @@ type RulesetConfig struct {
 	Mode                     string
 	DefaultAllow             bool
 	Audit                    bool // dry-run: would-be drops logged with the "audit" prefix and accepted
+	BridgeInterfaces         []string
 }
 
 // GenerateRuleset generates a complete nftables ruleset. With DefaultAllow the filter
@@ -1049,6 +1122,15 @@ func auditRuleset(ruleset string) string {
 }
 
 func generateEnforcingRuleset(cfg RulesetConfig) string {
+	hostRules := generateHostRuleset(cfg)
+	if len(cfg.BridgeInterfaces) == 0 {
+		return hostRules
+	}
+
+	return hostRules + "\n" + generateBridgeRuleset(cfg)
+}
+
+func generateHostRuleset(cfg RulesetConfig) string {
 	mode := strings.ToLower(cfg.Mode)
 	if mode != actions.ModeDNS && mode != actions.ModeDNSStrict {
 		mode = actions.ModeHTTPS
@@ -1057,7 +1139,7 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 	// Placeholder entries keep the allow sets non-empty (loopback is harmless to allow).
 	allowSetV4 := strings.Join(cfg.AllowV4, ", ")
 	if allowSetV4 == "" {
-		allowSetV4 = "127.0.0.1"
+		allowSetV4 = loopbackIPv4
 	}
 
 	allowSetV6 := strings.Join(cfg.AllowV6, ", ")
@@ -1104,6 +1186,180 @@ func generateEnforcingRuleset(cfg RulesetConfig) string {
 		"\n" + generateHTTPSNATRules(allowSetV4, portSetV4, cfg.HTTPPort, cfg.HTTPSPort) +
 		"\n" + generateHTTPSFilterRulesV6(allowSetV6, portSetV6, cfg.HTTPPort, cfg.HTTPSPort) +
 		"\n" + generateHTTPSNATRulesV6(allowSetV6, portSetV6, cfg.HTTPPort, cfg.HTTPSPort)
+}
+
+func generateBridgeRuleset(cfg RulesetConfig) string {
+	allowV4 := strings.Join(cfg.AllowV4, ", ")
+	if allowV4 == "" {
+		allowV4 = loopbackIPv4
+	}
+
+	allowV6 := strings.Join(cfg.AllowV6, ", ")
+	if allowV6 == "" {
+		allowV6 = "::1"
+	}
+
+	return generateBridgeFamily(cfg, "ip", "v4", "ipv4_addr", allowV4,
+		strings.Join(cfg.AllowPortV4, ", "), strings.Join(cfg.DenyV4, ", ")) + "\n" +
+		generateBridgeFamily(cfg, "ip6", "v6", "ipv6_addr", allowV6,
+			strings.Join(cfg.AllowPortV6, ", "), strings.Join(cfg.DenyV6, ", "))
+}
+
+func generateBridgeFamily(
+	cfg RulesetConfig,
+	family, suffix, addrType, allowSet, portSet, denySet string,
+) string {
+	addressExpr := family + " daddr"
+
+	filterSets := setBlock("allow_daddr_"+suffix, addrType, allowSet) +
+		portSetBlock("allow_daddr_port_"+suffix, addrType, portSet)
+	if cfg.DefaultAllow {
+		filterSets += setBlock("deny_daddr_"+suffix, addrType, denySet)
+	}
+
+	if strings.EqualFold(cfg.Mode, actions.ModeDNSStrict) && !cfg.DefaultAllow {
+		filterSets += resolvedSetBlocks(suffix, addrType)
+	}
+
+	filterRules := bridgeFilterRules(cfg, addressExpr, suffix)
+
+	natSets := setBlock("allow_daddr_"+suffix, addrType, allowSet) +
+		portSetBlock("allow_daddr_port_"+suffix, addrType, portSet)
+	if cfg.DefaultAllow {
+		natSets += setBlock("deny_daddr_"+suffix, addrType, denySet)
+	}
+
+	filterTable := fmt.Sprintf(`table %s g0efilter_bridge_%s {
+%s
+    chain bridge_egress {
+%s    }
+
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+%s    }
+}
+`, family, suffix, filterSets, filterRules, bridgeJumpRules(cfg.BridgeInterfaces, "bridge_egress"))
+
+	natTable := fmt.Sprintf(`table %s g0efilter_bridge_nat_%s {
+%s
+    chain bridge_redirect {
+%s    }
+
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+%s    }
+}
+`, family, suffix, natSets, bridgeNATRules(cfg, addressExpr, suffix),
+		bridgeJumpRules(cfg.BridgeInterfaces, "bridge_redirect"))
+
+	return filterTable + "\n" + natTable
+}
+
+func bridgeJumpRules(interfaces []string, target string) string {
+	var rules strings.Builder
+	for _, name := range interfaces {
+		_, _ = fmt.Fprintf(&rules, "        iifname %q jump %s\n", name, target)
+	}
+
+	return rules.String()
+}
+
+// bridgeLocalRules exempt traffic leaving on any managed bridge: the destination
+// is another local container rather than the network, and dropping it would break
+// linked containers. Cross-bridge traffic is left to Docker's own isolation.
+func bridgeLocalRules(interfaces []string, verdict string) string {
+	var rules strings.Builder
+	for _, name := range interfaces {
+		_, _ = fmt.Fprintf(&rules, "        oifname %q %s\n", name, verdict)
+	}
+
+	return rules.String()
+}
+
+// bridgeLocalNATRules suit prerouting, where routing has not run and oifname is empty.
+func bridgeLocalNATRules(interfaces []string, verdict string) string {
+	var rules strings.Builder
+	for _, name := range interfaces {
+		_, _ = fmt.Fprintf(&rules, "        fib daddr . iif oifname %q %s\n", name, verdict)
+	}
+
+	return rules.String()
+}
+
+func bridgeFilterRules(cfg RulesetConfig, addressExpr, suffix string) string {
+	var rules strings.Builder
+	rules.WriteString(bridgeLocalRules(cfg.BridgeInterfaces, "accept"))
+	rules.WriteString("        ct state established,related accept\n")
+	rules.WriteString("        ct state invalid drop\n")
+	_, _ = fmt.Fprintf(&rules, "        %s @allow_daddr_%s log prefix \"allowed\" group 0\n", addressExpr, suffix)
+	_, _ = fmt.Fprintf(&rules, "        %s @allow_daddr_%s accept\n", addressExpr, suffix)
+
+	if cfg.DefaultAllow {
+		_, _ = fmt.Fprintf(&rules, "        %s @deny_daddr_%s log prefix \"blocked\" group 0\n", addressExpr, suffix)
+		_, _ = fmt.Fprintf(&rules, "        %s @deny_daddr_%s drop\n", addressExpr, suffix)
+		rules.WriteString("        return\n")
+
+		return rules.String()
+	}
+
+	mode := strings.ToLower(cfg.Mode)
+	if mode == actions.ModeDNS {
+		rules.WriteString("        return\n")
+
+		return rules.String()
+	}
+
+	_, _ = fmt.Fprintf(&rules,
+		"        %s . meta l4proto . th dport @allow_daddr_port_%s log prefix \"allowed\" group 0\n",
+		addressExpr, suffix)
+
+	_, _ = fmt.Fprintf(&rules,
+		"        %s . meta l4proto . th dport @allow_daddr_port_%s accept\n", addressExpr, suffix)
+	if mode == actions.ModeDNSStrict {
+		_, _ = fmt.Fprintf(&rules, "        %s @resolved_allow_%s log prefix \"allowed\" group 0\n", addressExpr, suffix)
+		_, _ = fmt.Fprintf(&rules, "        %s @resolved_allow_%s accept\n", addressExpr, suffix)
+		_, _ = fmt.Fprintf(&rules,
+			"        %s . meta l4proto . th dport @resolved_allow_%s_port log prefix \"allowed\" group 0\n",
+			addressExpr, suffix)
+		_, _ = fmt.Fprintf(&rules,
+			"        %s . meta l4proto . th dport @resolved_allow_%s_port accept\n", addressExpr, suffix)
+	}
+
+	rules.WriteString("        log prefix \"blocked\" group 0\n")
+	rules.WriteString("        drop\n")
+
+	return rules.String()
+}
+
+func bridgeNATRules(cfg RulesetConfig, addressExpr, suffix string) string {
+	var rules strings.Builder
+
+	rules.WriteString(bridgeLocalNATRules(cfg.BridgeInterfaces, "return"))
+
+	mode := strings.ToLower(cfg.Mode)
+	if mode == actions.ModeDNS || mode == actions.ModeDNSStrict {
+		_, _ = fmt.Fprintf(&rules, "        udp dport 53 log prefix \"dns_redirected\" group 0\n")
+		_, _ = fmt.Fprintf(&rules, "        udp dport 53 redirect to :%d\n", cfg.DNSPort)
+		_, _ = fmt.Fprintf(&rules, "        tcp dport 53 log prefix \"dns_redirected\" group 0\n")
+		_, _ = fmt.Fprintf(&rules, "        tcp dport 53 redirect to :%d\n", cfg.DNSPort)
+
+		return rules.String()
+	}
+
+	_, _ = fmt.Fprintf(&rules, "        %s @allow_daddr_%s return\n", addressExpr, suffix)
+
+	_, _ = fmt.Fprintf(&rules,
+		"        %s . meta l4proto . th dport @allow_daddr_port_%s return\n", addressExpr, suffix)
+	if cfg.DefaultAllow {
+		_, _ = fmt.Fprintf(&rules, "        %s @deny_daddr_%s return\n", addressExpr, suffix)
+	}
+
+	_, _ = fmt.Fprintf(&rules, "        tcp dport 80 log prefix \"redirected\" group 0\n")
+	_, _ = fmt.Fprintf(&rules, "        tcp dport 80 redirect to :%d\n", cfg.HTTPPort)
+	_, _ = fmt.Fprintf(&rules, "        tcp dport 443 log prefix \"redirected\" group 0\n")
+	_, _ = fmt.Fprintf(&rules, "        tcp dport 443 redirect to :%d\n", cfg.HTTPSPort)
+
+	return rules.String()
 }
 
 // StreamNfLog starts streaming netfilter log events using the default logger.

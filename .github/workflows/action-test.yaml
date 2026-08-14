@@ -272,6 +272,117 @@ jobs:
           fi
           echo "OK: docker --network host traffic filtered"
 
+  docker-bridges:
+    name: Docker bridge networks
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/load-agent-image
+
+      - name: Pre-pull curl image
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull curlimages/curl:latest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+      - name: Start g0efilter
+        uses: ./
+        with:
+          image: g0efilter:action-test
+          allowed-domains: api.github.com
+
+      - name: Bridge tables and future-network wildcard are installed
+        run: |
+          sudo nft list table ip g0efilter_bridge_v4 | grep -F 'iifname "docker0" jump bridge_egress'
+          sudo nft list table ip g0efilter_bridge_v4 | grep -F 'iifname "br-*" jump bridge_egress'
+          sudo nft list table ip g0efilter_bridge_nat_v4 > /dev/null
+
+      - name: Default bridge filters allowed and blocked domains
+        run: |
+          docker run --rm curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --retry 2 --retry-delay 2 --retry-all-errors \
+            https://api.github.com -o /dev/null
+          if docker run --rm curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            https://example.com -o /dev/null; then
+            echo "default Docker bridge bypassed the filter"
+            exit 1
+          fi
+
+      - name: A custom bridge created after startup is also filtered
+        run: |
+          docker network create g0efilter-e2e
+          trap 'docker network rm g0efilter-e2e >/dev/null 2>&1 || true' EXIT
+          docker run --rm --network g0efilter-e2e curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --retry 2 --retry-delay 2 --retry-all-errors \
+            https://api.github.com -o /dev/null
+          if docker run --rm --network g0efilter-e2e curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            https://example.com -o /dev/null; then
+            echo "custom Docker bridge bypassed the filter"
+            exit 1
+          fi
+
+      - name: Containers on one bridge still reach each other
+        run: |
+          docker network create g0efilter-e2e-peers
+          trap 'docker rm -f g0efilter-e2e-peer >/dev/null 2>&1 || true
+                docker network rm g0efilter-e2e-peers >/dev/null 2>&1 || true' EXIT
+          docker run -d --name g0efilter-e2e-peer --network g0efilter-e2e-peers \
+            curlimages/curl:latest nc -l -p 8080
+          for attempt in 1 2 3 4 5; do
+            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer)
+            [ -n "$peer" ] && break
+            sleep 1
+          done
+          if [ -z "$peer" ]; then
+            echo "the peer container never reported an address"
+            docker logs g0efilter-e2e-peer || true
+            exit 1
+          fi
+          if ! docker run --rm --network g0efilter-e2e-peers curlimages/curl:latest \
+            sh -c "echo ping | nc -w 5 $peer 8080"; then
+            echo "container to container traffic on one bridge must not be filtered"
+            exit 1
+          fi
+
+      # bridge_redirect only touches 80 and 443, so other ports cannot catch a dead exemption.
+      - name: Containers on one bridge reach each other on a redirected port
+        run: |
+          docker network create g0efilter-e2e-peers80
+          trap 'docker rm -f g0efilter-e2e-peer80 >/dev/null 2>&1 || true
+                docker network rm g0efilter-e2e-peers80 >/dev/null 2>&1 || true' EXIT
+          docker run -d --name g0efilter-e2e-peer80 --user 0 \
+            --network g0efilter-e2e-peers80 curlimages/curl:latest nc -l -p 80
+          for attempt in 1 2 3 4 5; do
+            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer80)
+            [ -n "$peer" ] && break
+            sleep 1
+          done
+          if [ -z "$peer" ]; then
+            echo "the peer container never reported an address"
+            docker logs g0efilter-e2e-peer80 || true
+            exit 1
+          fi
+          if ! docker run --rm --network g0efilter-e2e-peers80 curlimages/curl:latest \
+            sh -c "echo ping | nc -w 5 $peer 80"; then
+            echo "same-bridge traffic on port 80 was redirected into the proxy"
+            exit 1
+          fi
+
   ipv6:
     name: IPv6
     needs: build
@@ -381,6 +492,18 @@ jobs:
 
       - uses: ./.github/actions/load-agent-image
 
+      - name: Pre-pull curl image
+        run: |
+          for attempt in 1 2 3; do
+            if docker pull curlimages/curl:latest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
       - name: Start g0efilter
         uses: ./
         with:
@@ -410,6 +533,19 @@ jobs:
             exit 1
           fi
           echo "OK: unresolved hardcoded IP dropped"
+
+      - name: DNS strict resolved sets also protect bridge traffic
+        run: |
+          docker run --rm curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+            --retry 2 --retry-delay 2 --retry-all-errors \
+            https://api.github.com -o /dev/null
+          if docker run --rm curlimages/curl:latest \
+            --fail --silent --show-error --connect-timeout 10 --max-time 10 \
+            https://1.1.1.1 -o /dev/null; then
+            echo "unresolved bridge IP bypassed dns-strict"
+            exit 1
+          fi
 
   lockdown:
     name: Runner lockdown

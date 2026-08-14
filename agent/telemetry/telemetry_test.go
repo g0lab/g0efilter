@@ -225,8 +225,7 @@ func TestPosterProbeBadStatus(t *testing.T) {
 
 func TestNewFromEnvNilWhenUnconfigured(t *testing.T) {
 	t.Setenv("DASHBOARD_HOST", "")
-	t.Setenv("NOTIFICATION_HOST", "")
-	t.Setenv("NOTIFICATION_KEY", "")
+	t.Setenv("NOTIFICATION_URLS", "")
 
 	if h, _ := NewFromEnv(context.Background(), io.Discard, slog.LevelInfo, ""); h != nil {
 		t.Fatalf("expected nil hook when unconfigured, got %T", h)

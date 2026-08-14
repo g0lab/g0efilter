@@ -211,6 +211,7 @@ func TestRulesRejectsBadInput(t *testing.T) {
 		{name: "malformed network", rule: networkRule("bad", "10.0.0"), want: ErrInvalidNetwork},
 		{name: "malformed cidr", rule: networkRule("bad", "10.0.0.0/99"), want: ErrInvalidNetwork},
 		{name: "empty network", rule: networkRule("bad", ""), want: ErrInvalidNetwork},
+		{name: "zero-padded prefix length", rule: networkRule("bad", "10.0.0.0/08"), want: ErrInvalidNetwork},
 		// A bare "*" would quietly allow every destination, defeating default-deny.
 		{name: "catch-all domain", rule: domainRule("bad", "*"), want: ErrInvalidDomain},
 		{name: "domain with a port", rule: domainRule("bad", "api.example.com:443"), want: ErrInvalidDomain},

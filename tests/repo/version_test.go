@@ -175,7 +175,6 @@ func TestEveryExpectedFileCarriesAVersionPin(t *testing.T) {
 	required := []string{
 		"deploy/kustomize/sidecar/kustomization.yaml",
 		"deploy/kustomize/audit/kustomization.yaml",
-		"deploy/kustomize/process-info/kustomization.yaml",
 		"deploy/helm/g0efilter/values.yaml",
 		"deploy/helm/g0efilter/Chart.yaml",
 		"deploy/helm/g0efilter-controller/values.yaml",

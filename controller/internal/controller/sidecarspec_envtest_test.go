@@ -179,7 +179,6 @@ func TestCRDAcceptsTheFullSidecarSpec(t *testing.T) {
 		Mode:             "dns-strict",
 		Enforcement:      "audit",
 		LogLevel:         "DEBUG",
-		ProcessInfo:      true,
 		TenantID:         "tenant-a",
 		Events:           true,
 		EventsMaxDenials: &maxDenials,
@@ -189,7 +188,6 @@ func TestCRDAcceptsTheFullSidecarSpec(t *testing.T) {
 			RemoteUnblock: true,
 		},
 		Notifications: v1alpha1.NotificationsSpec{
-			Host:          "https://gotify.example.com",
 			IgnoreDomains: []string{"*.telemetry.example.com"},
 		},
 		DNS:         v1alpha1.DNSSpec{Upstreams: []string{"10.43.0.10:53"}, Hardening: &hardening},

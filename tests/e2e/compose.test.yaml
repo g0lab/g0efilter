@@ -10,20 +10,23 @@ services:
     security_opt:
       - no-new-privileges
     read_only: true
+    tmpfs:
+      - /tmp
     environment:
       FILTER_MODE: ${FILTER_MODE:-https}
       DEFAULT_ACTION: ${DEFAULT_ACTION:-deny}
       LEARNING_MODE: ${LEARNING_MODE:-false}
       ENFORCE: ${ENFORCE:-block}
-      PROCESS_INFO: ${PROCESS_INFO:-false}
       LOG_LEVEL: DEBUG
       # Required by remote-unblock e2e phases.
       HOSTNAME: host-01
       ENABLE_REMOTE_UNBLOCK: 'true'
       UNBLOCK_POLL_INTERVAL: 2s
       POLICY_PATH: /app/policy/policy.yaml
+      DECISION_LOG_FILE: /tmp/decisions.jsonl
       DASHBOARD_HOST: http://127.0.0.1:8081
       DASHBOARD_API_KEY: ${API_KEY:-your-secure-api-key-here}
+      NOTIFICATION_URLS: ${NOTIFICATION_URLS:-}
     cap_add:
       - NET_ADMIN
 
@@ -71,6 +74,20 @@ services:
     depends_on:
       - g0efilter
     network_mode: 'service:g0efilter'
+
+  # Keeps its own network namespace so g0efilter has to resolve it by name.
+  notify-sink:
+    image: ${E2E_NOTIFY_SINK_IMAGE:-busybox:stable}
+    command: ['httpd', '-f', '-p', '8080', '-h', '/www']
+    volumes:
+      - './testdata/notify-sink:/www/cgi-bin:ro'
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
+    read_only: true
+    tmpfs:
+      - /tmp
 
 volumes:
   dashboard-data:

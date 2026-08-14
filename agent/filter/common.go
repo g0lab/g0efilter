@@ -24,7 +24,6 @@ import (
 	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
-	"github.com/g0lab/g0efilter/agent/procinfo"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"golang.org/x/net/idna"
 	"golang.org/x/sys/unix"
@@ -87,10 +86,6 @@ type Options struct {
 	// previewed before enforcing it.
 	AuditMode bool
 
-	// ProcInfo, when set, resolves the client process behind each logged flow
-	// (requires a shared PID namespace). Lookups run only in the logging path.
-	ProcInfo procinfo.Provider
-
 	// DNSHardening enables anti-exfil checks in the DNS proxy: qname/label length
 	// caps, NULL/oversized-TXT response rejection, and per-source rate limiting.
 	// Under audit/learning mode violations are logged but not blocked (except the
@@ -103,26 +98,6 @@ type Options struct {
 
 	// denyMatcher avoids rebuilding Denylist matching state per connection.
 	denyMatcher *hostMatcher
-}
-
-// procFields returns process-attribution log fields for a flow, degrading to
-// process_name=unknown when the socket or PID cannot be resolved.
-func procFields(opts Options, sourceIP string, sourcePort int, proto string) []any {
-	if opts.ProcInfo == nil {
-		return nil
-	}
-
-	info, ok := opts.ProcInfo.Lookup(sourceIP, sourcePort, proto)
-	if !ok {
-		return []any{"process_name", unknownValue}
-	}
-
-	return []any{
-		"pid", info.PID,
-		"process_name", info.Name,
-		"cmdline", info.Cmdline,
-		"executable", info.Executable,
-	}
 }
 
 // audited reports whether a non-permitted host should pass anyway under audit mode.
@@ -853,8 +828,6 @@ func logAllowedConnection(opts Options, component, target, identifier string, co
 		"dst", net.JoinHostPort(destIP, strconv.Itoa(destPort)),
 		"flow_id", flowID,
 	)
-	fields = append(fields, procFields(opts, sourceIP, sourcePort, "tcp")...)
-
 	opts.Logger.Info(component+".allowed", fields...)
 }
 
@@ -897,8 +870,6 @@ func logPolicyViolation(
 			"flow_id", flowID,
 		)
 	}
-
-	fields = append(fields, procFields(opts, sourceIP, sourcePort, "tcp")...)
 
 	opts.Logger.Warn(component+"."+strings.ToLower(action), fields...)
 }

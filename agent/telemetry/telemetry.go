@@ -63,7 +63,7 @@ type Shipper struct {
 }
 
 // NewFromEnv builds the agent telemetry hook: it ships to the dashboard when
-// DASHBOARD_HOST is set, alerts when NOTIFICATION_HOST/KEY are, records Kubernetes
+// DASHBOARD_HOST is set, alerts when NOTIFICATION_URLS is, records Kubernetes
 // Events when KUBE_EVENTS is, and counts verdicts when METRICS_ADDR is. A nil hook
 // means none are configured (terminal-only logging). The returned registry is nil
 // unless metrics are enabled, and is what the caller serves.
@@ -92,7 +92,7 @@ func NewFromEnv(
 		p = initializeDashboardPoster(ctx, dhost, zl, level)
 	}
 
-	notifier := alerting.NewNotifier() // nil unless NOTIFICATION_HOST/KEY are set
+	notifier := alerting.NewNotifier() // nil unless NOTIFICATION_URLS is set
 
 	recorder := kubeevents.NewFromEnv(slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})))
 

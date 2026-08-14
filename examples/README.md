@@ -33,6 +33,11 @@ Before using this setup outside your machine, replace
 `your-secure-api-key-here` with the same random value in `.env` and
 `.env.dashboard`.
 
+`NOTIFICATION_URLS` goes in `.env` if you enable alerting: the URLs embed a token,
+so keep them out of `docker-compose.yaml` and out of version control. On
+Kubernetes use `notifications.urlsSecret`, and in GitHub Actions a repository
+secret.
+
 Stop the example:
 
 ```sh

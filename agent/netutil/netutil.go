@@ -4,10 +4,12 @@
 package netutil
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -53,8 +55,16 @@ func BypassMark() uint32 {
 // MarkedDialer returns a dialer with SO_MARK set so connections bypass the
 // nftables REDIRECT/filter rules. Setting the mark needs CAP_NET_ADMIN or, on
 // Linux 5.17+, CAP_NET_RAW. It is best-effort because unprivileged test/dev
-// environments have no nftables rules to bypass.
+// environments have no nftables rules to bypass. Control only covers the
+// connection socket, hence the resolver.
 func MarkedDialer(timeout time.Duration) *net.Dialer {
+	d := markedDialer(timeout)
+	d.Resolver = MarkedResolver(timeout)
+
+	return d
+}
+
+func markedDialer(timeout time.Duration) *net.Dialer {
 	return &net.Dialer{
 		Timeout: timeout,
 		Control: func(_ string, _ string, rc syscall.RawConn) error {
@@ -75,8 +85,30 @@ func MarkedDNSDialer(timeout time.Duration) *net.Dialer {
 	span := uint32(dnsForwardPortHigh - dnsForwardPortLow + 1)
 	port := dnsForwardPortLow + int(dnsForwardPort.Add(1)%span)
 
-	d := MarkedDialer(timeout)
+	d := markedDialer(timeout)
 	d.LocalAddr = &net.UDPAddr{IP: nil, Port: port, Zone: ""}
 
 	return d
+}
+
+// MarkedResolver returns a resolver whose queries carry the bypass mark, so our
+// own lookups reach the nameserver instead of the DNS-mode sinkhole. PreferGo is
+// required: the cgo resolver ignores Dial.
+func MarkedResolver(timeout time.Duration) *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dialer := markedDialer(timeout)
+			if strings.HasPrefix(network, "udp") {
+				dialer = MarkedDNSDialer(timeout)
+			}
+
+			conn, err := dialer.DialContext(ctx, network, address)
+			if err != nil {
+				return nil, fmt.Errorf("marked resolver dial %s: %w", address, err)
+			}
+
+			return conn, nil
+		},
+	}
 }

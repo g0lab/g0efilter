@@ -487,7 +487,7 @@ func (c *K3sCluster) describeFailure(namespace, name string) string {
 	} {
 		out, _ := c.tryKubectl(args...)
 
-		b.WriteString("\n$ kubectl " + strings.Join(args, " ") + "\n")
+		_, _ = fmt.Fprintf(&b, "\n$ kubectl %s\n", strings.Join(args, " "))
 		b.WriteString(out)
 	}
 

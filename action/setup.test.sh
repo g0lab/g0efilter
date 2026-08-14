@@ -15,6 +15,7 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/docker" <<'EOF'
 #!/usr/bin/env bash
+[ -n "${DOCKER_CALLS:-}" ] && printf '%s\n' "$*" >> "$DOCKER_CALLS"
 case "$1" in
   logs) echo "startup.ready" ;;
   ps)   echo "container123" ;;
@@ -43,6 +44,7 @@ run_setup() {
   out="$(env -i \
     PATH="$WORK/bin:/usr/bin:/bin" \
     RUNNER_TEMP="$WORK/tmp" \
+    DOCKER_CALLS="$WORK/docker.log" \
     "$@" \
     bash "$SETUP" 2>&1)"
   rc=$?
@@ -77,6 +79,19 @@ run_setup 0 "" "egress-policy audit accepted" EGRESS_POLICY=audit
 run_setup 0 "" "log-level lowercase accepted" LOG_LEVEL=debug
 run_setup 0 "" "log-level WARNING alias accepted" LOG_LEVEL=WARNING
 run_setup 0 "" "log-level TRACE accepted" LOG_LEVEL=TRACE
+
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1
+if grep -Fq -- 'BRIDGE_INTERFACES=docker0,br-*' "$WORK/docker.log"; then
+  echo "ok: Docker bridge interfaces are filtered"
+  pass=$((pass + 1))
+else
+  echo "FAIL: Docker bridge interfaces are not filtered"
+  fail=$((fail + 1))
+fi
+
 run_setup 0 "Lockdown applied" "lockdown-runner true applies lockdown" \
   LOCKDOWN_RUNNER=true RUNNER_ENVIRONMENT=github-hosted
 run_setup 1 "requires a GitHub-hosted runner" "lockdown-runner rejects non-hosted runner" \
@@ -178,6 +193,54 @@ rm -rf "$WORK/tmp"
 env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" bash "$SETUP" > /dev/null 2>&1
 ! grep -q "^    - ''$" "$WORK/tmp/g0efilter/policy/policy.yaml"
 check $? "no empty allowlist entries with no inputs"
+
+# Alerts name the workflow, not the throwaway runner hostname.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  GITHUB_REPOSITORY=g0lab/g0efilter GITHUB_WORKFLOW=build \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'HOSTNAME=g0lab/g0efilter/build' "$WORK/docker.log"
+check $? "identity defaults to repository and workflow"
+
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" IDENTITY=prod-runner \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'HOSTNAME=prod-runner' "$WORK/docker.log"
+check $? "identity input overrides the default"
+
+# A URL in argv is readable by any user running ps, so it goes via the environment.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  NOTIFICATION_URLS="ntfy://ntfy.example.com/secret-topic" \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- '-e NOTIFICATION_URLS' "$WORK/docker.log"
+check $? "notification urls are passed by name, not by value"
+
+! grep -Fq -- 'secret-topic' "$WORK/docker.log"
+check $? "the notification token never reaches the docker command line"
+
+# The action takes newline-separated rules; the filter parses commas.
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" \
+  NOTIFICATION_IGNORE="$(printf 'local\n*.telemetry.example.com')" \
+  bash "$SETUP" > /dev/null 2>&1
+grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local,*.telemetry.example.com' "$WORK/docker.log"
+check $? "notification ignore rules are converted to the filter's format"
+
+rm -rf "$WORK/tmp"
+: > "$WORK/docker.log"
+env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+  DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1
+! grep -Fq -- 'NOTIFICATION_URLS' "$WORK/docker.log"
+check $? "no notification config when the input is unset"
 
 echo "---"
 echo "pass=$pass fail=$fail"

@@ -32,7 +32,7 @@ type EgressPolicySpec struct {
 //
 // The API server must be allowed when Events are enabled. Dashboard, notification,
 // remote-unblock and upstream-DNS connections use marked sockets that bypass the
-// packet filter, although DNS modes still apply domain policy to hostname lookups.
+// packet filter, and their hostname lookups are marked too.
 // +kubebuilder:validation:XValidation:rule="!has(self.metrics) || !self.metrics.enabled || (has(self.mode) && self.mode in ['dns','dns-strict'] ? (has(self.ports) && has(self.ports.dns) ? self.ports.dns : 65053) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095) : ((has(self.ports) && has(self.ports.http) ? self.ports.http : 65080) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095) && (has(self.ports) && has(self.ports.https) ? self.ports.https : 65443) != (has(self.metrics.port) && self.metrics.port != 0 ? self.metrics.port : 9095)))",message="metrics port must differ from the active proxy ports"
 type SidecarSpec struct {
 	// Image overrides the sidecar image, including the tag.
@@ -61,12 +61,6 @@ type SidecarSpec struct {
 	// +optional
 	LogLevel string `json:"logLevel,omitempty"`
 
-	// ProcessInfo adds the originating pid and process name to flow logs. The webhook
-	// enables a shared process namespace unless the pod uses hostPID, and rejects an
-	// explicit shareProcessNamespace: false.
-	// +optional
-	ProcessInfo bool `json:"processInfo,omitempty"`
-
 	// TenantID labels this sidecar's netfilter log events with a tenant identifier.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
@@ -90,7 +84,7 @@ type SidecarSpec struct {
 	// +optional
 	Dashboard DashboardSpec `json:"dashboard,omitempty"`
 
-	// Notifications sends blocked-traffic alerts to a Gotify server.
+	// Notifications sends blocked-traffic alerts to one or more services.
 	// +optional
 	Notifications NotificationsSpec `json:"notifications,omitempty"`
 
@@ -137,7 +131,7 @@ type SidecarSpec struct {
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=32
 	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['ALLOWLIST_IPS','ALLOWLIST_DOMAINS','DENYLIST_IPS','DENYLIST_DOMAINS','DEFAULT_ACTION','LEARNING_MODE','POLICY_PATH','POLICY_CONFIGMAP']))",message="extraEnv must not set ALLOWLIST_*, DENYLIST_*, DEFAULT_ACTION, LEARNING_MODE, POLICY_PATH or POLICY_CONFIGMAP: they would stop the sidecar enforcing this policy"
-	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','PROCESS_INFO','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_HOST','NOTIFICATION_KEY','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))",message="extraEnv must not set a variable this spec already controls; use the matching field instead"
+	// +kubebuilder:validation:XValidation:rule="self.all(e, !(e.name in ['FILTER_MODE','ENFORCE','LOG_LEVEL','TENANT_ID','KUBE_EVENTS','KUBE_EVENTS_MAX','METRICS_ADDR','DASHBOARD_HOST','DASHBOARD_API_KEY','DASHBOARD_QUEUE_SIZE','DASHBOARD_START_DELAY','ENABLE_REMOTE_UNBLOCK','UNBLOCK_POLL_INTERVAL','NOTIFICATION_URLS','NOTIFICATION_BACKOFF_SECONDS','NOTIFICATION_IGNORE_DOMAINS','DNS_UPSTREAMS','DNS_HARDENING','DNS_RATE_QPS','DNS_RATE_BURST','HTTP_PORT','HTTPS_PORT','DNS_PORT','MAX_CONNECTIONS','CONN_MAX_LIFETIME_MS','NFLOG_BUFSIZE','NFLOG_QTHRESH','POD_NAME','POD_NAMESPACE','POD_UID']))",message="extraEnv must not set a variable this spec already controls; use the matching field instead"
 	ExtraEnv []corev1.EnvVar `json:"extraEnv,omitempty"`
 }
 
@@ -162,7 +156,7 @@ type MetricsSpec struct {
 type DashboardSpec struct {
 	// Host is the dashboard's URL, such as
 	// `http://g0efilter-dashboard.g0efilter-system.svc:8080`. Shipping is off while
-	// this is empty. DNS modes must allow the hostname so it can be resolved.
+	// this is empty.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional
 	Host string `json:"host,omitempty"`
@@ -195,26 +189,24 @@ type DashboardSpec struct {
 	UnblockPollInterval *metav1.Duration `json:"unblockPollInterval,omitempty"`
 }
 
-// NotificationsSpec configures Gotify alerts for blocked traffic.
+// NotificationsSpec configures alerts for blocked traffic.
 type NotificationsSpec struct {
-	// Host is the Gotify server URL. Alerting is off while this is empty. DNS modes
-	// must allow the hostname so it can be resolved.
-	// +kubebuilder:validation:MaxLength=253
+	// URLsSecretRef reads whitespace-separated shoutrrr service URLs from a Secret in
+	// the pod's own namespace, for example `ntfy://ntfy.sh/topic`. Every service
+	// listed receives each alert. Alerting is off while this is empty. A Secret is
+	// required because these URLs carry tokens.
 	// +optional
-	Host string `json:"host,omitempty"`
-
-	// KeySecretRef reads the Gotify application token from a Secret in the pod's own
-	// namespace.
-	// +optional
-	KeySecretRef *corev1.SecretKeySelector `json:"keySecretRef,omitempty"`
+	URLsSecretRef *corev1.SecretKeySelector `json:"urlsSecretRef,omitempty"`
 
 	// BackoffSeconds suppresses repeat alerts for the same destination.
 	// +kubebuilder:validation:Minimum=1
 	// +optional
 	BackoffSeconds *int32 `json:"backoffSeconds,omitempty"`
 
-	// IgnoreDomains are destinations that never raise an alert, even when blocked.
-	// Wildcards such as `*.telemetry.example.com` are accepted.
+	// IgnoreDomains are blocks that never raise an alert, even when enforced. It
+	// accepts domains and wildcards such as `*.telemetry.example.com`, addresses and
+	// CIDRs, the address classes `multicast`, `loopback`, `link-local`, `private`,
+	// `unspecified` and `local`, `component:<name>`, and `ip-only`.
 	// +optional
 	// +listType=atomic
 	IgnoreDomains []string `json:"ignoreDomains,omitempty"`

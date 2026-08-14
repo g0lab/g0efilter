@@ -85,7 +85,6 @@ func TestUnsetOptionsRenderNoEnvironment(t *testing.T) {
 func everyOption() v1alpha1.SidecarSpec {
 	//nolint:exhaustruct // image, mode and resources are covered elsewhere
 	return v1alpha1.SidecarSpec{
-		ProcessInfo:      true,
 		TenantID:         "tenant-a",
 		Events:           true,
 		EventsMaxDenials: new(int32(3)),
@@ -98,8 +97,7 @@ func everyOption() v1alpha1.SidecarSpec {
 			UnblockPollInterval: duration(30 * time.Second),
 		},
 		Notifications: v1alpha1.NotificationsSpec{
-			Host:           "https://gotify.example.com",
-			KeySecretRef:   secretKey("gotify", "token"),
+			URLsSecretRef:  secretKey("notification-urls", "urls"),
 			BackoffSeconds: new(int32(120)),
 			IgnoreDomains:  []string{"*.telemetry.example.com", "noise.example.com"},
 		},
@@ -129,7 +127,6 @@ func TestTheFullOptionSurfaceRenders(t *testing.T) {
 	env := envOf(sidecar)
 
 	for name, want := range map[string]string{
-		"PROCESS_INFO":                 "true",
 		"TENANT_ID":                    "tenant-a",
 		"KUBE_EVENTS":                  "true",
 		"KUBE_EVENTS_MAX":              "3",
@@ -138,7 +135,6 @@ func TestTheFullOptionSurfaceRenders(t *testing.T) {
 		"DASHBOARD_START_DELAY":        "10s",
 		"ENABLE_REMOTE_UNBLOCK":        "true",
 		"UNBLOCK_POLL_INTERVAL":        "30s",
-		"NOTIFICATION_HOST":            "https://gotify.example.com",
 		"NOTIFICATION_BACKOFF_SECONDS": "120",
 		"NOTIFICATION_IGNORE_DOMAINS":  "*.telemetry.example.com,noise.example.com",
 		"DNS_UPSTREAMS":                "10.43.0.10:53,1.1.1.1:53",
@@ -158,13 +154,8 @@ func TestTheFullOptionSurfaceRenders(t *testing.T) {
 		}
 	}
 
-	// Process attribution reads /proc, which needs the shared namespace.
-	if patched.Spec.ShareProcessNamespace == nil || !*patched.Spec.ShareProcessNamespace {
-		t.Error("processInfo is set but the process namespace is not shared")
-	}
-
 	assertSecretRef(t, sidecar, "DASHBOARD_API_KEY", "dashboard-key", "api-key")
-	assertSecretRef(t, sidecar, "NOTIFICATION_KEY", "gotify", "token")
+	assertSecretRef(t, sidecar, "NOTIFICATION_URLS", "notification-urls", "urls")
 }
 
 // Credentials must reach the sidecar as a reference, never as a literal: an

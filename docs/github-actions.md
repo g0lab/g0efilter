@@ -35,6 +35,9 @@ for a working example.
 | `log-level` | g0efilter log level | `INFO` |
 | `image` | Container image | Action release image |
 | `lockdown-runner` | Disable later sudo and Docker access | `false` |
+| `identity` | Names this runner in alerts and logs | `<owner>/<repo>/<workflow>` |
+| `notification-urls` | Whitespace-separated shoutrrr URLs to alert on | empty |
+| `notification-ignore` | Newline-separated rules for blocks that should not alert | `local` |
 
 The Action always permits GitHub's
 [runner communication domains](https://docs.github.com/actions/reference/runners/self-hosted-runners)
@@ -43,8 +46,11 @@ job needs.
 
 > [!NOTE]
 > Only GitHub-hosted Ubuntu runners are supported. Later containers are filtered
-> only when they use host networking. Jobs that use `container:` are not
-> supported.
+> when they use host networking, Docker's default bridge, or a `br-*`
+> user-defined bridge. Traffic between containers is left to Docker's own
+> isolation rules.
+> Jobs that use `container:` are not supported because the Action is initialized
+> inside that job container rather than on the runner host.
 
 ## Job report
 
@@ -70,6 +76,41 @@ GitHub services, logs, artifacts, caches, releases, and the API.
 Keep custom allow rules small and use restrictive job
 [`permissions:`](https://docs.github.com/actions/tutorials/authenticate-with-github_token#modifying-the-permissions-for-the-github_token).
 Network filtering does not limit what the job token can do.
+
+g0efilter reads TLS SNI and HTTP Host metadata but does not decrypt TLS, inject
+a certificate authority, wrap container runtimes, or inspect encrypted paths
+and request bodies.
+
+## Notifications
+
+Alert on blocked egress while the job runs. `notification-urls` takes one or more
+[shoutrrr](https://shoutrrr.nickfedor.com/) URLs, so any service it supports
+works.
+
+```yaml
+- uses: g0lab/g0efilter@v0
+  with:
+    allowed-domains: api.github.com
+    notification-urls: ${{ secrets.NOTIFICATION_URLS }}
+```
+
+Keep the URLs in repository or organization secrets: they carry tokens. Each URL
+is masked in the log and passed to the container through the environment, not the
+command line where any process on the runner could read it.
+
+Alerts are titled with `identity`, which defaults to `<owner>/<repo>/<workflow>`.
+Set it when several workflows notify the same channel.
+
+`notification-ignore` defaults to `local`, dropping the neighbour-discovery noise
+a runner always produces. Add `ip-only` to alert only on domain blocks:
+
+```yaml
+    notification-ignore: |
+      local
+      ip-only
+```
+
+See [configuration](configuration.md#notifications) for the full rule syntax.
 
 ## Lockdown mode
 

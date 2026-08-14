@@ -64,51 +64,20 @@ func TestAuditComponentCoversEveryWorkloadKind(t *testing.T) {
 	}
 }
 
-func TestProcessInfoComponentCoversEveryWorkloadKind(t *testing.T) {
-	t.Parallel()
-
-	docs := byKind(t, decodeDocs(t, renderKustomize(t, filepath.Join("testdata", "all-kinds-process-info"))))
-
-	for _, kind := range workloadKinds {
-		t.Run(kind, func(t *testing.T) {
-			t.Parallel()
-
-			doc, ok := docs[kind]
-			if !ok {
-				t.Fatalf("%s was not rendered", kind)
-			}
-
-			pod := podSpec(t, doc)
-
-			assertSidecarFirst(t, pod)
-			assertPolicyEnv(t, sidecarEnv(t, pod))
-
-			if got := sidecarEnv(t, pod)["PROCESS_INFO"]["value"]; got != "true" {
-				t.Errorf("PROCESS_INFO = %v, want true", got)
-			}
-
-			// Reading /proc is pointless without it, so the component must set both.
-			if pod["shareProcessNamespace"] != true {
-				t.Errorf("shareProcessNamespace = %v, want true", pod["shareProcessNamespace"])
-			}
-		})
-	}
-}
-
 // Sharing the process namespace lets every container see the others' processes, so
-// the base component must never do it on its own.
-func TestSidecarComponentAloneSharesNoProcessNamespace(t *testing.T) {
+// the injected sidecar must never ask for it.
+func TestSidecarComponentSharesNoProcessNamespace(t *testing.T) {
 	t.Parallel()
 
 	docs := byKind(t, decodeDocs(t, renderKustomize(t, filepath.Join("testdata", "all-kinds"))))
 	pod := podSpec(t, docs["Deployment"])
 
 	if _, ok := pod["shareProcessNamespace"]; ok {
-		t.Error("the base component shared the process namespace")
+		t.Error("the sidecar component shared the process namespace")
 	}
 
 	if _, ok := sidecarEnv(t, pod)["PROCESS_INFO"]; ok {
-		t.Error("the base component enabled process attribution")
+		t.Error("the sidecar component enabled process attribution")
 	}
 }
 
@@ -146,10 +115,10 @@ func TestHelmOptionalSidecarEnvIsAbsentByDefault(t *testing.T) {
 	env := sidecarEnv(t, podSpec(t, docs["Deployment"]))
 
 	for _, name := range []string{
-		"PROCESS_INFO", "TENANT_ID", "KUBE_EVENTS_MAX",
+		"TENANT_ID", "KUBE_EVENTS_MAX",
 		"DASHBOARD_HOST", "DASHBOARD_API_KEY", "DASHBOARD_QUEUE_SIZE", "DASHBOARD_START_DELAY",
 		"ENABLE_REMOTE_UNBLOCK", "UNBLOCK_POLL_INTERVAL",
-		"NOTIFICATION_HOST", "NOTIFICATION_KEY", "NOTIFICATION_BACKOFF_SECONDS", "NOTIFICATION_IGNORE_DOMAINS",
+		"NOTIFICATION_URLS", "NOTIFICATION_BACKOFF_SECONDS", "NOTIFICATION_IGNORE_DOMAINS",
 		"DNS_UPSTREAMS", "DNS_HARDENING", "DNS_RATE_QPS", "DNS_RATE_BURST",
 		"HTTP_PORT", "HTTPS_PORT", "DNS_PORT",
 		"MAX_CONNECTIONS", "CONN_MAX_LIFETIME_MS", "NFLOG_BUFSIZE", "NFLOG_QTHRESH",
@@ -194,14 +163,12 @@ func TestHelmRendersTheFullSidecarOptionSurface(t *testing.T) {
 	chart = localHelmChart(t, chart)
 
 	docs := byKind(t, decodeDocs(t, run(t, "helm", "template", "release", chart,
-		"--set", "g0efilter.processInfo=true",
 		"--set", "g0efilter.tenantId=tenant-a",
 		"--set", "g0efilter.dashboard.host=http://dash.svc:8081",
 		"--set", "g0efilter.dashboard.apiKeySecret.name=dash-key",
 		"--set", "g0efilter.dashboard.queueSize=2048",
 		"--set", "g0efilter.dashboard.startDelay=10s",
 		"--set", "g0efilter.dashboard.remoteUnblock=true",
-		"--set", "g0efilter.notifications.host=https://gotify.example.com",
 		"--set", "g0efilter.notifications.ignoreDomains={*.noise.example.com}",
 		"--set", "g0efilter.dns.upstreams={10.43.0.10:53}",
 		"--set", "g0efilter.dns.hardening=false",
@@ -212,13 +179,11 @@ func TestHelmRendersTheFullSidecarOptionSurface(t *testing.T) {
 	env := sidecarEnv(t, podSpec(t, docs["Deployment"]))
 
 	for name, want := range map[string]string{
-		"PROCESS_INFO":                "true",
 		"TENANT_ID":                   "tenant-a",
 		"DASHBOARD_HOST":              "http://dash.svc:8081",
 		"DASHBOARD_QUEUE_SIZE":        "2048",
 		"DASHBOARD_START_DELAY":       "10s",
 		"ENABLE_REMOTE_UNBLOCK":       "true",
-		"NOTIFICATION_HOST":           "https://gotify.example.com",
 		"NOTIFICATION_IGNORE_DOMAINS": "*.noise.example.com",
 		"DNS_UPSTREAMS":               "10.43.0.10:53",
 		"DNS_HARDENING":               "false",

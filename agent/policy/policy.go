@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -155,7 +156,7 @@ func validateIP(ip string) error {
 	}
 
 	if strings.Contains(ip, "/") {
-		_, _, err := net.ParseCIDR(ip)
+		_, err := netip.ParsePrefix(ip)
 		if err != nil {
 			return fmt.Errorf("%w range: %s", errInvalidIP, ip)
 		}

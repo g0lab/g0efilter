@@ -9,7 +9,7 @@
 image:
   repository: docker.io/g0lab/g0efilter
   # Must be v0.8.0 or later: earlier images start as root and need more capabilities.
-  tag: v0.8.5
+  tag: v0.9.0
   pullPolicy: IfNotPresent
 
 # https, dns or dns-strict. Selects the data path, not how strictly a verdict is
@@ -22,11 +22,6 @@ mode: https
 enforcement: block
 
 logLevel: INFO
-
-# Add the originating pid and process name to flow logs. This needs
-# `shareProcessNamespace: true` on the pod, which the consuming chart has to set: it
-# also lets every container in the pod see and signal the others' processes.
-processInfo: false
 
 # Tenant identifier added to netfilter log events.
 tenantId: ''
@@ -75,15 +70,17 @@ dashboard:
   remoteUnblock: false
   unblockPollInterval: ''
 
-# Gotify alerts for blocked traffic. The marked connection bypasses filtering, but
-# DNS modes still need the policy to resolve a hostname in `host`.
+# Alerts for blocked traffic. The sidecar reaches these services without the
+# policy allowing them.
 notifications:
-  host: ''
-  keySecret:
+  # Whitespace-separated shoutrrr service URLs, in a Secret because they carry tokens.
+  urlsSecret:
     name: ''
-    key: token
+    key: urls
   backoffSeconds: null
-  # Destinations that never raise an alert, even when blocked. Wildcards are allowed.
+  # Blocks that never raise an alert, even when enforced. Accepts domains and
+  # wildcards, addresses and CIDRs, the address classes multicast, loopback,
+  # link-local, private, unspecified and local, component:<name>, and ip-only.
   ignoreDomains: []
 
 # The sidecar's DNS proxy. Only has an effect in dns and dns-strict mode.

@@ -18,7 +18,7 @@ const ContainerName = "g0efilter"
 const VolumeName = "g0efilter-policy"
 
 // DefaultImage must track the tag deploy/kustomize/sidecar and the Helm chart pin.
-const DefaultImage = "docker.io/g0lab/g0efilter:v0.8.5"
+const DefaultImage = "docker.io/g0lab/g0efilter:v0.9.0"
 
 const (
 	policyMountPath = "/app/policy"
@@ -45,7 +45,6 @@ type sidecarSettings struct {
 	mode          string
 	enforcement   string
 	logLevel      string
-	processInfo   bool
 	tenantID      string
 	events        bool
 	eventsMax     *int32
@@ -71,7 +70,6 @@ func resolve(spec v1alpha1.SidecarSpec, defaults Defaults) sidecarSettings {
 		mode:          or(spec.Mode, defaultMode),
 		enforcement:   or(spec.Enforcement, defaultEnforcement),
 		logLevel:      or(spec.LogLevel, defaultLogLevel),
-		processInfo:   spec.ProcessInfo,
 		tenantID:      spec.TenantID,
 		events:        spec.Events,
 		eventsMax:     spec.EventsMaxDenials,
@@ -211,7 +209,6 @@ func env(settings sidecarSettings, configMapName string) []corev1.EnvVar {
 		fieldRef("POD_NAMESPACE", "metadata.namespace"),
 	}
 
-	vars = appendIf(vars, settings.processInfo, plain("PROCESS_INFO", "true"))
 	vars = appendIf(vars, settings.tenantID != "", plain("TENANT_ID", settings.tenantID))
 
 	vars = append(vars, observabilityEnv(settings)...)
@@ -266,12 +263,8 @@ func dashboardEnv(spec v1alpha1.DashboardSpec) []corev1.EnvVar {
 func notificationsEnv(spec v1alpha1.NotificationsSpec) []corev1.EnvVar {
 	var vars []corev1.EnvVar
 
-	if spec.Host != "" {
-		vars = append(vars, plain("NOTIFICATION_HOST", spec.Host))
-	}
-
-	if spec.KeySecretRef != nil {
-		vars = append(vars, secretRef("NOTIFICATION_KEY", spec.KeySecretRef))
+	if spec.URLsSecretRef != nil {
+		vars = append(vars, secretRef("NOTIFICATION_URLS", spec.URLsSecretRef))
 	}
 
 	vars = appendInt32(vars, "NOTIFICATION_BACKOFF_SECONDS", spec.BackoffSeconds)

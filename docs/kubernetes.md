@@ -74,7 +74,7 @@ resources:
   - deployment.yaml
   - policy.yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0
 ```
 
 Pin `ref` to a release tag. The component sets the image tag to match, so the
@@ -88,20 +88,15 @@ Layer the optional components after `sidecar`:
 | `metrics` | Serve Prometheus metrics on 9095 and add the scrape annotations |
 | `events` | Record the first denials as Kubernetes Events, with the RBAC to do it |
 | `learning` | Observe and append what is seen to a writable policy, blocking nothing |
-| `process-info` | Add the originating pid and process name to flow logs |
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
-  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.9.0
 ```
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
 from observed traffic.
-
-`process-info` sets `shareProcessNamespace: true`, which also lets every container in
-the pod see and signal the others' processes. Leave it off unless the attribution is
-worth that.
 
 A complete overlay is in [examples/kubernetes](../examples/kubernetes); render it
 with `kubectl kustomize examples/kubernetes`.
@@ -163,7 +158,7 @@ g0efilter:
   enforcement: audit
   logLevel: DEBUG
   image:
-    tag: v0.8.5
+    tag: v0.9.0
   policy:
     configMapName: my-policy
   dns:
@@ -185,10 +180,6 @@ unlimited, and `events.maxDenials: 0` records no Events at all.
 Values are validated against
 [values.schema.json](../deploy/helm/g0efilter/values.schema.json), so a misspelled
 key or an invalid mode fails the render instead of silently doing nothing.
-
-`processInfo` is the one option the library chart cannot fully apply on its own: it
-needs `shareProcessNamespace: true` on the pod template, which belongs to your chart
-rather than to the sidecar.
 
 If events are enabled, also render the RBAC and mount the token:
 
@@ -215,7 +206,7 @@ helm install app oci://example.com/app \
 Outside this repository, point the script at a pinned component:
 
 ```sh
-export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5'
+export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0'
 ```
 
 This path needs no cooperation from the chart. It still requires the policy
@@ -330,7 +321,6 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `mode` | `FILTER_MODE` | `https`, `dns` or `dns-strict`. |
 | `enforcement` | `ENFORCE` | `block` or `audit`. Always rendered, so a pod's posture is readable without knowing the default. |
 | `logLevel` | `LOG_LEVEL` | |
-| `processInfo` | `PROCESS_INFO` | Uses `hostPID` when set; otherwise the webhook enables the shared process namespace and rejects an explicit `shareProcessNamespace: false`. |
 | `tenantId` | `TENANT_ID` | Tenant identifier on netfilter log events. |
 | `events` | `KUBE_EVENTS` | Needs `create` on events for the pod's ServiceAccount. |
 | `eventsMaxDenials` | `KUBE_EVENTS_MAX` | Caps Events per pod. `0` records none. |
@@ -342,10 +332,9 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `dashboard.startDelay` | `DASHBOARD_START_DELAY` | A duration, e.g. `10s`. |
 | `dashboard.remoteUnblock` | `ENABLE_REMOTE_UNBLOCK` | |
 | `dashboard.unblockPollInterval` | `UNBLOCK_POLL_INTERVAL` | |
-| `notifications.host` | `NOTIFICATION_HOST` | Gotify server. |
-| `notifications.keySecretRef` | `NOTIFICATION_KEY` | Read from a Secret in the pod's namespace. |
+| `notifications.urlsSecretRef` | `NOTIFICATION_URLS` | shoutrrr service URLs, from a Secret because they carry tokens. |
 | `notifications.backoffSeconds` | `NOTIFICATION_BACKOFF_SECONDS` | |
-| `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | Wildcards allowed. |
+| `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | See [notifications](configuration.md#notifications). |
 | `dns.upstreams` | `DNS_UPSTREAMS` | `host:port` list. |
 | `dns.hardening` | `DNS_HARDENING` | On unless set to false. |
 | `dns.rateQps`, `dns.rateBurst` | `DNS_RATE_QPS`, `DNS_RATE_BURST` | One budget for the whole pod, not per client. |
@@ -359,12 +348,34 @@ destination; `enforcement` decides what happens once a verdict exists.
 
 The API server must be allowed when Kubernetes Events are enabled. Dashboard,
 remote-unblock, notification, and upstream-DNS connections use marked sockets
-that bypass the packet filter. In `dns` modes, hostname lookups still pass through
-the DNS policy, so allow dashboard and notification hostnames when they are names
-rather than IP addresses.
+that bypass the packet filter, and their hostname lookups are marked too, so
+they do not need allowlisting in any mode. Notifications only get that bypass
+over HTTP: `smtp` and `mqtt` services dial unmarked and must be allowlisted.
 
 Credentials use Secret references because `EgressPolicy` is not a Secret. Kubelet
-resolves them in the pod's namespace; the controller never reads them.
+resolves them in the pod's namespace; the controller never reads them. Notification
+URLs embed an access token, so they are a Secret reference for the same reason:
+
+A literal on the command line lands in shell history and in `ps`, so read the URLs
+from a file instead:
+
+```sh
+umask 077 && cat > urls <<'EOF'
+ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID
+EOF
+kubectl create secret generic g0efilter-notifications --from-file=urls
+rm urls
+```
+
+```yaml
+spec:
+  sidecar:
+    notifications:
+      urlsSecretRef:
+        name: g0efilter-notifications
+        key: urls
+      ignoreDomains: [local]
+```
 
 `extraEnv` cannot override derived settings or replace the rendered policy with
 `ALLOWLIST_*`, `DENYLIST_*`, `DEFAULT_ACTION`, `LEARNING_MODE`, `POLICY_PATH`, or
@@ -472,8 +483,8 @@ Denials are logged. To also show the first few in `kubectl describe pod`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
-  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.9.0
 ```
 
 This grants the workload ServiceAccount `create` on Events in its namespace and
@@ -496,8 +507,8 @@ is missing, g0efilter logs one warning and keeps filtering.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
-  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.0
 ```
 
 Or `g0efilter.metrics.enabled: true` with the Helm chart. Both expose `/metrics` on
@@ -542,7 +553,7 @@ release:
 ```sh
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
   --from-literal=api-key="$(openssl rand -hex 32)" \
-  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.8.5 hash-password)"
+  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.0 hash-password)"
 ```
 
 ```yaml
@@ -582,8 +593,8 @@ The add-on replaces the ConfigMap mount with an emptyDir:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.8.5
-  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.8.5
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.0
+  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.9.0
 ```
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.

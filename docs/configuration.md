@@ -11,7 +11,6 @@
 | `DEFAULT_ACTION` | `deny` (allowlist) or `allow` (denylist). Policy file `default_action` wins when set | `deny` |
 | `ENFORCE` | `block` or `audit` (dry-run: log would-be blocks, allow traffic) | `block` |
 | `LEARNING_MODE` | `true` to observe without blocking and auto-append seen domains/IPs to the policy | `false` |
-| `PROCESS_INFO` | `true` to add pid/process fields to flow logs (needs shared PID namespace) | `false` |
 | `ALLOWLIST_IPS` | Comma-separated allowed IPs/CIDRs (takes precedence over policy file) | unset |
 | `ALLOWLIST_DOMAINS` | Comma-separated allowed domains (exact/wildcard/regex) | unset |
 | `DENYLIST_IPS` | Comma-separated denied IPs/CIDRs (with `DEFAULT_ACTION=allow`) | unset |
@@ -25,6 +24,8 @@
 | `DNS_RATE_BURST` | Hardening rate limiter: burst allowance per source | `100` |
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
+| `DECISION_LOG_FILE` | Optional JSON Lines file containing `ALLOWED`, `BLOCKED`, and `AUDIT` decisions | unset |
+| `BRIDGE_INTERFACES` | Comma-separated bridge names/patterns whose forwarded traffic is filtered, for example `docker0,br-*`. Traffic leaving on a listed bridge is container-to-container, so it is not filtered | unset |
 | `HOSTNAME` | Identifies this instance in shipped logs | unset |
 | `TENANT_ID` | Optional tenant identifier added to netfilter log events | unset |
 | `DASHBOARD_HOST` | Dashboard URL for log shipping | unset |
@@ -33,10 +34,9 @@
 | `DASHBOARD_START_DELAY` | Delay before log shipping starts (`5s`, `1m`, ...) | `5s` |
 | `ENABLE_REMOTE_UNBLOCK` | Poll dashboard for remote unblock requests | `false` |
 | `UNBLOCK_POLL_INTERVAL` | Unblock poll interval | `10s` |
-| `NOTIFICATION_HOST` | Gotify server URL for blocked-traffic alerts | unset |
-| `NOTIFICATION_KEY` | Gotify application key | unset |
+| `NOTIFICATION_URLS` | Whitespace-separated [shoutrrr](https://shoutrrr.nickfedor.com/) URLs for blocked-traffic alerts | unset |
 | `NOTIFICATION_BACKOFF_SECONDS` | Duplicate-alert backoff | `60` |
-| `NOTIFICATION_IGNORE_DOMAINS` | Domains to skip for notifications (wildcards ok) | unset |
+| `NOTIFICATION_IGNORE_DOMAINS` | Blocks that should not alert (see below) | unset |
 | `METRICS_ADDR` | Serve Prometheus metrics on this address, e.g. `:9095` (unset = disabled) | unset |
 | `KUBE_EVENTS` | Record the first denials as Kubernetes Events on the pod (needs a mounted ServiceAccount token and `create` on `events`) | `false` |
 | `KUBE_EVENTS_MAX` | Maximum distinct denials recorded as Events per pod | `10` |
@@ -53,6 +53,44 @@ On Kubernetes these are set for you. `EgressPolicy`'s
 [`spec.sidecar`](kubernetes.md#sidecar-options) and the library chart's values both
 map onto this table. They omit settings that would replace the rendered policy:
 the allowlist/denylist variables, `DEFAULT_ACTION`, and `LEARNING_MODE`.
+
+#### Notifications
+
+`NOTIFICATION_URLS` takes one or more
+[shoutrrr](https://shoutrrr.nickfedor.com/) service URLs, separated by
+whitespace. Every service receives each alert; one unreachable service does not
+suppress the others. All of shoutrrr's services work, so see its documentation
+for the URL formats.
+
+```sh
+NOTIFICATION_URLS="ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID"
+```
+
+Whitespace separates URLs, never commas: Telegram lists its `chats` with commas.
+These URLs embed a token, so keep them in a secret store rather than in a
+manifest.
+
+Notification traffic, including its hostname lookup, bypasses the filter, so an
+HTTP-based notification server never needs a policy entry. The bypass rides on
+the injected HTTP client, so `smtp` and `mqtt` dial unmarked and must be
+allowlisted.
+
+`NOTIFICATION_IGNORE_DOMAINS` is a comma-separated list of blocks that should
+not alert. The block is still enforced and logged.
+
+| Entry | Matches |
+| --- | --- |
+| `example.com` | that destination |
+| `*.example.com` | subdomains, not the base domain |
+| `10.0.0.0/8`, `1.2.3.4` | destinations in the prefix or at the address |
+| `multicast`, `loopback`, `link-local`, `private`, `unspecified` | destinations in that address class |
+| `local` | any of the five classes above |
+| `public` | anything `local` does not match |
+| `component:dns` | every block reported by that component |
+| `ip-only` | blocks with no hostname, such as raw nflog verdicts |
+
+`local` and `ip-only` quieten a noisy log: IPv6 neighbour discovery alone
+produces a steady stream of `ff02::` blocks.
 
 #### Privileges
 

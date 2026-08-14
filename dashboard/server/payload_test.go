@@ -218,30 +218,26 @@ func TestProcessPayloadTimestampParsing(t *testing.T) {
 	}
 }
 
-func TestExtractFieldsMapProcessMetadata(t *testing.T) {
+func TestExtractFieldsMapMergesTopLevelFields(t *testing.T) {
 	t.Parallel()
 
 	in := map[string]any{
-		"msg":          "m",
-		"pid":          float64(1234),
-		"process_name": "curl",
-		"cmdline":      "curl https://example.com",
-		"executable":   "/usr/bin/curl",
-		"reason":       nil, // nil values are skipped
+		"msg":       "m",
+		"flow_id":   "abc123",
+		"http_host": "example.com",
+		"reason":    nil, // nil values are skipped
 		"fields": map[string]any{
-			"nested": "kept",
-			"pid":    float64(1), // top-level pid overrides nested pid
+			"nested":  "kept",
+			"flow_id": "overridden", // the top-level value wins
 		},
 	}
 
 	got := extractFieldsMap(in)
 
 	want := map[string]any{
-		"pid":          float64(1234),
-		"process_name": "curl",
-		"cmdline":      "curl https://example.com",
-		"executable":   "/usr/bin/curl",
-		"nested":       "kept",
+		"flow_id":   "abc123",
+		"http_host": "example.com",
+		"nested":    "kept",
 	}
 	for k, v := range want {
 		if got[k] != v {
@@ -258,18 +254,16 @@ func TestExtractFieldsMapProcessMetadata(t *testing.T) {
 	}
 }
 
-func TestProcessPayloadProcessMetadataInFields(t *testing.T) {
+func TestProcessPayloadCopiesTopLevelFields(t *testing.T) {
 	t.Parallel()
 
 	srv, _, _ := newPayloadTestServer()
 
 	entry := srv.processPayload(t.Context(), map[string]any{
-		"msg":          "m",
-		"action":       testActionBlocked,
-		"pid":          float64(42),
-		"process_name": "wget",
-		"cmdline":      "wget example.com",
-		"executable":   "/usr/bin/wget",
+		"msg":       "m",
+		"action":    testActionBlocked,
+		"flow_id":   "abc123",
+		"http_host": "example.com",
 	}, "10.0.0.1")
 	if entry == nil {
 		t.Fatal("entry rejected")
@@ -285,10 +279,8 @@ func TestProcessPayloadProcessMetadataInFields(t *testing.T) {
 	}
 
 	want := map[string]any{
-		"pid":          float64(42),
-		"process_name": "wget",
-		"cmdline":      "wget example.com",
-		"executable":   "/usr/bin/wget",
+		"flow_id":   "abc123",
+		"http_host": "example.com",
 	}
 	for k, v := range want {
 		if fields[k] != v {

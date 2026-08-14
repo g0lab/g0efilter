@@ -4,10 +4,8 @@ package alerting
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,8 +17,8 @@ import (
 
 // Notifier handles sending notifications for security events.
 type Notifier struct {
+	sender   *sender
 	host     string
-	token    string
 	hostname string
 	client   *http.Client
 	enabled  bool
@@ -30,17 +28,31 @@ type Notifier struct {
 	recentAlerts  map[string]time.Time
 	backoffPeriod time.Duration
 
-	// Ignore list to suppress notifications for specific domains
-	ignoreList []string
+	ignoreList ignoreRules
 }
 
 // NewNotifier creates a new notification client. Returns nil if not configured.
 func NewNotifier() *Notifier {
-	host := strings.TrimSpace(os.Getenv("NOTIFICATION_HOST"))
-	host = strings.TrimRight(host, "/")
-	token := strings.TrimSpace(os.Getenv("NOTIFICATION_KEY"))
+	rawURLs := parseURLs(os.Getenv("NOTIFICATION_URLS"))
+	if len(rawURLs) == 0 {
+		return nil
+	}
 
-	if host == "" || token == "" {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			// SO_MARK bypass so notifications are not blocked by our own filter
+			DialContext:        netutil.MarkedDialer(10 * time.Second).DialContext,
+			MaxIdleConns:       10,
+			IdleConnTimeout:    30 * time.Second,
+			DisableCompression: false,
+		},
+	}
+
+	backend, err := newSender(rawURLs, client)
+	if err != nil {
+		slog.Error("notification.config_invalid", "targets", redactAll(rawURLs), "err", err)
+
 		return nil
 	}
 
@@ -63,26 +75,17 @@ func NewNotifier() *Notifier {
 		}
 	}
 
-	ignoreList := loadIgnoreList()
+	ignoreList := compileIgnoreRules(loadIgnoreList())
 
 	return &Notifier{
-		host:          host,
-		token:         token,
+		sender:        backend,
+		host:          backend.targets,
 		hostname:      hostname,
 		enabled:       true,
 		recentAlerts:  make(map[string]time.Time),
 		backoffPeriod: backoffPeriod,
 		ignoreList:    ignoreList,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &http.Transport{
-				// SO_MARK bypass so notifications are not blocked by our own filter
-				DialContext:        netutil.MarkedDialer(10 * time.Second).DialContext,
-				MaxIdleConns:       10,
-				IdleConnTimeout:    30 * time.Second,
-				DisableCompression: false,
-			},
-		},
+		client:        client,
 	}
 }
 
@@ -141,7 +144,7 @@ func (n *Notifier) NotifyBlock(ctx context.Context, info BlockedConnectionInfo) 
 		info.Component = "tcp"
 	}
 
-	if n.isIgnored(info.Destination) {
+	if n.isIgnored(info) {
 		slog.Debug("notification.ignored",
 			"component", info.Component,
 			"destination", info.Destination,
@@ -202,20 +205,12 @@ func (n *Notifier) Close() {
 	n.mu.Unlock()
 }
 
-func (n *Notifier) isIgnored(destination string) bool {
-	if len(n.ignoreList) == 0 || destination == "" {
+func (n *Notifier) isIgnored(info BlockedConnectionInfo) bool {
+	if len(n.ignoreList) == 0 {
 		return false
 	}
 
-	destination = strings.ToLower(destination)
-
-	for _, pattern := range n.ignoreList {
-		if matchesPattern(destination, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return n.ignoreList.matches(info)
 }
 
 // shouldSendAlert returns false if an alert was recently sent for this connection to prevent notification spam.
@@ -299,29 +294,7 @@ func buildDestinationString(info BlockedConnectionInfo) string {
 	return destination
 }
 
-// createNotificationRequest builds an HTTP POST request for sending a Gotify notification.
-func (n *Notifier) createNotificationRequest(ctx context.Context, title, message string) (*http.Request, error) {
-	vals := url.Values{}
-	vals.Set("title", title)
-	vals.Set("message", message)
-	vals.Set("priority", "8") // High priority for security events
-
-	endpoint := n.host + "/message"
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(vals.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-Gotify-Key", n.token)
-	req.Header.Set("User-Agent", "g0efilter/1.0")
-
-	return req, nil
-}
-
-// sendNotification sends the blocked connection alert to the Gotify notification server.
-func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionInfo) {
+func (n *Notifier) sendNotification(_ context.Context, info BlockedConnectionInfo) {
 	source := buildSourceString(info.SourceIP, info.SourcePort)
 	destination := buildDestinationString(info)
 
@@ -329,33 +302,14 @@ func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionI
 	message := fmt.Sprintf("Blocked %s connection from %s to %s. Reason: %s",
 		info.Component, source, destination, info.Reason)
 
-	req, err := n.createNotificationRequest(ctx, title, message)
-	if err != nil {
-		slog.Warn("notification.request_failed", "host", n.host, "err", err)
-
-		return
-	}
-
 	slog.Debug("notification.posting", "host", n.host, "destination", info.Destination, "component", info.Component)
 
-	resp, err := n.client.Do(req)
+	err := n.sender.send(title, message)
 	if err != nil {
 		slog.Warn("notification.post_failed", "host", n.host, "err", err)
 
 		return
 	}
 
-	defer func() {
-		// Drain and close response body to reuse connection
-		_, _ = io.Copy(io.Discard, resp.Body)
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		slog.Warn("notification.rejected", "host", n.host, "status", resp.StatusCode)
-
-		return
-	}
-
-	slog.Debug("notification.sent", "host", n.host, "status", resp.StatusCode)
+	slog.Debug("notification.sent", "host", n.host)
 }

@@ -174,7 +174,27 @@ DOCKER_ARGS=(
   -e FILTER_MODE="$MODE"
   -e ENFORCE="$ENFORCE"
   -e LOG_LEVEL="$LOG_LEVEL_VALUE"
+  -e 'BRIDGE_INTERFACES=docker0,br-*'
 )
+
+# The runner hostname is ephemeral and meaningless in an alert.
+IDENTITY="${IDENTITY:-}"
+if [ -z "$IDENTITY" ]; then
+  IDENTITY="${GITHUB_REPOSITORY:-g0efilter}/${GITHUB_WORKFLOW:-workflow}"
+fi
+DOCKER_ARGS+=(-e HOSTNAME="$IDENTITY")
+
+# Name-only -e: the value comes from this process's environment, so the token
+# never lands in argv, where any user could read it via ps.
+if [ -n "${NOTIFICATION_URLS:-}" ]; then
+  export NOTIFICATION_URLS
+  DOCKER_ARGS+=(-e NOTIFICATION_URLS)
+  echo "Blocked-egress notifications enabled"
+fi
+
+if [ -n "${NOTIFICATION_IGNORE:-}" ]; then
+  DOCKER_ARGS+=(-e NOTIFICATION_IGNORE_DOMAINS="$(printf '%s' "$NOTIFICATION_IGNORE" | tr '\n' ',')")
+fi
 
 # Host :53 is systemd-resolved; the NAT redirect still captures DNS to the
 # proxy's alt port. Forward to the host's real resolvers - the default
@@ -184,7 +204,7 @@ if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)
   [ -n "$UPSTREAMS" ] && DOCKER_ARGS+=(-e DNS_UPSTREAMS="$UPSTREAMS")
-	DOCKER_ARGS+=(-e DNS_PORT=65053)
+  DOCKER_ARGS+=(-e DNS_PORT=65053)
 fi
 
 docker run "${DOCKER_ARGS[@]}" "$IMAGE"

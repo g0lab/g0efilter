@@ -3,7 +3,10 @@ package logging_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -121,6 +124,96 @@ func TestHookReceivesSubThresholdRecords(t *testing.T) {
 	if strings.Contains(buf.String(), "below.threshold") {
 		t.Fatalf("sub-threshold record should not reach the terminal: %q", buf.String())
 	}
+}
+
+//nolint:paralleltest // mutates the process-global zerolog logger
+func TestDecisionWriterRecordsOnlyDecisionsAsJSONL(t *testing.T) {
+	var terminal bytes.Buffer
+
+	var decisions bytes.Buffer
+
+	lg := logging.New("info", &terminal, logging.WithDecisionWriter(&decisions))
+	lg.Debug("flow.allowed", "action", "ALLOWED", "destination", "example.com")
+	lg.Info("startup")
+	lg.Warn("flow.blocked", "action", "BLOCKED", "pid", 42)
+
+	lines := strings.Split(strings.TrimSpace(decisions.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("decision lines = %d, want 2: %q", len(lines), decisions.String())
+	}
+
+	var first map[string]any
+
+	err := json.Unmarshal([]byte(lines[0]), &first)
+	if err != nil {
+		t.Fatalf("decode first decision: %v", err)
+	}
+
+	if first["event"] != "flow.allowed" || first["action"] != "ALLOWED" || first["destination"] != "example.com" {
+		t.Fatalf("first decision = %+v", first)
+	}
+
+	if strings.Contains(terminal.String(), "flow.allowed") {
+		t.Fatalf("sub-threshold decision reached terminal: %q", terminal.String())
+	}
+}
+
+func TestDecisionLogFileFromEnvironment(t *testing.T) {
+	file := t.TempDir() + "/decisions.jsonl"
+	t.Setenv("DECISION_LOG_FILE", file)
+
+	lg := logging.New("error", &bytes.Buffer{})
+	lg.Info("flow.allowed", "action", "ALLOWED", "pid", 42)
+	logging.Shutdown(time.Second)
+
+	data, err := os.ReadFile(file) //nolint:gosec // test-created path
+	if err != nil {
+		t.Fatalf("read decision file: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"action":"ALLOWED"`) || !strings.Contains(string(data), `"pid":42`) {
+		t.Fatalf("decision file = %q", data)
+	}
+}
+
+//nolint:paralleltest // mutates the process-global zerolog logger
+func TestDecisionWriteFailureIsReportedOnTerminal(t *testing.T) {
+	var terminal bytes.Buffer
+
+	lg := logging.New("info", &terminal, logging.WithDecisionWriter(failingWriter{}))
+	lg.Warn("flow.blocked", "action", "BLOCKED")
+
+	if !strings.Contains(terminal.String(), "decision_log.write_failed") {
+		t.Fatalf("terminal = %q, want a reported decision write failure", terminal.String())
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errWriteRefused
+}
+
+var errWriteRefused = errors.New("refused")
+
+// A short write reported as success must not silently truncate the record.
+//
+//nolint:paralleltest // mutates the process-global zerolog logger
+func TestDecisionShortWriteIsReportedOnTerminal(t *testing.T) {
+	var terminal bytes.Buffer
+
+	lg := logging.New("info", &terminal, logging.WithDecisionWriter(shortWriter{}))
+	lg.Warn("flow.blocked", "action", "BLOCKED")
+
+	if !strings.Contains(terminal.String(), "decision_log.write_failed") {
+		t.Fatalf("terminal = %q, want a reported decision write failure", terminal.String())
+	}
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) {
+	return len(p) - 1, nil
 }
 
 //nolint:paralleltest // mutates the process-global zerolog logger and hook
