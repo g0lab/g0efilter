@@ -1,6 +1,6 @@
 {
   "name": "g0efilter",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae",
   // Feature versions mirror the repo's own lines (go.work `go 1.26`,
   // package.json `engines.node >=24`); static JSON can't read those files.
   "features": {
