@@ -52,29 +52,34 @@
     },
     {
       "description": "One PR per ecosystem, as Dependabot grouped them. Majors stay separate so a breaking change is never bundled with an automerged bump.",
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["gomod"],
       "groupName": "gomod"
     },
     {
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["npm"],
       "groupName": "npm"
     },
     {
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["github-actions"],
       "groupName": "github-actions"
     },
     {
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["dockerfile", "docker-compose"],
       "groupName": "docker"
     },
     {
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["helmv3", "kustomize"],
       "groupName": "kubernetes manifests"
+    },
+    {
+      "description": "Same-version updates get their own branch rather than joining an ecosystem group. A digest or pin leaves newValue unchanged, so grouping one alongside a version bump for the same dependency gives the branch two targets and Renovate discards the collision.",
+      "matchUpdateTypes": ["digest", "pin", "pinDigest"],
+      "groupName": "digests"
     },
     {
       "description": "A major is a breaking change: its own PR, ungrouped, reviewed by a human.",
