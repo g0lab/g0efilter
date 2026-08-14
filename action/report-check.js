@@ -22,15 +22,20 @@ function hosts(section) {
   return [...section.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]);
 }
 
+const REACHED_HOSTS = ["api.github.com"];
+const IGNORED_HOSTS = ["example.com"];
+
+const lists = (section, wanted) => hosts(section).some((host) => wanted.includes(host));
+
 function problemsWith(md) {
   const blocked = (md.split("### Blocked")[1] || "").split("\n### ")[0];
   const [table, folded = ""] = blocked.split("<details>");
 
   const checks = [
-    [hosts(md).includes("api.github.com"), "the allowed host is missing from the report"],
+    [lists(md, REACHED_HOSTS), "the allowed host is missing from the report"],
     [/\| Blocked \| [1-9]/.test(md), "the overview stopped counting the ignored block"],
-    [hosts(folded).includes("example.com"), "the ignored block was not folded into the collapsible"],
-    [!hosts(table).includes("example.com"), "the ignored block is still in the blocked table"],
+    [lists(folded, IGNORED_HOSTS), "the ignored block was not folded into the collapsible"],
+    [!lists(table, IGNORED_HOSTS), "the ignored block is still in the blocked table"],
   ];
 
   return checks.filter(([ok]) => !ok).map(([, problem]) => problem);
