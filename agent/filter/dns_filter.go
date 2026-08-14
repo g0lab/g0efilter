@@ -451,9 +451,8 @@ func (handler *dnsHandler) blockExfilResponse(
 	return true
 }
 
-// dnsLogFields builds the shared decision-log fields for DNS queries, including
-// process attribution when enabled. BLOCKED records are flagged for alerting;
-// ALLOWED/AUDIT records are not.
+// dnsLogFields builds the shared decision-log fields for DNS queries. BLOCKED
+// records are flagged for alerting; ALLOWED/AUDIT records are not.
 func (handler *dnsHandler) dnsLogFields(
 	action, qname string,
 	qtype uint16,

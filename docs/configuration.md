@@ -70,9 +70,10 @@ Whitespace separates URLs, never commas: Telegram lists its `chats` with commas.
 These URLs embed a token, so keep them in a secret store rather than in a
 manifest.
 
-Notification traffic, including its hostname lookup, bypasses the filter, so a
-notification server never needs a policy entry. The non-HTTP services (`smtp`,
-`mqtt`, `xmpp`) do not get that bypass and must be allowlisted.
+Notification traffic, including its hostname lookup, bypasses the filter, so an
+HTTP-based notification server never needs a policy entry. The bypass rides on
+the injected HTTP client, so `smtp` and `mqtt` dial unmarked and must be
+allowlisted.
 
 `NOTIFICATION_IGNORE_DOMAINS` is a comma-separated list of blocks that should
 not alert. The block is still enforced and logged.

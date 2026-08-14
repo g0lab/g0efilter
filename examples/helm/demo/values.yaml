@@ -18,10 +18,10 @@ g0efilter:
   policy:
     configMapName: g0efilter-policy
 
-  # Optional: alert on blocked egress. The URLs embed an access token, so they
-  # are read from a Secret rather than set here:
-  #   kubectl create secret generic g0efilter-notifications \
-  #     --from-literal=urls='ntfy://ntfy.sh/my-topic'
+  # Optional: alert on blocked egress. --from-file, not --from-literal: the URLs embed
+  # a token, and a literal lands in shell history and in ps.
+  #   umask 077 && echo 'ntfy://ntfy.sh/my-topic' > urls
+  #   kubectl create secret generic g0efilter-notifications --from-file=urls && rm urls
   # notifications:
   #   urlsSecret:
   #     name: g0efilter-notifications

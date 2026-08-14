@@ -349,15 +349,22 @@ destination; `enforcement` decides what happens once a verdict exists.
 The API server must be allowed when Kubernetes Events are enabled. Dashboard,
 remote-unblock, notification, and upstream-DNS connections use marked sockets
 that bypass the packet filter, and their hostname lookups are marked too, so
-they do not need allowlisting in any mode.
+they do not need allowlisting in any mode. Notifications only get that bypass
+over HTTP: `smtp` and `mqtt` services dial unmarked and must be allowlisted.
 
 Credentials use Secret references because `EgressPolicy` is not a Secret. Kubelet
 resolves them in the pod's namespace; the controller never reads them. Notification
 URLs embed an access token, so they are a Secret reference for the same reason:
 
+A literal on the command line lands in shell history and in `ps`, so read the URLs
+from a file instead:
+
 ```sh
-kubectl create secret generic g0efilter-notifications \
-  --from-literal=urls='ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID'
+umask 077 && cat > urls <<'EOF'
+ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID
+EOF
+kubectl create secret generic g0efilter-notifications --from-file=urls
+rm urls
 ```
 
 ```yaml
