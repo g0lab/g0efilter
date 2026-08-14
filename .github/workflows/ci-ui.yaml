@@ -3,11 +3,6 @@ name: CI (UI)
 
 on:
   pull_request:
-    paths:
-      - 'dashboard/ui/**'
-      - '!dashboard/ui/*.go'
-      - 'scripts/test-ui.sh'
-      - '.github/workflows/ci-ui.yaml'
 
   workflow_dispatch:
 

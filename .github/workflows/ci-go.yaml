@@ -3,36 +3,6 @@ name: CI (Go)
 
 on:
   pull_request:
-    paths:
-      - 'agent/**'
-      - 'shared/**'
-      - 'dashboard/**'
-      - '!dashboard/ui/**'
-      - 'dashboard/ui/*.go'
-      - 'go.work'
-      - 'agent/go.mod'
-      - 'agent/go.sum'
-      - 'dashboard/go.mod'
-      - 'dashboard/go.sum'
-      - 'shared/go.mod'
-      - 'shared/go.sum'
-      - 'tests/e2e/**/*.go'
-      - 'tests/e2e/go.mod'
-      - 'tests/e2e/go.sum'
-      - 'tests/go.mod'
-      - 'tests/go.sum'
-      - 'tests/repo/**/*.go'
-      - 'tests/manifests/**'
-      - 'controller/**'
-      - 'deploy/**'
-      - 'examples/kubernetes/**'
-      - 'examples/helm/**'
-      - 'scripts/gen-chart-crds.sh'
-      - 'scripts/gen-controller.sh'
-      - 'scripts/set-version.sh'
-      - 'scripts/test-go.sh'
-      - '.github/**/*.yml'
-      - '.github/**/*.yaml'
 
   workflow_dispatch:
 
