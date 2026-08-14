@@ -2,7 +2,6 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended",
-    ":dependencyDashboard",
     ":semanticCommits"
   ],
   "timezone": "Australia/Sydney",
@@ -10,8 +9,8 @@
   "pinDigests": true,
   "platformCommit": "enabled",
   "platformAutomerge": true,
-  "rebaseWhen": "conflicted",
   "commitBodyTable": true,
+  "postUpdateOptions": ["gomodTidy"],
   "prHourlyLimit": 0,
   "prConcurrentLimit": 0,
   "branchConcurrentLimit": 0,
@@ -27,9 +26,6 @@
     "**/tests/**",
     "**/__fixtures__/**"
   ],
-  "dockerfile": {
-    "managerFilePatterns": ["/(^|/)Containerfile[^/]*$/"]
-  },
   "packageRules": [
     {
       "description": "config:recommended pulls in :semanticPrefixFixDepsChoreOthers, which types production dependencies as fix and everything else as chore. Release notes then split identical dependency bumps across Fixed and Changed, so type them all as chore.",

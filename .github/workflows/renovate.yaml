@@ -5,7 +5,15 @@ on:
   schedule:
     - cron: '0 9,21 * * *'
 
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      log-level:
+        description: Renovate log level
+        type: choice
+        default: info
+        options:
+          - info
+          - debug
 
 permissions:
   contents: read
@@ -59,3 +67,4 @@ jobs:
           configurationFile: .github/renovate.json
         env:
           RENOVATE_REPOSITORIES: ${{ github.repository }}
+          LOG_LEVEL: ${{ inputs.log-level || 'info' }}
