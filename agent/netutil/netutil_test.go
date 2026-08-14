@@ -68,6 +68,86 @@ func TestMarkedDialerBestEffort(t *testing.T) {
 	_ = conn.Close()
 }
 
+// Without a marked resolver a hostname target is looked up on an unmarked
+// socket, which DNS mode redirects into our own sinkhole.
+func TestMarkedDialerCarriesMarkedResolver(t *testing.T) {
+	t.Parallel()
+
+	resolver := MarkedDialer(2 * time.Second).Resolver
+	if resolver == nil {
+		t.Fatal("marked dialer must resolve through a marked resolver")
+	}
+
+	if !resolver.PreferGo {
+		t.Error("PreferGo must be set or the cgo resolver ignores Dial")
+	}
+
+	if resolver.Dial == nil {
+		t.Error("resolver must dial through the marked dialer")
+	}
+}
+
+func TestMarkedResolverDialsUDPFromPinnedRange(t *testing.T) {
+	t.Parallel()
+
+	var lc net.ListenConfig
+
+	pc, err := lc.ListenPacket(context.Background(), "udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = pc.Close() }()
+
+	conn, err := MarkedResolver(2*time.Second).Dial(context.Background(), "udp", pc.LocalAddr().String())
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	addr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		t.Fatalf("unexpected local addr type %T", conn.LocalAddr())
+	}
+
+	if addr.Port < dnsForwardPortLow || addr.Port > dnsForwardPortHigh {
+		t.Errorf("source port %d outside pinned range %d-%d", addr.Port, dnsForwardPortLow, dnsForwardPortHigh)
+	}
+}
+
+// The pinned source port is a UDP address, so TCP fallback must not inherit it.
+func TestMarkedResolverDialsTCPFallback(t *testing.T) {
+	t.Parallel()
+
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = ln.Close() }()
+
+	go func() {
+		conn, aerr := ln.Accept()
+		if aerr == nil {
+			_ = conn.Close()
+		}
+	}()
+
+	conn, err := MarkedResolver(2*time.Second).Dial(context.Background(), "tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+
+	defer func() { _ = conn.Close() }()
+
+	if _, ok := conn.LocalAddr().(*net.TCPAddr); !ok {
+		t.Fatalf("unexpected local addr type %T", conn.LocalAddr())
+	}
+}
+
 func TestMarkedDNSDialerPortRange(t *testing.T) {
 	t.Parallel()
 
