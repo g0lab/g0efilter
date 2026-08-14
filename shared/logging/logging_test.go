@@ -196,6 +196,26 @@ func (failingWriter) Write([]byte) (int, error) {
 
 var errWriteRefused = errors.New("refused")
 
+// A short write reported as success must not silently truncate the record.
+//
+//nolint:paralleltest // mutates the process-global zerolog logger
+func TestDecisionShortWriteIsReportedOnTerminal(t *testing.T) {
+	var terminal bytes.Buffer
+
+	lg := logging.New("info", &terminal, logging.WithDecisionWriter(shortWriter{}))
+	lg.Warn("flow.blocked", "action", "BLOCKED")
+
+	if !strings.Contains(terminal.String(), "decision_log.write_failed") {
+		t.Fatalf("terminal = %q, want a reported decision write failure", terminal.String())
+	}
+}
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) {
+	return len(p) - 1, nil
+}
+
 //nolint:paralleltest // mutates the process-global zerolog logger and hook
 func TestWithAttrsCarriedToHookAndTerminal(t *testing.T) {
 	var buf bytes.Buffer

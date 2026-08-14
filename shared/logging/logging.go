@@ -98,12 +98,21 @@ func (d *decisionRecorder) record(recordTime time.Time, level slog.Level, msg st
 		return fmt.Errorf("encode decision record: %w", err)
 	}
 
+	return d.write(append(line, '\n'))
+}
+
+func (d *decisionRecorder) write(line []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	_, err = d.writer.Write(append(line, '\n'))
+	written, err := d.writer.Write(line)
 	if err != nil {
 		return fmt.Errorf("write decision record: %w", err)
+	}
+
+	// A caller's writer may report a short write as success, truncating the record.
+	if written != len(line) {
+		return fmt.Errorf("write decision record: %w", io.ErrShortWrite)
 	}
 
 	return nil
