@@ -319,7 +319,7 @@ func (s *Stack) RestartDashboard(t *testing.T) {
 	})
 }
 
-// NotificationsReceived returns the notification bodies the sink has recorded.
+// NotificationsReceived returns the sink's CGI log, or "" before the first delivery.
 func (s *Stack) NotificationsReceived(t *testing.T) string {
 	t.Helper()
 

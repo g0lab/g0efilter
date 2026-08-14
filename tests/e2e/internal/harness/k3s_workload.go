@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -104,7 +105,7 @@ func (k *K3sCluster) describePods(namespace string) string {
 	} {
 		out, _ := k.tryKubectl(args...)
 
-		b.WriteString("\n$ kubectl " + strings.Join(args, " ") + "\n")
+		_, _ = fmt.Fprintf(&b, "\n$ kubectl %s\n", strings.Join(args, " "))
 		b.WriteString(out)
 	}
 

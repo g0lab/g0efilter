@@ -80,6 +80,7 @@ run_setup 0 "" "log-level lowercase accepted" LOG_LEVEL=debug
 run_setup 0 "" "log-level WARNING alias accepted" LOG_LEVEL=WARNING
 run_setup 0 "" "log-level TRACE accepted" LOG_LEVEL=TRACE
 
+rm -rf "$WORK/tmp"
 : > "$WORK/docker.log"
 env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
   DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1

@@ -42,7 +42,7 @@ func (s *Stack) DecisionRecords(t *testing.T) []map[string]any {
 	return records
 }
 
-// WaitForDecisionRecord blocks until a decision record matches, and returns it.
+// WaitForDecisionRecord re-reads the log until a record matches, so tests never race the flush.
 func (s *Stack) WaitForDecisionRecord(
 	t *testing.T, match func(map[string]any) bool, timeout time.Duration,
 ) map[string]any {
