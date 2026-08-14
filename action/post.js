@@ -161,12 +161,6 @@ function decisionTable(rows, { destination = true } = {}) {
   return md + "\n";
 }
 
-// GitHub strips CSS from job summaries, so the outcome colours come from GFM alerts:
-// CAUTION renders red, WARNING amber, TIP green, NOTE blue.
-function alert(kind, body) {
-  return `> [!${kind}]\n> ${body}\n\n`;
-}
-
 function decisionCount(rows) {
   return rows.reduce((n, d) => n + d.count, 0);
 }
@@ -225,17 +219,8 @@ function blockedSection(blocked, ignore) {
   const alerting = blocked.filter((d) => !ignore(d));
 
   let md = `### Blocked (${alerting.length})\n\n`;
-
-  if (alerting.length > 0) {
-    md +=
-      alert(
-        "CAUTION",
-        `Denied ${plural(alerting.length, "destination")} over ` +
-          `${plural(decisionCount(alerting), "connection attempt")}.`,
-      ) + decisionTable(alerting);
-  } else {
-    md += alert("NOTE", "Every block matched `notification-ignore`.");
-  }
+  md +=
+    alerting.length > 0 ? decisionTable(alerting) : "Every block matched `notification-ignore`.\n\n";
 
   if (ignored.length > 0) {
     md += collapsible(
@@ -253,11 +238,7 @@ function auditedSection(audited) {
 
   return (
     `### Audited (${audited.length})\n\n` +
-    alert(
-      "WARNING",
-      `${plural(decisionCount(audited), "connection")} would have been blocked under ` +
-        "`egress-policy: block`. They were reported only.",
-    ) +
+    "Reported only; these connections were not blocked.\n\n" +
     decisionTable(audited)
   );
 }
@@ -267,7 +248,6 @@ function allowedSection(allowed) {
 
   return (
     "### Allowed\n\n" +
-    alert("TIP", `${plural(decisionCount(allowed), "connection")} reached an allowlisted host.`) +
     collapsible(`${plural(allowed.length, "host")} reached`, decisionTable(allowed, { destination: false }))
   );
 }
@@ -284,10 +264,7 @@ function heading(manifest, lockdown) {
   }
 
   if (lockdown) {
-    md += alert(
-      "NOTE",
-      "Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.",
-    );
+    md += "> Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.\n\n";
   }
 
   return md;
@@ -299,13 +276,10 @@ function buildSummary(raw, { lockdown = false, manifest = null, ignore = ignoreR
   if (!raw.trim()) {
     return (
       md +
-      // Under lockdown the missing logs are expected; otherwise the filter failed.
-      alert(
-        lockdown ? "NOTE" : "CAUTION",
-        lockdown
-          ? "No logs captured - Docker access was locked down after startup."
-          : "No g0efilter logs found - the filter may have failed to start.",
-      ) +
+      (lockdown
+        ? "No logs captured - Docker access was locked down after startup.\n"
+        : "No g0efilter logs found - the filter may have failed to start.\n") +
+      "\n" +
       policySection(manifest)
     );
   }
@@ -314,7 +288,7 @@ function buildSummary(raw, { lockdown = false, manifest = null, ignore = ignoreR
   let report = md + overview(decisions);
 
   if (decisions.blocked.length === 0 && decisions.audited.length === 0) {
-    report += alert("TIP", "No connections were blocked or audited.");
+    report += "No connections were blocked or audited.\n\n";
   }
 
   report +=

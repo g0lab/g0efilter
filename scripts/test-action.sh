@@ -12,6 +12,11 @@ for f in action/*.js .github/test-actions/*/*.js; do
   node --check "$f"
 done
 
+echo ">>> bash -n workflow scripts"
+for f in .github/scripts/*.sh; do
+  bash -n "$f"
+done
+
 echo ">>> node --test action unit tests"
 node --test 'action/*.test.js'
 

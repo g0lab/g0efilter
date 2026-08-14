@@ -38,7 +38,7 @@ jobs:
             exit 0
           fi
           if git diff --name-only "$BASE" "$HEAD" | grep -qE \
-            '^(agent|shared|action)/|^action\.yml$|^\.github/(actions|test-actions)/|^tests/e2e/Containerfile\.agent$|^go\.work$|^scripts/test-action\.sh$|^\.github/workflows/action-test\.yaml$'; then
+            '^(agent|shared|action)/|^action\.yml$|^\.github/(actions|test-actions|scripts)/|^tests/e2e/Containerfile\.agent$|^go\.work$|^scripts/test-action\.sh$|^\.github/workflows/action-test\.yaml$'; then
             echo 'relevant=true' >> "$GITHUB_OUTPUT"
           else
             echo 'relevant=false' >> "$GITHUB_OUTPUT"
@@ -117,32 +117,16 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed HTTPS domain works
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://api.github.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://api.github.com
 
       - name: Non-allowlisted HTTPS domain is blocked
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "example.com should have been blocked"
-            exit 1
-          fi
-          echo "OK: example.com blocked"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
       - name: Allowed HTTP host works
-        run: >-
-          curl --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          http://api.github.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach-http http://api.github.com
 
       - name: Non-allowlisted HTTP host is blocked
-        run: |
-          if curl --silent --show-error --connect-timeout 10 --max-time 20 http://example.com -o /dev/null; then
-            echo "http://example.com should have been blocked"
-            exit 1
-          fi
-          echo "OK: http://example.com blocked"
+        run: .github/scripts/egress-probe.sh denied-http http://example.com
 
   post-egress:
     name: Post hook filtering
@@ -187,24 +171,13 @@ jobs:
             /^example\.org$/
 
       - name: Wildcard matches a subdomain
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://www.example.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://www.example.com
 
       - name: Regex-allowed domain works
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://example.org -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://example.org
 
       - name: Wildcard does not match the apex
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "example.com apex should not match *.example.com"
-            exit 1
-          fi
-          echo "OK: apex blocked"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
   dns:
     name: DNS mode
@@ -226,18 +199,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed domain resolves and connects
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://api.github.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://api.github.com
 
       - name: Non-allowlisted domain is blocked by dns mode
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "example.com should have been blocked under dns mode"
-            exit 1
-          fi
-          echo "OK: example.com blocked"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
   docker-host-network:
     name: Docker host network
@@ -251,18 +216,8 @@ jobs:
 
       - uses: ./.github/actions/load-agent-image
 
-      # Pull before the filter starts: the registry is not allowlisted.
       - name: Pre-pull curl image
-        run: |
-          for attempt in 1 2 3; do
-            if docker pull curlimages/curl:latest; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 2))
-          done
+        run: .github/scripts/egress-probe.sh pull-image
 
       - name: Start g0efilter
         uses: ./
@@ -271,21 +226,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed domain works over host network
-        run: |
-          docker run --rm --network host curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            --retry 2 --retry-delay 2 --retry-all-errors \
-            https://api.github.com -o /dev/null
+        run: .github/scripts/egress-probe.sh docker-reach host https://api.github.com
 
       - name: Non-allowlisted domain is blocked over host network
-        run: |
-          if docker run --rm --network host curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            https://example.com -o /dev/null; then
-            echo "docker --network host bypassed the filter"
-            exit 1
-          fi
-          echo "OK: docker --network host traffic filtered"
+        run: .github/scripts/egress-probe.sh docker-denied host https://example.com
 
   docker-bridges:
     name: Docker bridge networks
@@ -300,16 +244,7 @@ jobs:
       - uses: ./.github/actions/load-agent-image
 
       - name: Pre-pull curl image
-        run: |
-          for attempt in 1 2 3; do
-            if docker pull curlimages/curl:latest; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 2))
-          done
+        run: .github/scripts/egress-probe.sh pull-image
 
       - name: Start g0efilter
         uses: ./
@@ -318,85 +253,20 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Bridge tables and future-network wildcard are installed
-        run: |
-          sudo nft list table ip g0efilter_bridge_v4 | grep -F 'iifname "docker0" jump bridge_egress'
-          sudo nft list table ip g0efilter_bridge_v4 | grep -F 'iifname "br-*" jump bridge_egress'
-          sudo nft list table ip g0efilter_bridge_nat_v4 > /dev/null
+        run: .github/scripts/egress-probe.sh nft-bridge-tables
 
       - name: Default bridge filters allowed and blocked domains
-        run: |
-          docker run --rm curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            --retry 2 --retry-delay 2 --retry-all-errors \
-            https://api.github.com -o /dev/null
-          if docker run --rm curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            https://example.com -o /dev/null; then
-            echo "default Docker bridge bypassed the filter"
-            exit 1
-          fi
+        run: .github/scripts/egress-probe.sh bridge-check default https://api.github.com https://example.com
 
       - name: A custom bridge created after startup is also filtered
-        run: |
-          docker network create g0efilter-e2e
-          trap 'docker network rm g0efilter-e2e >/dev/null 2>&1 || true' EXIT
-          docker run --rm --network g0efilter-e2e curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            --retry 2 --retry-delay 2 --retry-all-errors \
-            https://api.github.com -o /dev/null
-          if docker run --rm --network g0efilter-e2e curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            https://example.com -o /dev/null; then
-            echo "custom Docker bridge bypassed the filter"
-            exit 1
-          fi
+        run: .github/scripts/egress-probe.sh bridge-check g0efilter-e2e https://api.github.com https://example.com
 
       - name: Containers on one bridge still reach each other
-        run: |
-          docker network create g0efilter-e2e-peers
-          trap 'docker rm -f g0efilter-e2e-peer >/dev/null 2>&1 || true
-                docker network rm g0efilter-e2e-peers >/dev/null 2>&1 || true' EXIT
-          docker run -d --name g0efilter-e2e-peer --network g0efilter-e2e-peers \
-            curlimages/curl:latest nc -l -p 8080
-          for attempt in 1 2 3 4 5; do
-            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer)
-            [ -n "$peer" ] && break
-            sleep 1
-          done
-          if [ -z "$peer" ]; then
-            echo "the peer container never reported an address"
-            docker logs g0efilter-e2e-peer || true
-            exit 1
-          fi
-          if ! docker run --rm --network g0efilter-e2e-peers curlimages/curl:latest \
-            sh -c "echo ping | nc -w 5 $peer 8080"; then
-            echo "container to container traffic on one bridge must not be filtered"
-            exit 1
-          fi
+        run: .github/scripts/egress-probe.sh peer-reach g0efilter-e2e-peers 8080
 
       # bridge_redirect only touches 80 and 443, so other ports cannot catch a dead exemption.
       - name: Containers on one bridge reach each other on a redirected port
-        run: |
-          docker network create g0efilter-e2e-peers80
-          trap 'docker rm -f g0efilter-e2e-peer80 >/dev/null 2>&1 || true
-                docker network rm g0efilter-e2e-peers80 >/dev/null 2>&1 || true' EXIT
-          docker run -d --name g0efilter-e2e-peer80 --user 0 \
-            --network g0efilter-e2e-peers80 curlimages/curl:latest nc -l -p 80
-          for attempt in 1 2 3 4 5; do
-            peer=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g0efilter-e2e-peer80)
-            [ -n "$peer" ] && break
-            sleep 1
-          done
-          if [ -z "$peer" ]; then
-            echo "the peer container never reported an address"
-            docker logs g0efilter-e2e-peer80 || true
-            exit 1
-          fi
-          if ! docker run --rm --network g0efilter-e2e-peers80 curlimages/curl:latest \
-            sh -c "echo ping | nc -w 5 $peer 80"; then
-            echo "same-bridge traffic on port 80 was redirected into the proxy"
-            exit 1
-          fi
+        run: .github/scripts/egress-probe.sh peer-reach g0efilter-e2e-peers80 80
 
   ipv6:
     name: IPv6
@@ -417,18 +287,10 @@ jobs:
           allowed-domains: api.github.com
 
       - name: IPv6 filter tables are installed
-        run: |
-          sudo nft list table ip6 g0efilter_v6 > /dev/null
-          sudo nft list table ip6 g0efilter_nat_v6 > /dev/null
-          echo "OK: IPv6 filter tables present"
+        run: .github/scripts/egress-probe.sh nft-ipv6-tables
 
       - name: IPv6 egress to a non-allowlisted domain is blocked
-        run: |
-          if curl -6 --fail --silent --show-error --connect-timeout 10 --max-time 10 https://google.com -o /dev/null; then
-            echo "IPv6 egress should have been blocked"
-            exit 1
-          fi
-          echo "OK: IPv6 egress blocked (or unavailable)"
+        run: .github/scripts/egress-probe.sh denied https://google.com -6 --max-time 10
 
   non-web-ports:
     name: Non-web ports
@@ -448,14 +310,8 @@ jobs:
           image: g0efilter:action-test
           allowed-domains: api.github.com
 
-      # 8.8.8.8:53 is otherwise reachable, so failure confirms filtering.
       - name: DNS-over-TCP to a non-allowlisted resolver is blocked
-        run: |
-          if timeout 10 bash -c 'cat < /dev/null > /dev/tcp/8.8.8.8/53' 2>/dev/null; then
-            echo "TCP/53 to a non-allowlisted resolver should have been blocked"
-            exit 1
-          fi
-          echo "OK: non-web port egress blocked"
+        run: .github/scripts/egress-probe.sh tcp-denied 8.8.8.8 53
 
   fail-closed:
     name: Fail closed
@@ -476,24 +332,14 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Baseline - non-allowlisted domain is blocked
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "example.com should have been blocked"
-            exit 1
-          fi
-          echo "OK: example.com blocked while filter is running"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
       - name: Kill the filter container
         run: docker rm -f g0efilter
 
       # Host nftables rules must keep egress closed after the container dies.
       - name: Egress stays closed after the filter dies
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "egress opened up after the filter died - not fail-closed"
-            exit 1
-          fi
-          echo "OK: egress remained blocked after filter death"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
   dns-strict:
     name: DNS strict mode
@@ -508,16 +354,7 @@ jobs:
       - uses: ./.github/actions/load-agent-image
 
       - name: Pre-pull curl image
-        run: |
-          for attempt in 1 2 3; do
-            if docker pull curlimages/curl:latest; then
-              exit 0
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-            sleep $((attempt * 2))
-          done
+        run: .github/scripts/egress-probe.sh pull-image
 
       - name: Start g0efilter
         uses: ./
@@ -527,40 +364,19 @@ jobs:
           allowed-domains: api.github.com
 
       - name: Allowed domain resolves and connects
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://api.github.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://api.github.com
 
       - name: Non-allowlisted domain is blocked
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 https://example.com -o /dev/null; then
-            echo "example.com should have been blocked under dns-strict"
-            exit 1
-          fi
-          echo "OK: example.com blocked"
+        run: .github/scripts/egress-probe.sh denied https://example.com
 
       # Unlike dns mode, dns-strict drops unresolved, non-allowlisted IPs.
       - name: Hardcoded IP never resolved is dropped
-        run: |
-          if curl --fail --silent --show-error --connect-timeout 10 --max-time 10 https://1.1.1.1 -o /dev/null; then
-            echo "connection to unresolved hardcoded IP should have been dropped"
-            exit 1
-          fi
-          echo "OK: unresolved hardcoded IP dropped"
+        run: .github/scripts/egress-probe.sh denied https://1.1.1.1 --max-time 10
 
       - name: DNS strict resolved sets also protect bridge traffic
         run: |
-          docker run --rm curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-            --retry 2 --retry-delay 2 --retry-all-errors \
-            https://api.github.com -o /dev/null
-          if docker run --rm curlimages/curl:latest \
-            --fail --silent --show-error --connect-timeout 10 --max-time 10 \
-            https://1.1.1.1 -o /dev/null; then
-            echo "unresolved bridge IP bypassed dns-strict"
-            exit 1
-          fi
+          .github/scripts/egress-probe.sh docker-reach default https://api.github.com
+          .github/scripts/egress-probe.sh docker-denied default https://1.1.1.1 --max-time 10
 
   lockdown:
     name: Runner lockdown
@@ -606,10 +422,37 @@ jobs:
           egress-policy: audit
 
       - name: Non-allowlisted domain passes in audit mode
-        run: >-
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20
-          --retry 2 --retry-delay 2 --retry-all-errors
-          https://example.com -o /dev/null
+        run: .github/scripts/egress-probe.sh reach https://example.com
+
+  egress-report:
+    name: Egress report
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/load-agent-image
+
+      - name: Start g0efilter
+        uses: ./
+        with:
+          image: g0efilter:action-test
+          allowed-domains: api.github.com
+          notification-ignore: |
+            local
+            example.com
+
+      - name: Reach the allowed domain
+        run: .github/scripts/egress-probe.sh reach https://api.github.com
+
+      - name: Reach the ignored domain, which is still blocked
+        run: .github/scripts/egress-probe.sh denied https://example.com
+
+      - name: The report renders real logs and folds the ignored block away
+        run: node action/report-check.js
 
   invalid-input:
     name: Input validation
@@ -680,6 +523,7 @@ jobs:
       - dns-strict
       - lockdown
       - audit
+      - egress-report
       - invalid-input
     if: always()
     runs-on: ubuntu-latest

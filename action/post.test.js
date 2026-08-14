@@ -311,7 +311,7 @@ test("blockedSection says so when every block was ignored", () => {
   const md = blockedSection(rows, compileIgnoreRules(["local"]));
 
   assert.match(md, /### Blocked \(0\)/);
-  assert.match(md, /> \[!NOTE\]\n> Every block matched `notification-ignore`/);
+  assert.match(md, /Every block matched `notification-ignore`/);
   assert.match(md, /<summary>1 destination \(4 decisions\)/);
 });
 
@@ -340,39 +340,18 @@ test("buildSummary applies the local default when no ignore rules are passed", (
   assert.match(md, /matched notification-ignore/);
 });
 
-// GitHub strips CSS from job summaries, so the outcome colours ride on GFM alerts.
-test("buildSummary colours each outcome with its GFM alert", () => {
-  const raw = [
-    "action=BLOCKED component=https https=evil.test dst=9.9.9.9:443",
-    "action=AUDIT component=dns qname=watched.test destination_ip=8.8.8.8",
-    "action=ALLOWED component=https https=example.org dst=1.1.1.1:443",
-  ].join("\n");
+test("blockedSection pluralises the ignored-group summary", () => {
+  const one = blockedSection([{ component: "nflog", host: "", dest: "224.0.0.22", count: 1 }], () => true);
+  assert.match(one, /<summary>1 destination \(1 decision\) matched/);
 
-  const md = buildSummary(raw, { ignore: IGNORE_NOTHING });
-
-  assert.match(md, /### Blocked \(1\)\n\n> \[!CAUTION\]\n> Denied 1 destination over 1 connection attempt\./);
-  assert.match(md, /### Audited \(1\)\n\n> \[!WARNING\]\n> 1 connection would have been blocked/);
-  assert.match(md, /### Allowed\n\n> \[!TIP\]\n> 1 connection reached an allowlisted host\./);
-});
-
-test("buildSummary pluralises the alert counts", () => {
-  const raw = [
-    "action=BLOCKED component=https https=a.test dst=9.9.9.9:443",
-    "action=BLOCKED component=https https=b.test dst=9.9.9.8:443",
-    "action=BLOCKED component=https https=b.test dst=9.9.9.8:443",
-  ].join("\n");
-
-  assert.match(buildSummary(raw, { ignore: IGNORE_NOTHING }), /Denied 2 destinations over 3 connection attempts\./);
-});
-
-test("buildSummary greets a clean run in green", () => {
-  const md = buildSummary("action=ALLOWED component=https https=example.org");
-  assert.match(md, /> \[!TIP\]\n> No connections were blocked or audited\./);
-});
-
-test("buildSummary flags a missing log in red, but not under lockdown", () => {
-  assert.match(buildSummary(""), /> \[!CAUTION\]\n> No g0efilter logs found/);
-  assert.match(buildSummary("", { lockdown: true }), /> \[!NOTE\]\n> No logs captured/);
+  const many = blockedSection(
+    [
+      { component: "nflog", host: "", dest: "224.0.0.22", count: 4 },
+      { component: "nflog", host: "", dest: "239.255.255.250:1900", count: 5 },
+    ],
+    () => true,
+  );
+  assert.match(many, /<summary>2 destinations \(9 decisions\) matched/);
 });
 
 test("buildSummary orders the overview worst outcome first", () => {

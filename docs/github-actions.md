@@ -67,10 +67,6 @@ The post step then writes an egress report to the job summary:
 - every allowed host that was reached, collapsed;
 - the full allowlist, split into workflow entries and the baseline.
 
-Each outcome carries a coloured callout: red for blocked, amber for audited, green
-for allowed. GitHub strips CSS from job summaries, so the colour comes from
-GitHub-flavored Markdown alerts rather than a stylesheet.
-
 The report is written even when nothing was blocked. The counts always cover every
 decision, including the blocks folded away by `notification-ignore`.
 
