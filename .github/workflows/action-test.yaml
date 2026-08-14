@@ -685,8 +685,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
         run: |
-          echo 'results: ${{ join(needs.*.result, ", ") }}'
-          case '${{ join(needs.*.result, ",") }}' in
+          echo "results: $RESULTS"
+          case "$RESULTS" in
             *failure*|*cancelled*) exit 1 ;;
           esac

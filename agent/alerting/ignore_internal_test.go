@@ -187,4 +187,14 @@ func TestAddressClassesMatchEitherDestinationForm(t *testing.T) {
 	if rules.matches(BlockedConnectionInfo{Destination: "example.com:443"}) {
 		t.Error("local must not match a public hostname")
 	}
+
+	// destinationAddr feeds prefixRule as well, so host:port has to work there too.
+	cidr := compileIgnoreRules([]string{"224.0.0.0/24"})
+	if !cidr.matches(BlockedConnectionInfo{Destination: "224.0.0.22:443"}) {
+		t.Error("a CIDR rule did not match a host:port destination")
+	}
+
+	if cidr.matches(BlockedConnectionInfo{Destination: "10.0.0.1:443"}) {
+		t.Error("a CIDR rule must not match an address outside it")
+	}
 }
