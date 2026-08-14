@@ -79,12 +79,13 @@ inputs:
 
   notification-ignore:
     description: >-
-      Newline-separated rules for blocks that should not alert. Accepts
-      domains (`example.com`, `*.example.com`), addresses and CIDRs
-      (`10.0.0.0/8`), address classes (`multicast`, `loopback`,
-      `link-local`, `private`, `local`), `component:<name>` and `ip-only`.
-      Defaults to `local`, which drops the IPv6 neighbour-discovery noise a
-      runner always produces.
+      Newline-separated rules for blocks that should not alert, and that the
+      job summary collapses into their own group. Accepts domains
+      (`example.com`, `*.example.com`), addresses and CIDRs (`10.0.0.0/8`),
+      address classes (`multicast`, `loopback`, `link-local`, `private`,
+      `local`), `component:<name>` and `ip-only`. Defaults to `local`, which
+      drops the multicast, link-local and private-range noise a runner always
+      produces.
     required: false
     default: 'local'
 

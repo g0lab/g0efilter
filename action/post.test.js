@@ -12,11 +12,16 @@ const {
   parseLine,
   collectDecisions,
   escapeCell,
+  blockedSection,
   buildSummary,
   readManifest,
   teardown,
   maybeTeardown,
 } = require("./post.js");
+
+const { compileIgnoreRules } = require("./ignore.js");
+
+const IGNORE_NOTHING = () => false;
 
 const MANIFEST = {
   mode: "https",
@@ -244,7 +249,7 @@ test("buildSummary renders the full report", () => {
 
   assert.match(md, /### Blocked \(1\)[\s\S]*evil\.test/);
   assert.match(md, /### Audited \(1\)[\s\S]*watched\.test/);
-  assert.match(md, /2 hosts were reached[\s\S]*example\.org/);
+  assert.match(md, /2 hosts reached[\s\S]*example\.org/);
 
   assert.match(md, /\*\*Domains from this workflow \(1\)\*\*/);
   assert.match(md, /\*\*Baseline domains \(2\)\*\*/);
@@ -260,12 +265,129 @@ test("buildSummary renders empty allowlist groups as none rather than omitting t
   assert.match(md, /\*\*Domains from this workflow \(0\)\*\*\n\n_none_/);
 });
 
-test("buildSummary escapes hostnames into the decision table", () => {
+test("buildSummary renders hosts as code spans, escaping the table's own pipe", () => {
+  // Angle brackets need no entity here: GitHub escapes the content of a code span.
   const md = buildSummary("action=BLOCKED component=https https=a|b<c>");
-  assert.match(md, /a&#124;b&lt;c&gt;/);
+  assert.match(md, /\| `a\\\|b<c>` \|/);
+});
+
+test("buildSummary keeps wildcard hosts literal instead of italicising them", () => {
+  const md = buildSummary("action=BLOCKED component=https https=*.example.com");
+  assert.match(md, /\| `\*\.example\.com` \|/);
 });
 
 test("buildSummary shows a placeholder for missing fields", () => {
   const md = buildSummary("action=BLOCKED https=a.test");
-  assert.match(md, /\| a\.test \| - \| - \| 1 \|/);
+  assert.match(md, /\| `a\.test` \| - \| - \| 1 \|/);
+});
+
+test("blockedSection folds ignored blocks into a collapsible", () => {
+  const rows = [
+    { component: "https", host: "evil.test", dest: "9.9.9.9:443", count: 3 },
+    { component: "nflog", host: "", dest: "224.0.0.22", count: 4 },
+    { component: "nflog", host: "", dest: "239.255.255.250:1900", count: 5 },
+  ];
+
+  const md = blockedSection(rows, compileIgnoreRules(["local"]));
+
+  assert.match(md, /### Blocked \(1\)/);
+  assert.match(md, /evil\.test/);
+  assert.match(md, /<summary>2 destinations \(9 decisions\) matched notification-ignore<\/summary>/);
+  // The rows are folded away, not dropped.
+  assert.match(md, /224\.0\.0\.22/);
+  assert.match(md, /239\.255\.255\.250:1900/);
+});
+
+test("blockedSection omits the collapsible when nothing is ignored", () => {
+  const rows = [{ component: "https", host: "evil.test", dest: "9.9.9.9:443", count: 1 }];
+  const md = blockedSection(rows, IGNORE_NOTHING);
+
+  assert.match(md, /### Blocked \(1\)/);
+  assert.doesNotMatch(md, /notification-ignore/);
+});
+
+test("blockedSection says so when every block was ignored", () => {
+  const rows = [{ component: "nflog", host: "", dest: "224.0.0.22", count: 4 }];
+  const md = blockedSection(rows, compileIgnoreRules(["local"]));
+
+  assert.match(md, /### Blocked \(0\)/);
+  assert.match(md, /> \[!NOTE\]\n> Every block matched `notification-ignore`/);
+  assert.match(md, /<summary>1 destination \(4 decisions\)/);
+});
+
+test("blockedSection renders nothing when there were no blocks", () => {
+  assert.equal(blockedSection([], compileIgnoreRules(["local"])), "");
+});
+
+test("buildSummary keeps the overview counting every block, ignored or not", () => {
+  const raw = [
+    "action=BLOCKED component=https https=evil.test dst=9.9.9.9:443",
+    "action=BLOCKED component=nflog dst=224.0.0.22",
+    "action=BLOCKED component=nflog dst=10.42.3.0:51820",
+  ].join("\n");
+
+  const md = buildSummary(raw, { ignore: compileIgnoreRules(["local"]) });
+
+  assert.match(md, /\| Blocked \| 3 \| 3 \|/);
+  assert.match(md, /### Blocked \(1\)/);
+  assert.match(md, /2 destinations \(2 decisions\) matched notification-ignore/);
+});
+
+test("buildSummary applies the local default when no ignore rules are passed", () => {
+  const md = buildSummary("action=BLOCKED component=nflog dst=224.0.0.22");
+
+  assert.match(md, /### Blocked \(0\)/);
+  assert.match(md, /matched notification-ignore/);
+});
+
+// GitHub strips CSS from job summaries, so the outcome colours ride on GFM alerts.
+test("buildSummary colours each outcome with its GFM alert", () => {
+  const raw = [
+    "action=BLOCKED component=https https=evil.test dst=9.9.9.9:443",
+    "action=AUDIT component=dns qname=watched.test destination_ip=8.8.8.8",
+    "action=ALLOWED component=https https=example.org dst=1.1.1.1:443",
+  ].join("\n");
+
+  const md = buildSummary(raw, { ignore: IGNORE_NOTHING });
+
+  assert.match(md, /### Blocked \(1\)\n\n> \[!CAUTION\]\n> Denied 1 destination over 1 connection attempt\./);
+  assert.match(md, /### Audited \(1\)\n\n> \[!WARNING\]\n> 1 connection would have been blocked/);
+  assert.match(md, /### Allowed\n\n> \[!TIP\]\n> 1 connection reached an allowlisted host\./);
+});
+
+test("buildSummary pluralises the alert counts", () => {
+  const raw = [
+    "action=BLOCKED component=https https=a.test dst=9.9.9.9:443",
+    "action=BLOCKED component=https https=b.test dst=9.9.9.8:443",
+    "action=BLOCKED component=https https=b.test dst=9.9.9.8:443",
+  ].join("\n");
+
+  assert.match(buildSummary(raw, { ignore: IGNORE_NOTHING }), /Denied 2 destinations over 3 connection attempts\./);
+});
+
+test("buildSummary greets a clean run in green", () => {
+  const md = buildSummary("action=ALLOWED component=https https=example.org");
+  assert.match(md, /> \[!TIP\]\n> No connections were blocked or audited\./);
+});
+
+test("buildSummary flags a missing log in red, but not under lockdown", () => {
+  assert.match(buildSummary(""), /> \[!CAUTION\]\n> No g0efilter logs found/);
+  assert.match(buildSummary("", { lockdown: true }), /> \[!NOTE\]\n> No logs captured/);
+});
+
+test("buildSummary orders the overview worst outcome first", () => {
+  const md = buildSummary("action=ALLOWED component=https https=example.org");
+  assert.match(md, /\| Blocked \| 0 \| 0 \|\n\| Audited \| 0 \| 0 \|\n\| Allowed \| 1 \| 1 \|/);
+});
+
+test("buildSummary leaves the blocked table intact when ignoring nothing", () => {
+  const raw = [
+    "action=BLOCKED component=https https=evil.test dst=9.9.9.9:443",
+    "action=BLOCKED component=nflog dst=224.0.0.22",
+  ].join("\n");
+
+  const md = buildSummary(raw, { ignore: IGNORE_NOTHING });
+
+  assert.match(md, /### Blocked \(2\)/);
+  assert.doesNotMatch(md, /matched notification-ignore/);
 });

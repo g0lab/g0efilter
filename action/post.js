@@ -9,6 +9,8 @@ const { execSync, execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const { ignoreRulesFromEnv } = require("./ignore.js");
+
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 function containerLogs() {
@@ -132,6 +134,19 @@ function cell(v) {
   return s === "" ? "-" : s;
 }
 
+// Hosts and addresses go in a code span: it keeps `*.example.com` and `a_b.test` from
+// rendering as emphasis, and GitHub escapes the content. Entities would show verbatim
+// there, so only the backtick and the table's own pipe need escaping.
+function codeCell(v) {
+  const s = String(v)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/`/g, "'")
+    .replace(/\|/g, "\\|")
+    .trim();
+
+  return s === "" ? "-" : `\`${s}\``;
+}
+
 function decisionTable(rows, { destination = true } = {}) {
   let md = destination
     ? "| Domain / Host | Component | Destination | Count |\n|---|---|---|---:|\n"
@@ -139,11 +154,25 @@ function decisionTable(rows, { destination = true } = {}) {
 
   for (const d of rows) {
     md += destination
-      ? `| ${cell(d.host)} | ${cell(d.component)} | ${cell(d.dest)} | ${d.count} |\n`
-      : `| ${cell(d.host)} | ${cell(d.component)} | ${d.count} |\n`;
+      ? `| ${codeCell(d.host)} | ${cell(d.component)} | ${codeCell(d.dest)} | ${d.count} |\n`
+      : `| ${codeCell(d.host)} | ${cell(d.component)} | ${d.count} |\n`;
   }
 
   return md + "\n";
+}
+
+// GitHub strips CSS from job summaries, so the outcome colours come from GFM alerts:
+// CAUTION renders red, WARNING amber, TIP green, NOTE blue.
+function alert(kind, body) {
+  return `> [!${kind}]\n> ${body}\n\n`;
+}
+
+function decisionCount(rows) {
+  return rows.reduce((n, d) => n + d.count, 0);
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
 function collapsible(title, body) {
@@ -159,12 +188,13 @@ function bullets(title, values) {
   return md + "\n";
 }
 
+// Ordered as the sections below are, worst outcome first.
 function overview({ blocked, audited, allowed, totals }) {
   return (
     "| Outcome | Unique hosts | Decisions |\n|---|---:|---:|\n" +
-    `| Allowed | ${allowed.length} | ${totals.ALLOWED} |\n` +
     `| Blocked | ${blocked.length} | ${totals.BLOCKED} |\n` +
-    `| Audited | ${audited.length} | ${totals.AUDIT} |\n\n`
+    `| Audited | ${audited.length} | ${totals.AUDIT} |\n` +
+    `| Allowed | ${allowed.length} | ${totals.ALLOWED} |\n\n`
   );
 }
 
@@ -182,7 +212,63 @@ function policySection(manifest) {
 
   return (
     "### Loaded allowlist\n\n" +
-    collapsible(`${domains} domains and ${ips} IPs were allowed`, body)
+    collapsible(`${plural(domains, "domain")} and ${plural(ips, "IP")} allowed`, body)
+  );
+}
+
+// Blocks matching notification-ignore are folded away rather than dropped: the
+// summary stays a complete record, and the overview counts every decision.
+function blockedSection(blocked, ignore) {
+  if (blocked.length === 0) return "";
+
+  const ignored = blocked.filter((d) => ignore(d));
+  const alerting = blocked.filter((d) => !ignore(d));
+
+  let md = `### Blocked (${alerting.length})\n\n`;
+
+  if (alerting.length > 0) {
+    md +=
+      alert(
+        "CAUTION",
+        `Denied ${plural(alerting.length, "destination")} over ` +
+          `${plural(decisionCount(alerting), "connection attempt")}.`,
+      ) + decisionTable(alerting);
+  } else {
+    md += alert("NOTE", "Every block matched `notification-ignore`.");
+  }
+
+  if (ignored.length > 0) {
+    md += collapsible(
+      `${plural(ignored.length, "destination")} (${plural(decisionCount(ignored), "decision")})` +
+        " matched notification-ignore",
+      decisionTable(ignored),
+    );
+  }
+
+  return md;
+}
+
+function auditedSection(audited) {
+  if (audited.length === 0) return "";
+
+  return (
+    `### Audited (${audited.length})\n\n` +
+    alert(
+      "WARNING",
+      `${plural(decisionCount(audited), "connection")} would have been blocked under ` +
+        "`egress-policy: block`. They were reported only.",
+    ) +
+    decisionTable(audited)
+  );
+}
+
+function allowedSection(allowed) {
+  if (allowed.length === 0) return "";
+
+  return (
+    "### Allowed\n\n" +
+    alert("TIP", `${plural(decisionCount(allowed), "connection")} reached an allowlisted host.`) +
+    collapsible(`${plural(allowed.length, "host")} reached`, decisionTable(allowed, { destination: false }))
   );
 }
 
@@ -198,22 +284,28 @@ function heading(manifest, lockdown) {
   }
 
   if (lockdown) {
-    md += "> Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.\n\n";
+    md += alert(
+      "NOTE",
+      "Lockdown-runner mode: teardown was skipped and later sudo/Docker access was disabled.",
+    );
   }
 
   return md;
 }
 
-function buildSummary(raw, { lockdown = false, manifest = null } = {}) {
+function buildSummary(raw, { lockdown = false, manifest = null, ignore = ignoreRulesFromEnv() } = {}) {
   const md = heading(manifest, lockdown);
 
   if (!raw.trim()) {
     return (
       md +
-      (lockdown
-        ? "No logs captured - Docker access was locked down after startup.\n"
-        : "No g0efilter logs found - the filter may have failed to start.\n") +
-      "\n" +
+      // Under lockdown the missing logs are expected; otherwise the filter failed.
+      alert(
+        lockdown ? "NOTE" : "CAUTION",
+        lockdown
+          ? "No logs captured - Docker access was locked down after startup."
+          : "No g0efilter logs found - the filter may have failed to start.",
+      ) +
       policySection(manifest)
     );
   }
@@ -222,28 +314,13 @@ function buildSummary(raw, { lockdown = false, manifest = null } = {}) {
   let report = md + overview(decisions);
 
   if (decisions.blocked.length === 0 && decisions.audited.length === 0) {
-    report += "No connections were blocked or audited.\n\n";
+    report += alert("TIP", "No connections were blocked or audited.");
   }
 
-  if (decisions.blocked.length > 0) {
-    report += `### Blocked (${decisions.blocked.length})\n\n` + decisionTable(decisions.blocked);
-  }
-
-  if (decisions.audited.length > 0) {
-    report +=
-      `### Audited (${decisions.audited.length})\n\n` +
-      "Reported only; these connections were not blocked.\n\n" +
-      decisionTable(decisions.audited);
-  }
-
-  if (decisions.allowed.length > 0) {
-    report +=
-      "### Allowed\n\n" +
-      collapsible(
-        `${decisions.allowed.length} hosts were reached`,
-        decisionTable(decisions.allowed, { destination: false }),
-      );
-  }
+  report +=
+    blockedSection(decisions.blocked, ignore) +
+    auditedSection(decisions.audited) +
+    allowedSection(decisions.allowed);
 
   return report + policySection(manifest);
 }
@@ -306,6 +383,7 @@ module.exports = {
   parseLine,
   collectDecisions,
   escapeCell,
+  blockedSection,
   buildSummary,
   readManifest,
   teardown,

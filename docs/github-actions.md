@@ -37,7 +37,7 @@ for a working example.
 | `lockdown-runner` | Disable later sudo and Docker access | `false` |
 | `identity` | Names this runner in alerts and logs | `<owner>/<repo>/<workflow>` |
 | `notification-urls` | Whitespace-separated shoutrrr URLs to alert on | empty |
-| `notification-ignore` | Newline-separated rules for blocks that should not alert | `local` |
+| `notification-ignore` | Newline-separated rules for blocks that should not alert or clutter the report | `local` |
 
 The Action always permits GitHub's
 [runner communication domains](https://docs.github.com/actions/reference/runners/self-hosted-runners)
@@ -61,12 +61,18 @@ The post step then writes an egress report to the job summary:
 
 - the mode, egress policy, and image that ran;
 - a count of allowed, blocked, and audited decisions, by unique host;
-- every blocked host with its component and destination;
+- every blocked host with its component and destination, with the blocks matching
+  `notification-ignore` collapsed into their own group;
 - every audited host, which is reported but not blocked;
 - every allowed host that was reached, collapsed;
 - the full allowlist, split into workflow entries and the baseline.
 
-The report is written even when nothing was blocked.
+Each outcome carries a coloured callout: red for blocked, amber for audited, green
+for allowed. GitHub strips CSS from job summaries, so the colour comes from
+GitHub-flavored Markdown alerts rather than a stylesheet.
+
+The report is written even when nothing was blocked. The counts always cover every
+decision, including the blocks folded away by `notification-ignore`.
 
 ## Security limits
 
@@ -101,8 +107,10 @@ command line where any process on the runner could read it.
 Alerts are titled with `identity`, which defaults to `<owner>/<repo>/<workflow>`.
 Set it when several workflows notify the same channel.
 
-`notification-ignore` defaults to `local`, dropping the neighbour-discovery noise
-a runner always produces. Add `ip-only` to alert only on domain blocks:
+`notification-ignore` defaults to `local`, dropping the multicast, link-local, and
+private-range noise a runner always produces. It also decides what the job summary
+folds away, so it quietens the report even with no `notification-urls` set. Add
+`ip-only` to alert only on domain blocks:
 
 ```yaml
     notification-ignore: |
