@@ -266,9 +266,18 @@ test("buildSummary renders empty allowlist groups as none rather than omitting t
 });
 
 test("buildSummary renders hosts as code spans, escaping the table's own pipe", () => {
-  // Angle brackets need no entity here: GitHub escapes the content of a code span.
+  // GitHub escapes the content of a code span, so angle brackets need no entity.
   const md = buildSummary("action=BLOCKED component=https https=a|b<c>");
   assert.match(md, /\| `a\\\|b<c>` \|/);
+});
+
+// A backslash already in the host would otherwise escape the escape, freeing the pipe.
+test("buildSummary escapes a backslash before the pipe it protects", () => {
+  const md = buildSummary("action=BLOCKED component=https https=a\\|b.test");
+  const row = md.split("\n").find((line) => line.includes("a\\"));
+
+  assert.match(row, /\| `a\\\\\\\|b\.test` \| https \|/);
+  assert.equal(row.split(/(?<!\\)\|/).length - 1, 5);
 });
 
 test("buildSummary keeps wildcard hosts literal instead of italicising them", () => {
@@ -293,7 +302,6 @@ test("blockedSection folds ignored blocks into a collapsible", () => {
   assert.match(md, /### Blocked \(1\)/);
   assert.match(md, /evil\.test/);
   assert.match(md, /<summary>2 destinations \(9 decisions\) matched notification-ignore<\/summary>/);
-  // The rows are folded away, not dropped.
   assert.match(md, /224\.0\.0\.22/);
   assert.match(md, /239\.255\.255\.250:1900/);
 });

@@ -1,5 +1,4 @@
-// Unit tests for the assertions report-check.js makes against a live run, so a check
-// that can no longer fail does not sit green in the workflow.
+// Proves each assertion in report-check.js can still fail.
 "use strict";
 
 const { test } = require("node:test");
@@ -45,8 +44,7 @@ test("a correct report raises no problems", () => {
   assert.deepEqual(problemsWith(GOOD), []);
 });
 
-// The rule silently ceasing to apply is the regression this job exists to catch: the
-// row moves out of the collapsible and back into the table.
+// The regression this job exists to catch: the rule silently stops applying.
 test("it catches an ignored block left in the blocked table", () => {
   const leaked = GOOD.replace("| `example.com` | https | `93.184.215.14:443` | 1 |\n", "").replace(
     "| - | nflog | `95.111.222.228:443` | 1 |",
@@ -76,5 +74,18 @@ test("it catches an overview that stopped counting the folded blocks", () => {
 test("it catches a missing allowed host", () => {
   assert.deepEqual(problemsWith(GOOD.replace("`api.github.com`", "`other.test`")), [
     "the allowed host is missing from the report",
+  ]);
+});
+
+// A subdomain must not stand in for the host each check names.
+test("it reads whole host cells rather than substrings", () => {
+  const subdomain = GOOD.replace("| `example.com` |", "| `www.example.com` |").replace(
+    "| `api.github.com` |",
+    "| `cdn.api.github.com` |",
+  );
+
+  assert.deepEqual(problemsWith(subdomain), [
+    "the allowed host is missing from the report",
+    "the ignored block was not folded into the collapsible",
   ]);
 });

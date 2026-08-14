@@ -134,13 +134,13 @@ function cell(v) {
   return s === "" ? "-" : s;
 }
 
-// Hosts and addresses go in a code span: it keeps `*.example.com` and `a_b.test` from
-// rendering as emphasis, and GitHub escapes the content. Entities would show verbatim
-// there, so only the backtick and the table's own pipe need escaping.
+// A code span stops `*.example.com` italicising and lets GitHub do the escaping. The
+// backslash goes first, or escaping a pipe would leave a live cell separator.
 function codeCell(v) {
   const s = String(v)
     .replace(/[\r\n]+/g, " ")
     .replace(/`/g, "'")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .trim();
 
@@ -182,7 +182,7 @@ function bullets(title, values) {
   return md + "\n";
 }
 
-// Ordered as the sections below are, worst outcome first.
+// Worst outcome first, matching the section order.
 function overview({ blocked, audited, allowed, totals }) {
   return (
     "| Outcome | Unique hosts | Decisions |\n|---|---:|---:|\n" +
@@ -210,8 +210,7 @@ function policySection(manifest) {
   );
 }
 
-// Blocks matching notification-ignore are folded away rather than dropped: the
-// summary stays a complete record, and the overview counts every decision.
+// Folded away, not dropped: the overview still counts every block.
 function blockedSection(blocked, ignore) {
   if (blocked.length === 0) return "";
 

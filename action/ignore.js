@@ -1,7 +1,4 @@
-// Port of agent/alerting/ignore.go, applied to the job summary so it folds away
-// exactly the blocks the agent declined to alert on. post.js cannot call into Go,
-// so the rules are reimplemented here and kept honest by ignore.test.js.
-//
+// Port of agent/alerting/ignore.go, which post.js cannot call into.
 // Rules run against the entries parseLine produces: { component, host, dest }.
 "use strict";
 
@@ -101,8 +98,7 @@ function parseAddrPort(text) {
   return colon === -1 ? null : parseAddr(text.slice(0, colon));
 }
 
-// netip reports the address classes of a 4-in-6 address as those of its IPv4 form,
-// but a v4 prefix still does not contain it. Only the class checks unmap.
+// netip reads a 4-in-6 address's classes as its IPv4 form, yet no v4 prefix contains it.
 function unmap(bytes) {
   if (bytes.length !== 16) return bytes;
 
@@ -143,8 +139,7 @@ const ADDR_CLASSES = {
   public: (b) => !isLocal(b),
 };
 
-// Components populate one field or the other: nflog reports an address, the
-// domain-aware components a hostname.
+// nflog reports an address, the domain-aware components a hostname.
 function destinationAddr(entry) {
   for (const candidate of [entry.dest, entry.host]) {
     const addr = parseAddr(candidate) || parseAddrPort(candidate);

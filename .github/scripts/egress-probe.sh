@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Egress probes for .github/workflows/action-test.yaml. Each subcommand is one
-# workflow step: it proves one property of a running filter, prints what it proved,
-# and exits non-zero when the filter did not behave.
+# Egress probes for .github/workflows/action-test.yaml, one subcommand per step.
 #
 #   egress-probe.sh reach https://api.github.com        # must connect
 #   egress-probe.sh denied https://example.com          # must not connect
@@ -16,9 +14,8 @@
 #   egress-probe.sh nft-ipv6-tables
 #   egress-probe.sh pull-image [image]
 #
-# reach/denied pass --fail, so an HTTP error status counts as unreachable. The
-# -http pair does not: the filter answers blocked HTTP with an error page, and
-# those steps assert the connection itself never completes.
+# The -http pair drops --fail: the filter answers blocked HTTP with an error page,
+# so those steps assert the connection itself never completes.
 set -euo pipefail
 
 CURL_IMAGE=curlimages/curl:latest
