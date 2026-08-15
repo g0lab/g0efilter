@@ -10,6 +10,7 @@ import (
 var (
 	workflowGoPattern = regexp.MustCompile(`(?m)^\s*go-version:\s*'?([^'\s]+)'?\s*$`)
 	builderPattern    = regexp.MustCompile(`(?m)^FROM golang:([^-\s]+)-`)
+	builderTagPattern = regexp.MustCompile(`(?m)^FROM golang:(\S+)`)
 	exactPatch        = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 )
 
@@ -174,4 +175,44 @@ func compareVersions(a, b string) int {
 	}
 
 	return len(aParts) - len(bParts)
+}
+
+// Renovate's docker versioning only offers updates that keep the same tag
+// suffix, so an alpine bump is manual and can leave one builder behind.
+func TestBuilderImagesUseTheSameTag(t *testing.T) {
+	t.Parallel()
+
+	builders, err := filepath.Glob(filepath.Join("..", "..", "tests", "e2e", "Containerfile.*"))
+	if err != nil {
+		t.Fatalf("glob builders: %v", err)
+	}
+
+	tags := make(map[string]string)
+
+	for _, builder := range builders {
+		match := builderTagPattern.FindStringSubmatch(readFile(t, builder))
+		if match == nil {
+			continue
+		}
+
+		tags[filepath.Base(builder)] = match[1]
+	}
+
+	if len(tags) < 2 {
+		t.Fatalf("expected at least two golang builders, found %d", len(tags))
+	}
+
+	names := make([]string, 0, len(tags))
+	for name := range tags {
+		names = append(names, name)
+	}
+
+	sort.Strings(names)
+
+	want := tags[names[0]]
+	for _, name := range names[1:] {
+		if tags[name] != want {
+			t.Errorf("%s builds with golang:%s but %s uses golang:%s", name, tags[name], names[0], want)
+		}
+	}
 }
