@@ -68,6 +68,7 @@ dockers_v2:
       - g0efilter
     images:
       - docker.io/g0lab/g0efilter
+      - ghcr.io/g0lab/g0efilter
     tags:
       - '{{ .Tag }}'
       # Keep action @vN aligned with non-prerelease image tags.
@@ -92,6 +93,7 @@ dockers_v2:
       - g0efilter-dashboard
     images:
       - docker.io/g0lab/g0efilter-dashboard
+      - ghcr.io/g0lab/g0efilter-dashboard
     tags:
       - '{{ .Tag }}'
       - '{{ if not .Prerelease }}v{{ .Major }}{{ end }}'
@@ -115,6 +117,7 @@ dockers_v2:
       - g0efilter-controller
     images:
       - docker.io/g0lab/g0efilter-controller
+      - ghcr.io/g0lab/g0efilter-controller
     tags:
       - '{{ .Tag }}'
       - '{{ if not .Prerelease }}v{{ .Major }}{{ end }}'
