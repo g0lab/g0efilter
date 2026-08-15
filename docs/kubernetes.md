@@ -518,10 +518,17 @@ port 9095 and add `prometheus.io/*` scrape annotations.
 g0efilter_connections_total{component,action}
 g0efilter_denials_total{component,reason}
 g0efilter_policy_reloads_total{result}
+g0efilter_panics_total{component}
 ```
 
 Metrics never label by destination. Label combinations are capped and overflow is
 folded into `reason="other"`.
+
+`g0efilter_panics_total` counts panics contained at a goroutine boundary. The
+agent recovers these so a single connection, query or packet fails instead of the
+process, which would take filtering away from the whole pod. It should stay at
+zero; any increase is a defect worth reporting, and the matching
+`panic.recovered` log record carries the stack trace.
 
 The controller exposes its own metrics on 8080. Enable
 `metrics.service.enabled` in the controller chart, and

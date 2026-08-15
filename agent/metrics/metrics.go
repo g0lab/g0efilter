@@ -38,11 +38,11 @@ func newCounter(name, help string, keys ...string) *counter {
 	return &counter{name: name, help: help, keys: keys, series: make(map[string]*series)}
 }
 
-func (c *counter) add(values []string, delta uint64) {
+func (c *counter) add(values []string) {
 	key := strings.Join(values, "\x00")
 
 	if existing, ok := c.series[key]; ok {
-		existing.value += delta
+		existing.value++
 
 		return
 	}
@@ -54,7 +54,7 @@ func (c *counter) add(values []string, delta uint64) {
 		key = strings.Join(values, "\x00")
 
 		if existing, ok := c.series[key]; ok {
-			existing.value += delta
+			existing.value++
 
 			return
 		}
@@ -65,7 +65,7 @@ func (c *counter) add(values []string, delta uint64) {
 		labels[name] = values[i]
 	}
 
-	c.series[key] = &series{labels: labels, value: delta}
+	c.series[key] = &series{labels: labels, value: 1}
 }
 
 func overflow(n int) []string {
@@ -131,6 +131,7 @@ type Metrics struct {
 	connections *counter
 	denials     *counter
 	reloads     *counter
+	panics      *counter
 }
 
 // New builds an empty registry.
@@ -142,6 +143,8 @@ func New() *Metrics {
 			"Denied connections, by filter component and reason.", "component", "reason"),
 		reloads: newCounter("g0efilter_policy_reloads_total",
 			"Policy reload attempts, by result.", "result"),
+		panics: newCounter("g0efilter_panics_total",
+			"Panics contained without terminating the process, by component.", "component"),
 	}
 }
 
@@ -154,7 +157,7 @@ func (m *Metrics) RecordConnection(component, action string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.connections.add([]string{component, action}, 1)
+	m.connections.add([]string{component, action})
 }
 
 // RecordDenial counts one denial alongside its reason.
@@ -166,7 +169,7 @@ func (m *Metrics) RecordDenial(component, reason string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.denials.add([]string{component, reason}, 1)
+	m.denials.add([]string{component, reason})
 }
 
 // RecordReload counts a policy reload attempt.
@@ -178,7 +181,19 @@ func (m *Metrics) RecordReload(result string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.reloads.add([]string{result}, 1)
+	m.reloads.add([]string{result})
+}
+
+// RecordPanic counts one contained panic.
+func (m *Metrics) RecordPanic(component string) {
+	if m == nil {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.panics.add([]string{component})
 }
 
 // Render writes every counter in the Prometheus text format.
@@ -190,7 +205,7 @@ func (m *Metrics) Render(w io.Writer) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for _, c := range []*counter{m.connections, m.denials, m.reloads} {
+	for _, c := range []*counter{m.connections, m.denials, m.reloads, m.panics} {
 		err := c.writeTo(w)
 		if err != nil {
 			return err
