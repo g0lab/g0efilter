@@ -23,8 +23,17 @@
     "**/vendor/**",
     "**/__tests__/**",
     "**/test/**",
-    "**/tests/**",
     "**/__fixtures__/**"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The setup-go pins are the release toolchain.",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.yaml$/"],
+      "matchStrings": ["go-version:\\s*'(?<currentValue>\\d+\\.\\d+\\.\\d+)'"],
+      "depNameTemplate": "go",
+      "datasourceTemplate": "golang-version"
+    }
   ],
   "packageRules": [
     {
@@ -99,9 +108,16 @@
       "enabled": false
     },
     {
-      "description": "The Go toolchain is pinned in the workflows as well, so it is bumped deliberately rather than by a PR that would desync the two.",
+      "description": "The go directive is the language floor, kept below the release toolchain on purpose so the modules still build with an older Go.",
+      "matchManagers": ["gomod"],
       "matchDatasources": ["golang-version"],
       "enabled": false
+    },
+    {
+      "description": "The release toolchain lives in the workflow setup-go pins and the E2E builder images. Group them so one PR moves every copy; tests/repo fails a bump that misses one.",
+      "matchPackageNames": ["go", "golang"],
+      "matchDatasources": ["golang-version", "docker"],
+      "groupName": "go toolchain"
     },
     {
       "description": "curl and k3s are throwaway test and demo peers, wanted at whatever latest is rather than at a recorded version. Un-ignoring examples/ would otherwise start pinning them.",
