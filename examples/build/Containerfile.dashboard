@@ -1,5 +1,5 @@
 # Build the dashboard UI.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS ui
+FROM node:24-alpine AS ui
 
 RUN corepack enable
 
@@ -12,7 +12,7 @@ COPY dashboard/ui/ ./
 RUN pnpm build
 
 # Build the dashboard binary with the UI.
-FROM golang:1.26.6-alpine3.23@sha256:5978cc992ad5ef96a7469713c8af849c1433824761ce3be2c56381403cd8d9a3 AS builder
+FROM golang:1.26.6-alpine3.24 AS builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
@@ -33,7 +33,7 @@ RUN GOWORK=off go -C dashboard build -trimpath \
     -o /build/g0efilter-dashboard .
 
 # Create the runtime image.
-FROM gcr.io/distroless/static:nonroot@sha256:f7f8f729987ad0fdf6b05eeeae94b26e6a0f613bdf46feea7fc40f7bd72953e6
+FROM gcr.io/distroless/static:nonroot
 
 USER nonroot
 # Create the data directory as the non-root user.
