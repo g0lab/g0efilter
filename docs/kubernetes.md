@@ -524,7 +524,7 @@ g0efilter_panics_total{component}
 Metrics never label by destination. Label combinations are capped and overflow is
 folded into `reason="other"`.
 
-`g0efilter_panics_total` counts panics contained at a goroutine boundary. The
+`g0efilter_panics_total` counts panics the agent contained. The
 agent recovers these so a single connection, query or packet fails instead of the
 process, which would take filtering away from the whole pod. It should stay at
 zero; any increase is a defect worth reporting, and the matching
