@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/agent/recovery"
 )
 
 const (
@@ -87,11 +88,11 @@ func (l *learner) run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			l.flush()
+			recovery.Call(l.lg, "learner", l.flush)
 
 			return
 		case <-t.C:
-			l.flush()
+			recovery.Call(l.lg, "learner", l.flush)
 		}
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -1591,6 +1592,18 @@ func processActionEvent(
 }
 
 // createNflogHook creates a callback function that processes each nflog packet and logs it.
+func guardedNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
+	return guardNflogHook(lg, createNflogHook(lg))
+}
+
+func guardNflogHook(lg *slog.Logger, hook func(nflog.Attribute) int) func(nflog.Attribute) int {
+	return func(attrs nflog.Attribute) int {
+		defer recovery.Guard(lg, "nflog")
+
+		return hook(attrs)
+	}
+}
+
 func createNflogHook(lg *slog.Logger) func(nflog.Attribute) int {
 	return func(attrs nflog.Attribute) int {
 		prefix := ""
@@ -1663,7 +1676,7 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 		return 0 // Return 0 to keep receiving messages
 	}
 
-	err = nf.RegisterWithErrorFunc(ctx, createNflogHook(lg), errFunc)
+	err = nf.RegisterWithErrorFunc(ctx, guardedNflogHook(lg), errFunc)
 	if err != nil {
 		return fmt.Errorf("register failed: %w", err)
 	}

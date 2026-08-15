@@ -26,6 +26,7 @@ import (
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/nftables"
 	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/agent/telemetry"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/g0lab/g0efilter/shared/logging"
@@ -41,7 +42,10 @@ const (
 	defaultDialTimeout = 5000
 	defaultIdleTimeout = 600000
 	defaultMaxConns    = 4096
+	filterRetryDelay   = 1 * time.Second
 	retryDelay         = 5 * time.Second
+
+	serviceStopTimeout = 10 * time.Second
 
 	policyPollInterval = 5 * time.Second
 
@@ -92,33 +96,31 @@ func Run(version, date, commit string) error {
 	sigCh, hupCh, stopSignals := notifySignals()
 	defer stopSignals()
 
-	cfg = setupLearning(ctx, cfg, lg)
+	tracked := &group{}
+
+	cfg = setupLearning(ctx, tracked, cfg, lg)
 
 	pol, initialHash, err := loadInitialPolicy(ctx, cfg, lg)
 	if err != nil {
 		return err
 	}
 
-	svcCancel := startServiceGroup(ctx, cfg, pol, lg)
+	svc := startServiceGroup(ctx, cfg, pol, lg)
 
-	defer func() {
-		if svcCancel != nil {
-			svcCancel()
-		}
-	}()
+	defer func() { svc.stop(lg) }()
 
-	startNflogStream(ctx, lg)
+	startNflogStream(ctx, tracked, lg)
 	startMetricsServer(ctx, registry, lg)
 
 	reloadCh := make(chan policyUpdate, 1)
-	startPolicyWatcher(ctx, cfg, lg, initialHash, reloadCh, hupCh)
+	startPolicyWatcher(ctx, tracked, cfg, lg, initialHash, reloadCh, hupCh)
 
-	startRemoteUnblockPolling(ctx, cfg, lg)
+	startRemoteUnblockPolling(ctx, tracked, cfg, lg)
 
 	lg.Info("startup.ready", "mode", cfg.mode, "filter_count", len(pol.AllowDomains))
 
-	supervise(ctx, cancel, sigCh, reloadCh, cfg, lg, &svcCancel)
-	shutdownGracefully(lg)
+	supervise(ctx, cancel, sigCh, reloadCh, cfg, lg, &svc)
+	shutdownGracefully(lg, tracked, svc)
 
 	return nil
 }
@@ -264,7 +266,7 @@ func fileExists(path string) bool {
 }
 
 // setupLearning wires up the learner and starts its flush loop when learning mode is on.
-func setupLearning(ctx context.Context, cfg config, lg *slog.Logger) config {
+func setupLearning(ctx context.Context, tracked *group, cfg config, lg *slog.Logger) config {
 	if !cfg.learningMode {
 		return cfg
 	}
@@ -273,7 +275,7 @@ func setupLearning(ctx context.Context, cfg config, lg *slog.Logger) config {
 
 	cfg.learner = newLearner(cfg.policyPath, lg)
 
-	go cfg.learner.run(ctx)
+	tracked.run(lg, "learner", func() { cfg.learner.run(ctx) })
 
 	lg.Info("learning_mode.enabled",
 		"note", "no traffic will be blocked; observed domains/IPs are appended to the policy file",
@@ -322,20 +324,20 @@ func supervise(
 	reloadCh <-chan policyUpdate,
 	cfg config,
 	lg *slog.Logger,
-	svcCancel *context.CancelFunc,
+	svc **services,
 ) {
 	for {
 		select {
 		case sig := <-sigCh:
 			lg.Info("shutdown.signal", "signal", sig.String())
 			cancel()
-			stopServices(svcCancel)
+			(*svc).stop(lg)
 
 			return
 
 		case upd := <-reloadCh:
 			if ctx.Err() != nil {
-				stopServices(svcCancel)
+				(*svc).stop(lg)
 
 				return
 			}
@@ -349,31 +351,42 @@ func supervise(
 				"deny_ip_count", len(upd.pol.DenyIPs),
 			)
 
-			restartServices(ctx, cfg, upd.pol, lg, svcCancel)
+			restartServices(ctx, cfg, upd.pol, lg, svc)
 			cfg.metrics.RecordReload("success")
 			lg.Info("policy.applied", "mode", cfg.mode, "filter_count", len(upd.pol.AllowDomains))
 
 		case <-ctx.Done():
-			stopServices(svcCancel)
+			(*svc).stop(lg)
 
 			return
 		}
 	}
 }
 
-func startServiceGroup(ctx context.Context, cfg config, pol *policy.Policy, lg *slog.Logger) context.CancelFunc {
-	svcCtx, cancel := context.WithCancel(ctx)
-	startServices(svcCtx, cfg, pol, lg)
-
-	return cancel
+type services struct {
+	cancel  context.CancelFunc
+	tracked *group
 }
 
-func stopServices(svcCancel *context.CancelFunc) {
-	if svcCancel == nil || *svcCancel == nil {
+func startServiceGroup(ctx context.Context, cfg config, pol *policy.Policy, lg *slog.Logger) *services {
+	svcCtx, cancel := context.WithCancel(ctx)
+	tracked := &group{}
+
+	startServices(svcCtx, tracked, cfg, pol, lg)
+
+	return &services{cancel: cancel, tracked: tracked}
+}
+
+func (s *services) stop(lg *slog.Logger) {
+	if s == nil {
 		return
 	}
 
-	(*svcCancel)()
+	s.cancel()
+
+	if !s.tracked.wait(serviceStopTimeout) {
+		lg.Warn("services.stop_timeout", "timeout", serviceStopTimeout.String())
+	}
 }
 
 func restartServices(
@@ -381,18 +394,25 @@ func restartServices(
 	cfg config,
 	pol *policy.Policy,
 	lg *slog.Logger,
-	svcCancel *context.CancelFunc,
+	svc **services,
 ) {
-	stopServices(svcCancel)
-	*svcCancel = startServiceGroup(ctx, cfg, pol, lg)
+	(*svc).stop(lg)
+	*svc = startServiceGroup(ctx, cfg, pol, lg)
 }
 
-func shutdownGracefully(lg *slog.Logger) {
+func shutdownGracefully(lg *slog.Logger, tracked *group, svc *services) {
 	const shutdownGracePeriod = 3 * time.Second
-	lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod.String())
-	time.Sleep(shutdownGracePeriod)
 
-	lg.Info("shutdown.complete")
+	lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod.String())
+
+	svc.stop(lg)
+
+	if tracked.wait(shutdownGracePeriod) {
+		lg.Info("shutdown.complete")
+	} else {
+		lg.Warn("shutdown.incomplete", "grace_period", shutdownGracePeriod.String())
+	}
+
 	logging.Shutdown(1 * time.Second)
 }
 
@@ -661,8 +681,45 @@ func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*poli
 	return pol, nil
 }
 
-func runServiceWithRetry(ctx context.Context, serviceName string, lg *slog.Logger, serviceFunc func() error) {
-	go func() {
+type retryPolicy struct {
+	initial time.Duration
+	max     time.Duration
+	level   slog.Level
+}
+
+//nolint:gochecknoglobals // fixed policies, not configuration
+var (
+	filterRetry = retryPolicy{initial: filterRetryDelay, max: retryDelay, level: slog.LevelError}
+
+	nflogRetry = retryPolicy{initial: retryDelay, max: 5 * time.Minute, level: slog.LevelWarn}
+)
+
+const retryResetAfter = 60 * time.Second
+
+func (p retryPolicy) next(current time.Duration) time.Duration {
+	if current <= 0 {
+		return p.initial
+	}
+
+	next := current * 2
+	if next > p.max {
+		return p.max
+	}
+
+	return next
+}
+
+func runServiceWithRetry(
+	ctx context.Context,
+	tracked *group,
+	serviceName string,
+	lg *slog.Logger,
+	retry retryPolicy,
+	serviceFunc func() error,
+) {
+	tracked.run(lg, serviceName, func() {
+		delay := retry.initial
+
 		for {
 			if ctx.Err() != nil {
 				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
@@ -670,10 +727,8 @@ func runServiceWithRetry(ctx context.Context, serviceName string, lg *slog.Logge
 				return
 			}
 
-			err := serviceFunc()
-			if err == nil {
-				continue
-			}
+			started := time.Now()
+			err := recovery.Recovered(serviceFunc)
 
 			if ctx.Err() != nil {
 				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
@@ -681,20 +736,53 @@ func runServiceWithRetry(ctx context.Context, serviceName string, lg *slog.Logge
 				return
 			}
 
-			lg.Error(serviceName+".stopped", "err", err, "action", "retrying")
+			if time.Since(started) >= retryResetAfter {
+				delay = retry.initial
+			}
 
-			select {
-			case <-ctx.Done():
+			logServiceExit(ctx, lg, serviceName, retry.level, err, delay)
+
+			if !sleepCtx(ctx, delay) {
 				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
 
 				return
-			case <-time.After(retryDelay):
 			}
+
+			delay = retry.next(delay)
 		}
-	}()
+	})
 }
 
-func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog.Logger) {
+func logServiceExit(
+	ctx context.Context,
+	lg *slog.Logger,
+	serviceName string,
+	level slog.Level,
+	err error,
+	delay time.Duration,
+) {
+	if err == nil {
+		lg.Warn(serviceName+".exited_unexpectedly", "action", "retrying", "retry_in", delay.String())
+
+		return
+	}
+
+	lg.Log(ctx, level, serviceName+".stopped", "err", err, "action", "retrying", "retry_in", delay.String())
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func startServices(ctx context.Context, tracked *group, cfg config, pol *policy.Policy, lg *slog.Logger) {
 	//nolint:exhaustruct
 	opts := filter.Options{
 		DialTimeout:  defaultDialTimeout,
@@ -720,12 +808,12 @@ func startServices(ctx context.Context, cfg config, pol *policy.Policy, lg *slog
 	}
 
 	if isDNSMode(cfg.mode) {
-		startDNSService(ctx, cfg.dnsPort, pol.AllowDomains, opts, lg)
+		startDNSService(ctx, tracked, cfg.dnsPort, pol.AllowDomains, opts, lg)
 
 		return
 	}
 
-	startHTTPSServices(ctx, cfg, pol.AllowDomains, opts, lg)
+	startHTTPSServices(ctx, tracked, cfg, pol.AllowDomains, opts, lg)
 }
 
 // strictResolvedHook returns the dns-strict callback that pushes resolved IPs into
@@ -753,24 +841,38 @@ func strictResolvedHook(
 	}
 }
 
-func startDNSService(ctx context.Context, dnsPort string, domains []string, opts filter.Options, lg *slog.Logger) {
+func startDNSService(
+	ctx context.Context,
+	tracked *group,
+	dnsPort string,
+	domains []string,
+	opts filter.Options,
+	lg *slog.Logger,
+) {
 	lg.Debug("dns.starting", "addr", ":"+dnsPort)
 
 	dnsOpts := opts
 	dnsOpts.ListenAddr = ":" + dnsPort
 
-	runServiceWithRetry(ctx, "dns", lg, func() error {
+	runServiceWithRetry(ctx, tracked, "dns", lg, filterRetry, func() error {
 		return filter.Serve53(ctx, domains, dnsOpts)
 	})
 }
 
-func startHTTPSServices(ctx context.Context, cfg config, domains []string, opts filter.Options, lg *slog.Logger) {
+func startHTTPSServices(
+	ctx context.Context,
+	tracked *group,
+	cfg config,
+	domains []string,
+	opts filter.Options,
+	lg *slog.Logger,
+) {
 	lg.Debug("https.starting", "addr", ":"+cfg.httpsPort)
 
 	httpsOpts := opts
 	httpsOpts.ListenAddr = ":" + cfg.httpsPort
 
-	runServiceWithRetry(ctx, "https", lg, func() error {
+	runServiceWithRetry(ctx, tracked, "https", lg, filterRetry, func() error {
 		return filter.Serve443(ctx, domains, httpsOpts)
 	})
 
@@ -779,23 +881,20 @@ func startHTTPSServices(ctx context.Context, cfg config, domains []string, opts 
 	httpOpts := opts
 	httpOpts.ListenAddr = ":" + cfg.httpPort
 
-	runServiceWithRetry(ctx, "http", lg, func() error {
+	runServiceWithRetry(ctx, tracked, "http", lg, filterRetry, func() error {
 		return filter.Serve80(ctx, domains, httpOpts)
 	})
 }
 
-func startNflogStream(ctx context.Context, lg *slog.Logger) {
+func startNflogStream(ctx context.Context, tracked *group, lg *slog.Logger) {
 	lg.Info("nflog.listen")
 
-	go func() {
-		err := nftables.StreamNfLogWithLogger(ctx, lg)
-		if err != nil {
-			lg.Warn("nflog.stream_error", "err", err)
-		}
-	}()
+	runServiceWithRetry(ctx, tracked, "nflog", lg, nflogRetry, func() error {
+		return nftables.StreamNfLogWithLogger(ctx, lg)
+	})
 }
 
-func startRemoteUnblockPolling(ctx context.Context, cfg config, lg *slog.Logger) {
+func startRemoteUnblockPolling(ctx context.Context, tracked *group, cfg config, lg *slog.Logger) {
 	if !cfg.enableRemoteUnblock {
 		lg.Debug("remote_unblock.disabled", "reason", "ENABLE_REMOTE_UNBLOCK=false")
 
@@ -813,7 +912,7 @@ func startRemoteUnblockPolling(ctx context.Context, cfg config, lg *slog.Logger)
 		"poll_interval", cfg.unblockPollInterval.String(),
 	)
 
-	go pollRemoteUnblocks(ctx, cfg, lg)
+	tracked.run(lg, "remote_unblock", func() { pollRemoteUnblocks(ctx, cfg, lg) })
 }
 
 // shouldWatchPolicy is false in learning mode: the ruleset is forced permissive and
@@ -824,6 +923,7 @@ func shouldWatchPolicy(cfg config) bool {
 
 func startPolicyWatcher(
 	ctx context.Context,
+	tracked *group,
 	cfg config,
 	lg *slog.Logger,
 	initialHash string,
@@ -839,7 +939,9 @@ func startPolicyWatcher(
 
 	lg.Info("policy.watcher_started", "path", cfg.policyPath, "interval", policyPollInterval.String())
 
-	go pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh, hupCh)
+	tracked.run(lg, "policy_watcher", func() {
+		pollPolicyChanges(ctx, cfg, lg, initialHash, policyPollInterval, reloadCh, hupCh)
+	})
 }
 
 func pollPolicyChanges(
@@ -862,7 +964,9 @@ func pollPolicyChanges(
 			return
 
 		case <-t.C:
-			lastHash = checkPolicyTick(ctx, cfg, lg, lastHash, reloadCh)
+			recovery.Call(lg, "policy_watcher", func() {
+				lastHash = checkPolicyTick(ctx, cfg, lg, lastHash, reloadCh)
+			})
 
 		// SIGHUP reloads now rather than waiting out the poll. In Kubernetes the
 		// wait is kubelet's ConfigMap sync, not this ticker, so it does not help
@@ -870,7 +974,9 @@ func pollPolicyChanges(
 		case <-hupCh:
 			lg.Info("policy.reload_requested", "signal", "SIGHUP")
 
-			lastHash = forceReload(ctx, cfg, lg, lastHash, reloadCh)
+			recovery.Call(lg, "policy_watcher", func() {
+				lastHash = forceReload(ctx, cfg, lg, lastHash, reloadCh)
+			})
 		}
 	}
 }
@@ -1100,7 +1206,9 @@ func pollRemoteUnblocks(
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			processRemoteUnblocks(ctx, client, baseURL, cfg, lg)
+			recovery.Call(lg, "remote_unblock", func() {
+				processRemoteUnblocks(ctx, client, baseURL, cfg, lg)
+			})
 		}
 	}
 }

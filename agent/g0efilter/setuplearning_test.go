@@ -26,7 +26,7 @@ func TestSeedLearningPolicyOnlyRunsInLearningMode(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "policy.yaml")
 
-	cfg := setupLearning(t.Context(), learningConfig(t, path, false), slog.New(slog.DiscardHandler))
+	cfg := setupLearning(t.Context(), &group{}, learningConfig(t, path, false), slog.New(slog.DiscardHandler))
 
 	_, err := os.Stat(path)
 	if !os.IsNotExist(err) {
@@ -47,7 +47,7 @@ func TestSetupLearningSeedsAWritablePolicy(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	cfg := setupLearning(ctx, learningConfig(t, path, true), slog.New(slog.DiscardHandler))
+	cfg := setupLearning(ctx, &group{}, learningConfig(t, path, true), slog.New(slog.DiscardHandler))
 
 	if cfg.learner == nil {
 		t.Fatal("learning mode did not start a learner")
