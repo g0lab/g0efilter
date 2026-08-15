@@ -561,65 +561,41 @@ func TestBlockedNonEnforcedType(t *testing.T) {
 	}
 }
 
-func TestStartUDPServer(t *testing.T) {
+func TestDNSServerServeAndStop(t *testing.T) {
 	t.Parallel()
 
-	logger := slog.Default()
-	opts := Options{Logger: logger}
+	for _, proto := range []string{"udp", "tcp"} {
+		t.Run(proto, func(t *testing.T) {
+			t.Parallel()
 
-	allowedDomains := []string{"example.com"}
-	handler := createDNSHandler(allowedDomains, opts)
+			opts := Options{Logger: slog.New(slog.DiscardHandler)}
+			handler := createDNSHandler([]string{"example.com"}, opts)
 
-	server := &dns.Server{
-		Addr:    "127.0.0.1:0",
-		Net:     "udp",
-		Handler: dns.HandlerFunc(handler.handle),
-	}
+			srv := newDNSServer(&dns.Server{
+				Addr:    "127.0.0.1:0",
+				Net:     proto,
+				Handler: dns.HandlerFunc(handler.handle),
+			}, proto)
 
-	errCh := make(chan error, 1)
+			errCh := make(chan error, 1)
+			srv.serve(errCh, opts)
 
-	// Start server in goroutine
-	go startUDPServer(server, errCh, opts)
+			select {
+			case <-srv.started:
+			case err := <-errCh:
+				t.Fatalf("serve returned before start: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("server never signalled started")
+			}
 
-	// Give it a moment to attempt start
-	select {
-	case err := <-errCh:
-		// Expected to fail in test environment
-		t.Logf("UDP server start failed as expected: %v", err)
-	case <-time.After(100 * time.Millisecond):
-		// Timeout is also acceptable
-		t.Log("UDP server start timed out as expected in test environment")
-	}
-}
+			srv.stop(t.Context())
 
-func TestStartTCPServer(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.Default()
-	opts := Options{Logger: logger}
-
-	allowedDomains := []string{"example.com"}
-	handler := createDNSHandler(allowedDomains, opts)
-
-	server := &dns.Server{
-		Addr:    "127.0.0.1:0",
-		Net:     "tcp",
-		Handler: dns.HandlerFunc(handler.handle),
-	}
-
-	errCh := make(chan error, 1)
-
-	// Start server in goroutine
-	go startTCPServer(server, errCh, opts)
-
-	// Give it a moment to attempt start
-	select {
-	case err := <-errCh:
-		// Expected to fail in test environment
-		t.Logf("TCP server start failed as expected: %v", err)
-	case <-time.After(100 * time.Millisecond):
-		// Timeout is also acceptable
-		t.Log("TCP server start timed out as expected in test environment")
+			select {
+			case <-srv.done:
+			default:
+				t.Fatal("stop returned while the server was still running")
+			}
+		})
 	}
 }
 
