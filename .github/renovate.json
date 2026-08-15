@@ -108,6 +108,12 @@
       "enabled": false
     },
     {
+      "description": "set-version.sh rewrites deploy, docs, examples, controller and the README, never .github, so the workflows that run g0efilter on itself are the one g0efilter pin Renovate has to own. Scoped to the manager rather than loosening the rule above, which still has to hold for the Kustomize ?ref= pins.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["/g0efilter/"],
+      "enabled": true
+    },
+    {
       "description": "The go directive is the language floor, kept below the release toolchain on purpose so the modules still build with an older Go.",
       "matchManagers": ["gomod"],
       "matchDatasources": ["golang-version"],

@@ -30,12 +30,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@99f2bb0aeb715a64b1ba9e30a66a327ce9852589 # v0.9.0
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
         with:
           egress-policy: block
           allowed-domains: |
             ghcr.io
             pkg-containers.githubusercontent.com
+            raw.githubusercontent.com
             proxy.golang.org
             sum.golang.org
             registry.npmjs.org
