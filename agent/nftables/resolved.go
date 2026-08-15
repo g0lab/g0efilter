@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/policy"
@@ -50,12 +51,7 @@ func resolvedElementArgs(
 	ttl time.Duration,
 	rule policy.DomainRule,
 ) ([]string, error) {
-	parsed := net.ParseIP(strings.TrimSpace(ip))
-	if parsed == nil {
-		return nil, fmt.Errorf("%w: %q", errInvalidResolvedIP, ip)
-	}
-
-	err := validateConstraint(rule)
+	parsed, err := validateResolved(ip, rule)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +73,20 @@ func resolvedElementArgs(
 	}
 
 	return []string{verb, "element", family, table, set, "{ " + element + " }"}, nil
+}
+
+func validateResolved(ip string, rule policy.DomainRule) (net.IP, error) {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return nil, fmt.Errorf("%w: %q", errInvalidResolvedIP, ip)
+	}
+
+	err := validateConstraint(rule)
+	if err != nil {
+		return nil, err
+	}
+
+	return parsed, nil
 }
 
 func validateConstraint(rule policy.DomainRule) error {
@@ -160,11 +170,32 @@ func runNft(ctx context.Context, args []string) error {
 // protocol/port-constrained element instead of a whole-IP one; an empty rules
 // slice allows the address on every port.
 func AddResolvedIPs(ctx context.Context, ips []string, ttl time.Duration, rules []policy.DomainRule) error {
-	var errs []error
-
 	if len(rules) == 0 {
 		rules = []policy.DomainRule{{}} //nolint:exhaustruct // zero value is "unconstrained"
 	}
+
+	prefixes := resolvedTablePrefixes()
+
+	script, errs := buildResolvedScript(prefixes, ips, ttl, rules)
+	if script != "" && resolvedBatchSupported(ctx) {
+		err := runNftScript(ctx, script)
+		if err == nil {
+			return errors.Join(errs...)
+		}
+
+		errs = append(errs, err)
+	}
+
+	return errors.Join(append(errs, addResolvedIndividually(ctx, ips, ttl, rules)...)...)
+}
+
+func addResolvedIndividually(
+	ctx context.Context,
+	ips []string,
+	ttl time.Duration,
+	rules []policy.DomainRule,
+) []error {
+	var errs []error
 
 	for _, ip := range ips {
 		for _, rule := range rules {
@@ -175,5 +206,129 @@ func AddResolvedIPs(ctx context.Context, ips []string, ttl time.Duration, rules 
 		}
 	}
 
-	return errors.Join(errs...)
+	return errs
+}
+
+func resolvedTablePrefixes() []string {
+	if bridgeFilteringEnabled() {
+		return []string{"g0efilter", "g0efilter_bridge"}
+	}
+
+	return []string{"g0efilter"}
+}
+
+func buildResolvedScript(
+	prefixes, ips []string,
+	ttl time.Duration,
+	rules []policy.DomainRule,
+) (string, []error) {
+	var (
+		script strings.Builder
+		errs   []error
+	)
+
+	for _, ip := range ips {
+		for _, rule := range rules {
+			_, err := validateResolved(ip, rule)
+			if err != nil {
+				errs = append(errs, err)
+
+				continue
+			}
+
+			for _, prefix := range prefixes {
+				writeResolvedLine(&script, "destroy", prefix, ip, 0, rule)
+				writeResolvedLine(&script, "add", prefix, ip, ttl, rule)
+			}
+		}
+	}
+
+	return script.String(), errs
+}
+
+func writeResolvedLine(
+	script *strings.Builder,
+	verb, prefix, ip string,
+	ttl time.Duration,
+	rule policy.DomainRule,
+) {
+	args, err := resolvedElementArgs(verb, prefix, ip, ttl, rule)
+	if err != nil {
+		return
+	}
+
+	script.WriteString(strings.Join(args, " "))
+	script.WriteString("\n")
+}
+
+func runNftScript(ctx context.Context, script string) error {
+	ctx, cancel := context.WithTimeout(ctx, resolvedCmdTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "nft", "-f", "-")
+	cmd.Stdin = strings.NewReader(script)
+
+	var out bytes.Buffer
+
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("nft batch failed: %w: %s", err, strings.TrimSpace(out.String()))
+	}
+
+	return nil
+}
+
+//nolint:gochecknoglobals // capability probe of the nft binary, cached once answered
+var (
+	batchProbed    atomic.Bool
+	batchSupported atomic.Bool
+)
+
+func resolvedBatchSupported(ctx context.Context) bool {
+	if batchProbed.Load() {
+		return batchSupported.Load()
+	}
+
+	version, err := Version(ctx)
+	if err != nil {
+		return false
+	}
+
+	batchSupported.Store(supportsDestroyElement(version))
+	batchProbed.Store(true)
+
+	return batchSupported.Load()
+}
+
+func supportsDestroyElement(version string) bool {
+	field, _, _ := strings.Cut(strings.TrimSpace(version), " ")
+
+	parts := strings.Split(strings.TrimPrefix(field, "v"), ".")
+	if len(parts) < 3 {
+		return false
+	}
+
+	nums := make([]int, 3)
+
+	for i := range nums {
+		n, err := strconv.Atoi(parts[i])
+		if err != nil {
+			return false
+		}
+
+		nums[i] = n
+	}
+
+	if nums[0] != 1 {
+		return nums[0] > 1
+	}
+
+	if nums[1] != 0 {
+		return nums[1] > 0
+	}
+
+	return nums[2] >= 8
 }
