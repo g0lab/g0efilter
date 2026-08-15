@@ -276,11 +276,100 @@ func TestAcceptLoopBacksOffOnPersistentFailure(t *testing.T) {
 	}
 }
 
+type scriptedListener struct {
+	mu        sync.Mutex
+	calls     []time.Time
+	succeedOn int
+	conns     []net.Conn
+	addr      net.Addr
+}
+
+func (l *scriptedListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	l.calls = append(l.calls, time.Now())
+	n := len(l.calls)
+	l.mu.Unlock()
+
+	if n != l.succeedOn {
+		return nil, errFDExhausted
+	}
+
+	client, server := net.Pipe()
+
+	l.mu.Lock()
+	l.conns = append(l.conns, client, server)
+	l.mu.Unlock()
+
+	return server, nil
+}
+
+func (l *scriptedListener) Close() error   { return nil }
+func (l *scriptedListener) Addr() net.Addr { return l.addr }
+
+func (l *scriptedListener) gapAfter(n int) time.Duration {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.calls[n].Sub(l.calls[n-1])
+}
+
+func (l *scriptedListener) attempts() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return len(l.calls)
+}
+
 func TestAcceptLoopResetsBackoffAfterSuccess(t *testing.T) {
 	t.Parallel()
 
-	if nextAcceptBackoff(0) != acceptBackoffMin {
-		t.Fatal("backoff must restart at the minimum after a successful accept")
+	lg, _ := testLogger()
+
+	const (
+		succeedOn = 7
+		total     = 9
+	)
+
+	ln := &scriptedListener{
+		succeedOn: succeedOn,
+		addr:      &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	go func() {
+		for ln.attempts() < total {
+			time.Sleep(time.Millisecond)
+		}
+
+		cancel()
+	}()
+
+	handler := func(conn net.Conn, _ *hostMatcher, _ Options) error {
+		return conn.Close()
+	}
+
+	acceptLoop(ctx, ln, lg, nil, handler, newMatcher(nil), Options{Logger: lg}, "https")
+
+	t.Cleanup(func() {
+		for _, c := range ln.conns {
+			_ = c.Close()
+		}
+	})
+
+	if ln.attempts() < total {
+		t.Fatalf("only %d accept attempts, want %d", ln.attempts(), total)
+	}
+
+	grown := ln.gapAfter(succeedOn - 1)
+	if grown < 4*acceptBackoffMin {
+		t.Fatalf("backoff did not grow across failures: gap was %v", grown)
+	}
+
+	reset := ln.gapAfter(succeedOn + 1)
+	if reset > 20*acceptBackoffMin {
+		t.Errorf("retry %v after a successful accept, want it reset to about %v", reset, acceptBackoffMin)
 	}
 }
 
@@ -501,5 +590,47 @@ func TestServeTCPReleasesThePortBeforeReturning(t *testing.T) {
 		if tcpPortHeld(t, addr) {
 			t.Fatalf("round %d: the port was still held when serveTCP returned", round)
 		}
+	}
+}
+
+type closedListener struct {
+	attempts atomic.Int64
+	addr     net.Addr
+}
+
+func (l *closedListener) Accept() (net.Conn, error) {
+	l.attempts.Add(1)
+
+	return nil, net.ErrClosed
+}
+
+func (l *closedListener) Close() error   { return nil }
+func (l *closedListener) Addr() net.Addr { return l.addr }
+
+func TestAcceptLoopReturnsOnAClosedListener(t *testing.T) {
+	t.Parallel()
+
+	lg, _ := testLogger()
+
+	ln := &closedListener{addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}}
+
+	handler := func(_ net.Conn, _ *hostMatcher, _ Options) error { return nil }
+
+	returned := make(chan struct{})
+
+	go func() {
+		defer close(returned)
+
+		acceptLoop(t.Context(), ln, lg, nil, handler, newMatcher(nil), Options{Logger: lg}, "https")
+	}()
+
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("acceptLoop spun on a dead listener instead of handing back to the supervisor")
+	}
+
+	if got := ln.attempts.Load(); got != 1 {
+		t.Errorf("accept was retried %d times on a closed listener, want 1", got)
 	}
 }

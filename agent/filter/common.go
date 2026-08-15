@@ -769,21 +769,12 @@ func acceptLoop(
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			backoff = nextAcceptBackoff(backoff)
-
-			if logger != nil {
-				logger.Warn("tcp.accept_error", "err", err.Error(), "retry_in", backoff.String())
-			}
-
-			if !sleepCtx(ctx, backoff) {
+			next, retry := handleAcceptError(ctx, logger, err, backoff)
+			if !retry {
 				return
 			}
+
+			backoff = next
 
 			continue
 		}
@@ -792,6 +783,37 @@ func acceptLoop(
 
 		dispatchConn(ctx, sem, conn, handler, allowlist, opts, protocol)
 	}
+}
+
+func handleAcceptError(
+	ctx context.Context,
+	logger *slog.Logger,
+	err error,
+	backoff time.Duration,
+) (time.Duration, bool) {
+	if ctx.Err() != nil {
+		return 0, false
+	}
+
+	if errors.Is(err, net.ErrClosed) {
+		if logger != nil {
+			logger.Warn("tcp.listener_closed", "err", err.Error())
+		}
+
+		return 0, false
+	}
+
+	backoff = nextAcceptBackoff(backoff)
+
+	if logger != nil {
+		logger.Warn("tcp.accept_error", "err", err.Error(), "retry_in", backoff.String())
+	}
+
+	if !sleepCtx(ctx, backoff) {
+		return 0, false
+	}
+
+	return backoff, true
 }
 
 func nextAcceptBackoff(current time.Duration) time.Duration {
