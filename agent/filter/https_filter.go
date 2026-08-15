@@ -233,7 +233,7 @@ func connectAndSpliceHTTPS(conn net.Conn, buf *bytes.Buffer, target string, opts
 	}
 
 	setConnTimeouts(conn, dstConn, opts)
-	bidirectionalCopy(conn, dstConn, buf)
+	bidirectionalCopy(conn, dstConn, buf, opts)
 
 	return nil
 }
