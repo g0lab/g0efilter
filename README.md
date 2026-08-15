@@ -128,7 +128,7 @@ without changing the workload source manifests.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.2
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.3
 ```
 
 That covers Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
