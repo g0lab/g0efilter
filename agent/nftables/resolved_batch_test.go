@@ -196,3 +196,16 @@ func TestResolvedTablePrefixes(t *testing.T) {
 		t.Errorf("got %v, want the bridge table included", got)
 	}
 }
+
+func TestAddResolvedIPsReportsEachInvalidAddressOnce(t *testing.T) {
+	t.Setenv("BRIDGE_INTERFACES", "")
+
+	err := AddResolvedIPs(t.Context(), []string{"not-an-ip"}, time.Minute, nil)
+	if err == nil {
+		t.Fatal("AddResolvedIPs accepted an invalid address")
+	}
+
+	if got := strings.Count(err.Error(), `invalid resolved IP: "not-an-ip"`); got != 1 {
+		t.Errorf("address reported %d times, want 1:\n%v", got, err)
+	}
+}

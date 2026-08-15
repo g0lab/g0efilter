@@ -176,17 +176,17 @@ func AddResolvedIPs(ctx context.Context, ips []string, ttl time.Duration, rules 
 
 	prefixes := resolvedTablePrefixes()
 
-	script, errs := buildResolvedScript(prefixes, ips, ttl, rules)
-	if script != "" && resolvedBatchSupported(ctx) {
-		err := runNftScript(ctx, script)
-		if err == nil {
-			return errors.Join(errs...)
-		}
-
-		errs = append(errs, err)
+	script, validationErrs := buildResolvedScript(prefixes, ips, ttl, rules)
+	if script == "" || !resolvedBatchSupported(ctx) {
+		return errors.Join(addResolvedIndividually(ctx, ips, ttl, rules)...)
 	}
 
-	return errors.Join(append(errs, addResolvedIndividually(ctx, ips, ttl, rules)...)...)
+	err := runNftScript(ctx, script)
+	if err == nil {
+		return errors.Join(validationErrs...)
+	}
+
+	return errors.Join(append([]error{err}, addResolvedIndividually(ctx, ips, ttl, rules)...)...)
 }
 
 func addResolvedIndividually(
