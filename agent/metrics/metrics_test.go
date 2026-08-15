@@ -299,3 +299,42 @@ func TestRecordReloadCountsByResult(t *testing.T) {
 		}
 	}
 }
+
+func TestRecordPanicCountsByComponent(t *testing.T) {
+	t.Parallel()
+
+	m := New()
+
+	m.RecordPanic("dns")
+	m.RecordPanic("dns")
+	m.RecordPanic("https")
+
+	out := render(t, m)
+
+	for _, want := range []string{
+		`g0efilter_panics_total{component="dns"} 2`,
+		`g0efilter_panics_total{component="https"} 1`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestRecordPanicOnNilRegistry(t *testing.T) {
+	t.Parallel()
+
+	var m *Metrics
+
+	m.RecordPanic("dns")
+}
+
+func TestPanicsCounterIsAlwaysExposed(t *testing.T) {
+	t.Parallel()
+
+	out := render(t, New())
+
+	if !strings.Contains(out, "# TYPE g0efilter_panics_total counter") {
+		t.Errorf("the panics counter must be exposed before the first panic:\n%s", out)
+	}
+}

@@ -2,18 +2,29 @@ package filter
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/miekg/dns"
 )
+
+const (
+	dnsStartWait       = 2 * time.Second
+	dnsShutdownTimeout = 5 * time.Second
+)
+
+var errDNSServerExited = errors.New("dns server exited unexpectedly")
 
 // Serve53 starts a DNS proxy server that filters requests based on an allowlist of domains.
 func Serve53(ctx context.Context, allowlist []string, opts Options) error {
@@ -71,49 +82,87 @@ func runDNSServers(
 		)
 	}
 
-	errCh := make(chan error, 2)
+	servers := []*dnsServer{newDNSServer(udpSrv, "udp"), newDNSServer(tcpSrv, "tcp")}
 
-	startUDPServer(udpSrv, errCh, opts)
-	startTCPServer(tcpSrv, errCh, opts)
-
-	go func() {
-		<-ctx.Done()
-		_ = udpSrv.ShutdownContext(ctx)
-		_ = tcpSrv.ShutdownContext(ctx)
-	}()
+	errCh := make(chan error, len(servers))
+	for _, srv := range servers {
+		srv.serve(errCh, opts)
+	}
 
 	select {
 	case <-ctx.Done():
+		stopDNSServers(ctx, servers)
+
 		return nil
-	case err := <-errCh:
-		return err
+	case serveErr := <-errCh:
+		stopDNSServers(ctx, servers)
+
+		return serveErr
 	}
 }
 
-func startUDPServer(udpSrv *dns.Server, errCh chan error, opts Options) {
-	go func() {
-		err := udpSrv.ListenAndServe()
-		if err != nil {
-			if opts.Logger != nil {
-				opts.Logger.Error("dns.listen_udp_error", "addr", opts.ListenAddr, "err", err.Error())
-			}
+type dnsServer struct {
+	srv     *dns.Server
+	proto   string
+	started chan struct{}
+	done    chan struct{}
+}
 
-			errCh <- err
+func newDNSServer(srv *dns.Server, proto string) *dnsServer {
+	server := &dnsServer{
+		srv:     srv,
+		proto:   proto,
+		started: make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+
+	srv.NotifyStartedFunc = func() { close(server.started) }
+
+	return server
+}
+
+func (s *dnsServer) serve(errCh chan<- error, opts Options) {
+	go func() {
+		defer close(s.done)
+
+		err := recovery.Recovered(s.srv.ListenAndServe)
+		if err == nil {
+			err = fmt.Errorf("%w: %s", errDNSServerExited, s.proto)
+		} else if opts.Logger != nil {
+			opts.Logger.Error("dns.listen_"+s.proto+"_error", "addr", opts.ListenAddr, "err", err.Error())
 		}
+
+		errCh <- err
 	}()
 }
 
-func startTCPServer(tcpSrv *dns.Server, errCh chan error, opts Options) {
-	go func() {
-		err := tcpSrv.ListenAndServe()
-		if err != nil {
-			if opts.Logger != nil {
-				opts.Logger.Error("dns.listen_tcp_error", "addr", opts.ListenAddr, "err", err.Error())
-			}
+func (s *dnsServer) stop(ctx context.Context) {
+	select {
+	case <-s.done:
+		return
+	case <-s.started:
+	case <-time.After(dnsStartWait):
+	}
 
-			errCh <- err
-		}
-	}()
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), dnsShutdownTimeout)
+	defer cancel()
+
+	_ = s.srv.ShutdownContext(shutdownCtx)
+
+	select {
+	case <-s.done:
+	case <-shutdownCtx.Done():
+	}
+}
+
+func stopDNSServers(ctx context.Context, servers []*dnsServer) {
+	var wg sync.WaitGroup
+
+	for _, srv := range servers {
+		wg.Go(func() { srv.stop(ctx) })
+	}
+
+	wg.Wait()
 }
 
 type dnsHandler struct {
@@ -227,6 +276,8 @@ func (handler *dnsHandler) sanitizeAndLogQname(
 
 // handle processes incoming DNS requests and enforces the allowlist policy.
 func (handler *dnsHandler) handle(writer dns.ResponseWriter, request *dns.Msg) {
+	defer recovery.Guard(handler.opts.Logger, "dns")
+
 	lg := handler.opts.Logger
 
 	remoteAddr, remotePort := handler.parseRemoteAddr(writer)

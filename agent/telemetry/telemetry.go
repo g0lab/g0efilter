@@ -24,6 +24,7 @@ import (
 	"github.com/g0lab/g0efilter/agent/kubeevents"
 	"github.com/g0lab/g0efilter/agent/metrics"
 	"github.com/g0lab/g0efilter/agent/netutil"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/agent/safeio"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/g0lab/g0efilter/shared/logging"
@@ -118,6 +119,12 @@ func NewFromEnv(
 
 // Handle ships the record to the dashboard and alerts as configured.
 func (s *Shipper) Handle(ctx context.Context, recordTime time.Time, msg string, attrs map[string]any) {
+	if msg == recovery.PanicMessage {
+		s.metrics.RecordPanic(extractStringAttr(attrs, keyComponent))
+
+		return
+	}
+
 	act := extractAction(attrs)
 
 	if s.poster != nil && act != "" {

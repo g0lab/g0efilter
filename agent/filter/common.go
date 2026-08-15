@@ -24,6 +24,7 @@ import (
 	"github.com/g0lab/g0efilter/agent/flow"
 	"github.com/g0lab/g0efilter/agent/netutil"
 	"github.com/g0lab/g0efilter/agent/policy"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"golang.org/x/net/idna"
 	"golang.org/x/sys/unix"
@@ -32,6 +33,9 @@ import (
 const (
 	defaultTTL            = 60              // DNS response TTL in seconds
 	connectionReadTimeout = 5 * time.Second // Timeout for initial connection reads
+
+	acceptBackoffMin = 5 * time.Millisecond
+	acceptBackoffMax = 1 * time.Second
 
 	// Component names for logging.
 	componentHTTPS = "https"
@@ -427,11 +431,12 @@ func setConnTimeouts(conn net.Conn, backend net.Conn, opts Options) {
 // bidirectionalCopy copies data in both directions between connections, using
 // zero-copy splice when possible. One direction runs in the caller's goroutine,
 // so an established connection uses two goroutines rather than three.
-func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
+func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader, opts Options) {
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		defer recovery.Guard(opts.Logger, "copy")
 
 		_, _ = io.Copy(conn, backend)
 		if tc, ok := conn.(*net.TCPConn); ok {
@@ -458,11 +463,12 @@ func bidirectionalCopy(conn net.Conn, backend net.Conn, reader io.Reader) {
 
 // bidirectionalCopyWithBufferedReader copies data in both directions, flushing
 // buffered data then using splice. One direction runs in the caller's goroutine.
-func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bufio.Reader) {
+func bidirectionalCopyWithBufferedReader(conn net.Conn, backend net.Conn, br *bufio.Reader, opts Options) {
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		defer recovery.Guard(opts.Logger, "copy")
 
 		_, _ = io.Copy(conn, backend)
 		if tc, ok := conn.(*net.TCPConn); ok {
@@ -717,8 +723,16 @@ func serveTCP(
 		logger.Info(protocol+".filter_listen", "addr", listenAddr)
 	}
 
+	stopped := make(chan struct{})
+	closed := make(chan struct{})
+
 	go func() {
-		<-ctx.Done()
+		defer close(closed)
+
+		select {
+		case <-ctx.Done():
+		case <-stopped:
+		}
 
 		_ = ln.Close()
 	}()
@@ -730,7 +744,12 @@ func serveTCP(
 		sem = make(chan struct{}, opts.MaxConns)
 	}
 
-	return acceptLoop(ctx, ln, logger, sem, handler, allowlist, opts)
+	acceptLoop(ctx, ln, logger, sem, handler, allowlist, opts, protocol)
+
+	close(stopped)
+	<-closed
+
+	return nil
 }
 
 // acceptLoop accepts connections until the listener closes, dispatching each
@@ -743,43 +762,114 @@ func acceptLoop(
 	handler func(net.Conn, *hostMatcher, Options) error,
 	allowlist *hostMatcher,
 	opts Options,
-) error {
+	protocol string,
+) {
+	backoff := time.Duration(0)
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-				if logger != nil {
-					logger.Warn("tcp.accept_error", "err", err.Error())
-				}
-
-				continue
+			next, retry := handleAcceptError(ctx, logger, err, backoff)
+			if !retry {
+				return
 			}
+
+			backoff = next
+
+			continue
 		}
 
-		dispatchConn(sem, conn, handler, allowlist, opts)
+		backoff = 0
+
+		dispatchConn(ctx, sem, conn, handler, allowlist, opts, protocol)
+	}
+}
+
+func handleAcceptError(
+	ctx context.Context,
+	logger *slog.Logger,
+	err error,
+	backoff time.Duration,
+) (time.Duration, bool) {
+	if ctx.Err() != nil {
+		return 0, false
+	}
+
+	if errors.Is(err, net.ErrClosed) {
+		if logger != nil {
+			logger.Warn("tcp.listener_closed", "err", err.Error())
+		}
+
+		return 0, false
+	}
+
+	backoff = nextAcceptBackoff(backoff)
+
+	if logger != nil {
+		logger.Warn("tcp.accept_error", "err", err.Error(), "retry_in", backoff.String())
+	}
+
+	if !sleepCtx(ctx, backoff) {
+		return 0, false
+	}
+
+	return backoff, true
+}
+
+func nextAcceptBackoff(current time.Duration) time.Duration {
+	if current <= 0 {
+		return acceptBackoffMin
+	}
+
+	next := current * 2
+	if next > acceptBackoffMax {
+		return acceptBackoffMax
+	}
+
+	return next
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 
 // dispatchConn runs handler for conn in a goroutine, respecting the admission
 // semaphore (nil = unlimited). Acquiring before spawning applies backpressure.
 func dispatchConn(
+	ctx context.Context,
 	sem chan struct{},
 	conn net.Conn,
 	handler func(net.Conn, *hostMatcher, Options) error,
 	allowlist *hostMatcher,
 	opts Options,
+	protocol string,
 ) {
 	if sem != nil {
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			_ = conn.Close()
+
+			return
+		}
 	}
 
 	go func() {
+		defer recovery.Guard(opts.Logger, protocol)
+
 		if sem != nil {
 			defer func() { <-sem }()
 		}
+
+		defer func() { _ = conn.Close() }()
 
 		_ = handler(conn, allowlist, opts)
 	}()

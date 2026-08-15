@@ -8,9 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/g0lab/g0efilter/agent/metrics"
+	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/shared/actions"
 	"github.com/rs/zerolog"
 )
@@ -278,5 +281,53 @@ func TestNewFromEnvShipsBlocked(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for shipped payload")
+	}
+}
+
+//nolint:exhaustruct // only the metrics registry participates in this path
+func TestHandleCountsContainedPanics(t *testing.T) {
+	t.Parallel()
+
+	registry := metrics.New()
+	shipper := &Shipper{metrics: registry}
+
+	shipper.Handle(t.Context(), time.Now(), recovery.PanicMessage, map[string]any{
+		keyComponent: "dns",
+		"panic":      "boom",
+	})
+
+	var out strings.Builder
+
+	err := registry.Render(&out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if !strings.Contains(out.String(), `g0efilter_panics_total{component="dns"} 1`) {
+		t.Errorf("a contained panic was not counted:\n%s", out.String())
+	}
+}
+
+//nolint:exhaustruct // only the metrics registry participates in this path
+func TestHandleDoesNotTreatAPanicAsADenial(t *testing.T) {
+	t.Parallel()
+
+	registry := metrics.New()
+	shipper := &Shipper{metrics: registry}
+
+	shipper.Handle(t.Context(), time.Now(), recovery.PanicMessage, map[string]any{
+		keyComponent:     "dns",
+		actions.KeyAlert: true,
+	})
+
+	var out strings.Builder
+
+	err := registry.Render(&out)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	if strings.Contains(out.String(), "g0efilter_denials_total{component=\"dns\"") {
+		t.Errorf("a panic must not be recorded as a policy denial:\n%s", out.String())
 	}
 }

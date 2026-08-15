@@ -660,7 +660,7 @@ func TestBidirectionalCopy(t *testing.T) {
 	done := make(chan bool)
 
 	go func() {
-		bidirectionalCopy(conn1, conn2, reader)
+		bidirectionalCopy(conn1, conn2, reader, Options{})
 
 		done <- true
 	}()
@@ -698,7 +698,7 @@ func TestBidirectionalCopyWithBufferedReader(t *testing.T) {
 	done := make(chan bool)
 
 	go func() {
-		bidirectionalCopyWithBufferedReader(conn1, conn2, br)
+		bidirectionalCopyWithBufferedReader(conn1, conn2, br, Options{})
 
 		done <- true
 	}()

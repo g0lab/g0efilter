@@ -299,7 +299,7 @@ func connectAndSpliceHTTP(
 			}
 		}
 
-		bidirectionalCopyWithBufferedReader(conn, backend, br)
+		bidirectionalCopyWithBufferedReader(conn, backend, br, opts)
 
 		return nil
 	}
