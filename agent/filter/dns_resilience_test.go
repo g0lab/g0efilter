@@ -111,7 +111,8 @@ func TestRunDNSServersReturnsNilOnCancellation(t *testing.T) {
 		returned <- runDNSServers(ctx, udpSrv, tcpSrv, handler.upstreams, opts)
 	}()
 
-	time.Sleep(200 * time.Millisecond)
+	waitFor(t, func() bool { return tcpPortHeld(t, addr) && udpPortHeld(addr) })
+
 	cancel()
 
 	select {

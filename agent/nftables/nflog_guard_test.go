@@ -43,16 +43,18 @@ func TestGuardNflogHookPassesThroughVerdicts(t *testing.T) {
 
 	lg := slog.New(slog.DiscardHandler)
 
+	const verdict = 42
+
 	calls := 0
 	hook := guardNflogHook(lg, func(nflog.Attribute) int {
 		calls++
 
-		return 0
+		return verdict
 	})
 
 	for range 3 {
-		if got := hook(nflog.Attribute{}); got != 0 {
-			t.Errorf("verdict = %d, want 0", got)
+		if got := hook(nflog.Attribute{}); got != verdict {
+			t.Errorf("verdict = %d, want %d", got, verdict)
 		}
 	}
 
