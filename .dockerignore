@@ -1,27 +1,28 @@
 .git/
 .github/
 .vscode/
+.claude/
+.devcontainer/
 .gitignore
 .codecov.yaml
 .golangci.yaml
 .goreleaser.yaml
 
-# Local/dev artifacts
 data/
 **/dist/
 test/
 .trunk/
 .dev/
 
-# The dashboard image rebuilds the UI in a Node stage; keep host artifacts out
-# (generated dist directories are covered above; UI source stays).
+# The dashboard image rebuilds the UI in a Node stage.
 **/node_modules/
 **/.vite/
+**/test-results/
+**/playwright-report/
+**/*.tsbuildinfo
 
-# Env files
 .env
 
-# Go build/test artifacts
 *.exe
 *.dll
 *.so
@@ -33,18 +34,12 @@ coverage.*
 profile.cov
 **/testdata/fuzz/
 
-# Workspace/tooling
 go.work
 go.work.sum
-eslint.config.mjs
 
-# Repo docs and misc files not required for builds
 *.txt
 LICENSE
 README.md
 SECURITY.md
 
 examples/
-
-Dockerfile
-Dockerfile.dashboard

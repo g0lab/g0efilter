@@ -38,6 +38,14 @@ scripts/test-action.sh
 scripts/test-ui.sh
 ```
 
+`scripts/test-go.sh` runs the controller's envtest suite and installs its test
+assets with the module's pinned `setup-envtest` tool. To run only that suite:
+
+```sh
+KUBEBUILDER_ASSETS="$(GOWORK=off go -C controller tool setup-envtest use -p path)" \
+  GOWORK=off go -C controller test ./...
+```
+
 Parser and policy changes should also get a fuzz run. `scripts/test-go.sh` already
 exercises each target's seed corpus; this mutates:
 
@@ -63,6 +71,9 @@ agent or dashboard code. See `tests/e2e/README.md` for modes and suite selection
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.
+
+After changing `controller/api/`, run `scripts/gen-controller.sh` and commit the
+generated deepcopy methods, CRDs, controller RBAC, and Helm CRD templates.
 
 ## Security
 

@@ -23,6 +23,10 @@ scripts/test-ui.sh       # dashboard UI
 scripts/test-fuzz.sh     # every Go fuzz target, FUZZTIME per target
 ```
 
+`scripts/test-go.sh` includes the controller's envtest suite, vet, lint, and a
+generated-file drift check. It installs envtest assets with the module's pinned
+`setup-envtest` tool.
+
 `VERSION` pins the release referenced by every manifest, doc and the injected
 sidecar image. It holds plain SemVer; tags carry a `v`. Change it only with
 `scripts/set-version.sh [X.Y.Z]`, which defaults to the next patch and also bumps
@@ -44,7 +48,8 @@ After changing `controller/api/`, run:
 scripts/gen-controller.sh
 ```
 
-Commit both `controller/api/.../zz_generated.deepcopy.go` and the regenerated CRDs in `deploy/crds/`.
+Commit its generated changes: deepcopy methods, CRDs, controller RBAC, and Helm
+CRD templates.
 
 After frontend changes, run `pnpm build` in `dashboard/ui/`. Do not commit `dist/`.
 
