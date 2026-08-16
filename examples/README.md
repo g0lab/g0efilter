@@ -51,5 +51,5 @@ Other examples:
 
 - [Kubernetes with Kustomize](kubernetes/)
 - [a Helm library-chart consumer](helm/demo/)
-- [rootless Podman Quadlet](podman/)
-- [building the images from source](build/)
+- [rootless Podman with Quadlet](podman/)
+- [building the images from source with Docker or Podman Compose](build/)

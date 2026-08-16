@@ -3,6 +3,9 @@
 g0efilter runs rootless under Podman 5 or later as uid 65534 with
 `CAP_NET_ADMIN` inside the user namespace.
 
+This example uses Quadlet for a systemd-managed service. For a short-lived
+Podman Compose demo that builds the images, see [build from source](../build/).
+
 The example uses DNS-strict mode with Cloudflare's `1.1.1.1` resolver so it does
 not depend on host-specific Podman DNS addresses. Change `DNS_UPSTREAMS` in
 `g0efilter.container` if you use another resolver.

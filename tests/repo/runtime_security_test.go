@@ -64,7 +64,7 @@ func TestComposeImagesAreHardened(t *testing.T) {
 	assertComposeSecurity(t, published["g0efilter"], []string{"NET_ADMIN"})
 	assertComposeSecurity(t, published["g0efilter-dashboard"], nil)
 
-	built := readComposeServices(t, "examples/build/docker-compose-build.yaml")
+	built := readComposeServices(t, "examples/build/compose.yaml")
 	assertComposeSecurity(t, built["g0efilter"], []string{"NET_ADMIN"})
 	assertComposeSecurity(t, built["g0efilter-dashboard"], nil)
 	assertComposeSecurity(t, built["g0efilter-controller"], nil)
