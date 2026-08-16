@@ -22,6 +22,11 @@ jobs:
       id-token: write  # Sign artifacts with Cosign.
       packages: write  # Publish images to GHCR.
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -116,6 +121,11 @@ jobs:
       contents: write  # Add charts to the product release and update GitHub Pages.
       packages: write  # Publish the OCI chart to GHCR.
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -199,6 +209,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - name: Create release app token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3

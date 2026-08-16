@@ -22,6 +22,11 @@ jobs:
     outputs:
       relevant: ${{ steps.paths.outputs.relevant }}
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -51,6 +56,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -86,6 +96,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -459,6 +474,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -528,6 +548,11 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - name: Check results
         env:
           RESULTS: ${{ join(needs.*.result, ',') }}

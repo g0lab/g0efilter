@@ -27,6 +27,11 @@ jobs:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GOWORK: 'off'
     steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
       - name: Create release app token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
