@@ -56,8 +56,8 @@ metrics:
   # Add prometheus.io/* scrape annotations to the pod template.
   annotations: true
 
-# Ship this sidecar's logs to a g0efilter dashboard. The marked connection bypasses
-# filtering, but DNS modes still need the policy to resolve a hostname in `host`.
+# Ship this sidecar's logs to a g0efilter dashboard. The connection and its DNS
+# lookup use marked sockets that bypass filtering.
 dashboard:
   host: ''
   # Read the machine API key from a Secret in the workload's namespace rather than

@@ -155,7 +155,7 @@ type MetricsSpec struct {
 // DashboardSpec points the sidecar at a g0efilter dashboard.
 type DashboardSpec struct {
 	// Host is the dashboard's URL, such as
-	// `http://g0efilter-dashboard.g0efilter-system.svc:8080`. Shipping is off while
+	// `http://g0efilter-dashboard.g0efilter-system.svc:8081`. Shipping is off while
 	// this is empty.
 	// +kubebuilder:validation:MaxLength=253
 	// +optional

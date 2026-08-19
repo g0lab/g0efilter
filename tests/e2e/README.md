@@ -78,10 +78,10 @@ A blocked-traffic assertion requires the request to fail and g0efilter to record
 a matching decision after it began. A failed request alone could be an unrelated
 resolver, container or network failure.
 
-Where a path records no verdict by design - plain dns mode accepts direct-IP
-traffic in the kernel without logging it - use `AssertReachable` and
-`AssertUnreachable`, and pair them with `AssertIPVerdict` where an nflog decision
-does exist.
+Some paths record no verdict by design. Plain DNS mode accepts direct-IP traffic
+in the kernel without logging it. Use `AssertReachable` and `AssertUnreachable`
+for those paths, and pair them with `AssertIPVerdict` where an nflog decision
+exists.
 
 ## Stack reuse
 

@@ -1,7 +1,7 @@
 # Security
 
-This project is maintained on a best-effort basis without response or remediation
-guarantees. That said, I will respond to and fix relevant issues as soon as I can.
+This project is maintained on a best-effort basis. Response and remediation
+times are not guaranteed. I will handle relevant reports as soon as I can.
 
 ## Supported versions
 

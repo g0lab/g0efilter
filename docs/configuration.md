@@ -25,7 +25,7 @@
 | `LOG_LEVEL` | TRACE, DEBUG, INFO, WARN, ERROR | `INFO` |
 | `LOG_FILE` | Optional path for a persistent log file | unset |
 | `DECISION_LOG_FILE` | Optional JSON Lines file containing `ALLOWED`, `BLOCKED`, and `AUDIT` decisions | unset |
-| `BRIDGE_INTERFACES` | Comma-separated bridge names/patterns whose forwarded traffic is filtered, for example `docker0,br-*`. Traffic leaving on a listed bridge is container-to-container, so it is not filtered | unset |
+| `BRIDGE_INTERFACES` | Comma-separated bridge names or patterns whose forwarded egress is filtered, for example `docker0,br-*`. Traffic that stays on a listed bridge is not filtered | unset |
 | `HOSTNAME` | Identifies this instance in shipped logs | unset |
 | `TENANT_ID` | Optional tenant identifier added to netfilter log events | unset |
 | `DASHBOARD_HOST` | Dashboard URL for log shipping | unset |
@@ -56,11 +56,9 @@ the allowlist/denylist variables, `DEFAULT_ACTION`, and `LEARNING_MODE`.
 
 #### Notifications
 
-`NOTIFICATION_URLS` takes one or more
-[shoutrrr](https://shoutrrr.nickfedor.com/) service URLs, separated by
-whitespace. Every service receives each alert; one unreachable service does not
-suppress the others. All of shoutrrr's services work, so see its documentation
-for the URL formats.
+`NOTIFICATION_URLS` takes whitespace-separated
+[shoutrrr](https://shoutrrr.nickfedor.com/) service URLs. Every service receives
+each alert. A failure in one service does not stop the others.
 
 ```sh
 NOTIFICATION_URLS="ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID"
@@ -70,10 +68,9 @@ Whitespace separates URLs, never commas: Telegram lists its `chats` with commas.
 These URLs embed a token, so keep them in a secret store rather than in a
 manifest.
 
-Notification traffic, including its hostname lookup, bypasses the filter, so an
-HTTP-based notification server never needs a policy entry. The bypass rides on
-the injected HTTP client, so `smtp` and `mqtt` dial unmarked and must be
-allowlisted.
+Notification HTTP traffic and its hostname lookup bypass the filter. The `smtp`
+and `mqtt` services do not use that HTTP client, so their destinations must be
+allowed by the policy.
 
 `NOTIFICATION_IGNORE_DOMAINS` is a comma-separated list of blocks that should
 not alert. The block is still enforced and logged.
@@ -89,23 +86,21 @@ not alert. The block is still enforced and logged.
 | `component:dns` | every block reported by that component |
 | `ip-only` | blocks with no hostname, such as raw nflog verdicts |
 
-`local` and `ip-only` quieten a noisy log: IPv6 neighbour discovery alone
-produces a steady stream of `ff02::` blocks.
+`local` and `ip-only` can hide routine local traffic such as IPv6 neighbour
+discovery on `ff02::` addresses.
 
 #### Privileges
 
-The agent runs as uid/gid 65534 (`nobody`) from the first instruction and never
-runs as root. `NET_ADMIN` is the only capability it needs, and it is the only one
-the container should be granted:
+The agent starts and stays at uid/gid 65534. It needs only `NET_ADMIN`:
 
 ```yaml
 cap_drop: [ALL]
 cap_add: [NET_ADMIN]
 ```
 
-`NET_ADMIN` is a file capability on `/app/g0efilter` and `nft`, so no startup
-privilege drop is needed. Both binaries need it because capabilities do not
-survive `execve` into a child process.
+The image sets `NET_ADMIN` as a file capability on `/app/g0efilter` and `nft`.
+Both binaries need it because an executed child does not inherit the parent's
+effective capabilities.
 
 The container must still receive `NET_ADMIN` in its bounding set. Without it the
 kernel fails closed with `exec /app/g0efilter: operation not permitted`.
@@ -114,8 +109,8 @@ kernel fails closed with `exec /app/g0efilter: operation not permitted`.
 `allowPrivilegeEscalation: false` are all supported and recommended. None of them
 interfere with file capabilities.
 
-Because Pod Security `baseline` excludes `NET_ADMIN`, filtered namespaces need
-the `privileged` label.
+Pod Security `baseline` excludes `NET_ADMIN`. A namespace that runs filtered
+pods therefore needs the `privileged` label.
 
 `g0efilter policy [path]` prints the active policy as a Kubernetes ConfigMap,
 validating it first. `POLICY_CONFIGMAP` and `POD_NAMESPACE` set the emitted name and
@@ -159,7 +154,7 @@ that user. The supplied Compose example handles this.
 | `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API (credentials enabled; `*` not allowed). Empty = same-origin only | unset |
 | `DB_PATH` | SQLite file for dashboard state. Mount `/app/data` as a writable volume | `/app/data/dashboard.db` |
 | `EPHEMERAL` | Keep all dashboard state in memory and reset it on restart | `false` |
-| `LOG_RETENTION` | Max persisted log rows before oldest are pruned | `100000` |
+| `LOG_RETENTION` | Target persisted log rows. Pruning runs every 256 inserts, so the count may briefly exceed this value | `100000` |
 | `FLEET_ENABLED` | Enable fleet management (requires persistent storage) | `false` |
 
 #### Dashboard authentication
@@ -213,8 +208,8 @@ credentials.
 #### Fleet management (optional)
 
 Set `FLEET_ENABLED=true` to enable fleet management. It requires persistent
-storage. Clients reconcile through `POST /api/v1/sync`, but g0efilter does not
-yet include a sync client.
+storage. Clients reconcile through `POST /api/v1/sync`. The g0efilter agent does
+not include a sync client.
 
 The dashboard resolves policy from an instance override or its group. Manage
 both in the **Fleet** tab. See [fleet endpoints](endpoints.md#fleet) for the
@@ -222,6 +217,7 @@ protocol.
 
 #### Persistent logs
 
-SQLite stores dashboard state and traffic logs. `LOG_RETENTION` limits log rows.
-Set `EPHEMERAL=true` to keep everything in memory; all state then resets on
-restart and fleet management is unavailable.
+SQLite stores dashboard state and traffic logs. `LOG_RETENTION` sets the target
+row count. The dashboard prunes every 256 inserts. Set `EPHEMERAL=true` to keep
+state in memory and reset it on restart. Fleet management is unavailable in
+ephemeral mode.

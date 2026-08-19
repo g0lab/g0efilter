@@ -85,9 +85,8 @@ and request bodies.
 
 ## Notifications
 
-Alert on blocked egress while the job runs. `notification-urls` takes one or more
-[shoutrrr](https://shoutrrr.nickfedor.com/) URLs, so any service it supports
-works.
+Use `notification-urls` to alert on blocked egress while the job runs. It accepts
+one or more [shoutrrr](https://shoutrrr.nickfedor.com/) URLs.
 
 ```yaml
 - uses: g0lab/g0efilter@v0
@@ -103,10 +102,9 @@ command line where any process on the runner could read it.
 Alerts are titled with `identity`, which defaults to `<owner>/<repo>/<workflow>`.
 Set it when several workflows notify the same channel.
 
-`notification-ignore` defaults to `local`, dropping the multicast, link-local, and
-private-range noise a runner always produces. It also decides what the job summary
-folds away, so it quietens the report even with no `notification-urls` set. Add
-`ip-only` to alert only on domain blocks:
+`notification-ignore` defaults to `local`, which hides multicast, link-local and
+private-range traffic. It also controls which entries the job summary folds
+away, even when notifications are off. Add `ip-only` to keep only domain blocks:
 
 ```yaml
     notification-ignore: |

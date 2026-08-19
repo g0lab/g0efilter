@@ -19,7 +19,7 @@ Set these variables on g0efilter:
 | `UNBLOCK_POLL_INTERVAL` | no | Poll interval; default `10s` |
 
 At startup, `remote_unblock.enabled` confirms that the required settings were
-found. Approved requests are appended to the local policy file.
+found. Queued requests are appended to the local policy file.
 
 ## Reverse proxies
 

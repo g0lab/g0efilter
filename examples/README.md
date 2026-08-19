@@ -33,10 +33,10 @@ Before using this setup outside your machine, replace
 `your-secure-api-key-here` with the same random value in `.env` and
 `.env.dashboard`.
 
-`NOTIFICATION_URLS` goes in `.env` if you enable alerting: the URLs embed a token,
-so keep them out of `docker-compose.yaml` and out of version control. On
-Kubernetes use `notifications.urlsSecret`, and in GitHub Actions a repository
-secret.
+If you enable alerts, put `NOTIFICATION_URLS` in `.env`. The URLs contain tokens,
+so keep them out of `docker-compose.yaml` and version control. Kubernetes
+integrations use a Secret reference. GitHub Actions should use a repository or
+organization secret.
 
 Stop the example:
 
@@ -50,6 +50,6 @@ See [configuration](../docs/configuration.md) and
 Other examples:
 
 - [Kubernetes with Kustomize](kubernetes/)
-- [a Helm library-chart consumer](helm/demo/)
-- [rootless Podman with Quadlet](podman/)
-- [building the images from source with Docker or Podman Compose](build/)
+- [Helm library-chart consumer](helm/demo/)
+- [Rootless Podman with Quadlet](podman/)
+- [Build from source with Docker or Podman Compose](build/)

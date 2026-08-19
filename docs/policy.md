@@ -45,7 +45,7 @@ They are rejected at startup in `dns` mode and permissive configurations
 
 #### Domain entries (dns-strict only)
 
-Allowlist domains take the same syntax, on exact, wildcard and regex patterns:
+Allowlist domains use the same syntax for exact, wildcard and regex patterns:
 
 ```yaml
 allowlist:
@@ -68,8 +68,8 @@ Resolved-IP enforcement has two consequences:
   including other sites served from it.
 - An unconstrained domain or IP entry for the same address takes precedence.
 
-The policy reloads when the file changes. Mount its directory so editors that
-replace files during save do not break reloads:
+The policy reloads when the file changes. Mount its directory because many
+editors replace the file when saving:
 
 ```yaml
 volumes:
@@ -120,8 +120,7 @@ would block. Audit mode does not change the policy file.
 
 ## Decision records
 
-Set `DECISION_LOG_FILE` to retain policy decisions as JSON Lines. This is a
-separate machine-readable record, so allowed decisions are captured even when
-the terminal log level hides them.
+Set `DECISION_LOG_FILE` to write policy decisions as JSON Lines. It includes
+allowed decisions even when the terminal log level hides them.
 
 See [example policies](../examples/policy/) for complete files.

@@ -10,7 +10,7 @@
 > Portions of this project were developed with the assistance of AI tools.
 
 > [!WARNING]
-> g0efilter is in active development and its configuration may change often.
+> g0efilter is in active development. Its configuration is not stable yet.
 
 g0efilter controls network traffic leaving your containers. It runs beside a
 workload and applies IP and domain rules without decrypting TLS traffic.
@@ -23,8 +23,7 @@ workload and applies IP and domain rules without decrypting TLS traffic.
 - Start with either a default-deny allowlist or a default-allow denylist.
 - Test and build policies with audit and learning modes.
 - Reload policies without restarting the container.
-- Use the optional dashboard, remote unblock, and alerts to Gotify, ntfy,
-  Telegram, Slack and every other shoutrrr supported service.
+- Use the optional dashboard, remote unblock, and alerts through shoutrrr.
 - Manage Kubernetes policies and inject sidecars with the optional controller.
 
 ## Quick start
@@ -80,7 +79,7 @@ runs unprivileged with only `NET_ADMIN`.
 
 ## Filter modes
 
-Attached containers share g0efilter's network connection. Allowed IPs and CIDRs
+Attached containers share g0efilter's network namespace. Allowed IPs and CIDRs
 pass through directly. Other traffic is handled by `FILTER_MODE`.
 
 | Mode | Checks domains at | Blocks hardcoded IPs? | Best for |
@@ -96,8 +95,8 @@ ports other than HTTP and HTTPS. It allows IPs learned through approved DNS
 lookups while blocking direct-IP and alternate-DNS bypasses.
 
 > [!NOTE]
-> Attached containers must not use g0efilter's internal HTTP, HTTPS, or DNS
-> ports. The defaults are 65080, 65443, and 65053.
+> Workloads must not listen on g0efilter's internal HTTP, HTTPS, or DNS ports.
+> The defaults are 65080, 65443, and 65053.
 
 ## Policy
 
@@ -122,16 +121,16 @@ configuration.
 
 ## Kubernetes
 
-g0efilter runs as a native sidecar, so it filters the whole pod and the
-application container needs no extra privileges. A Kustomize component can add it
-without changing the workload source manifests.
+g0efilter runs as a sidecar that filters the whole pod. Application containers
+need no extra privileges. A Kustomize component can add the sidecar without
+changing the workload manifests.
 
 ```yaml
 components:
   - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.3
 ```
 
-That covers Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
+The component patches Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
 There is also a Helm library chart for charts you maintain, a Helm post-renderer
 for third-party charts you cannot edit, and a mutating webhook that injects the
 sidecar at admission for pods you do not template at all.
@@ -153,7 +152,7 @@ Certificate Secret access is namespace-scoped and omitted when cert-manager owns
 the certificate. The controller chart can also restrict webhook ingress to explicit
 API-server CIDRs; see [webhook network isolation](docs/kubernetes.md#webhook-network-isolation).
 
-Three charts are published, both as a conventional Helm repository at
+Three charts are published through a Helm repository at
 `https://g0lab.github.io/g0efilter` and as OCI artifacts under
 `oci://ghcr.io/g0lab/helm`:
 
@@ -192,8 +191,8 @@ jobs:
       - uses: actions/checkout@v7
 ```
 
-The loaded allowlist is logged in the workflow, and the job summary reports every
-blocked, audited, and allowed host.
+The workflow logs its allowlist. The job summary lists blocked, audited and
+allowed hosts.
 
 See [GitHub Actions](docs/github-actions.md) for inputs, built-in allow rules,
 the job report, and security limits.
@@ -202,12 +201,13 @@ the job report, and security limits.
 
 [View the live demo](https://g0efilter-demo.g0lab.workers.dev/)
 
-The optional dashboard shows live and saved traffic. Point g0efilter at it with
+The optional dashboard shows live and stored traffic. Point g0efilter at it with
 `DASHBOARD_HOST` and `DASHBOARD_API_KEY`. The dashboard can also manage API keys,
 fleet policy, and remote unblock requests.
 
-Its Helm chart supports externally managed credentials; declare the keys present
-under `secrets.existingSecretKeys` so validation and recovery notes stay accurate.
+Its Helm chart supports externally managed credentials. List the keys in
+`secrets.existingSecretKeys` so the chart can validate the setup and print the
+right recovery notes.
 
 See the [examples](examples/) for a complete setup. See
 [dashboard authentication](docs/configuration.md#dashboard-authentication),

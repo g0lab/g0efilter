@@ -4,30 +4,30 @@ g0efilter runs as a native sidecar. It programs nftables before application
 containers start and filters their shared network namespace. Application
 containers need no extra privileges.
 
-The render-time integrations need no controller, webhook or Service. The optional
-admission integration adds a controller and webhook, but filtering remains local
-to each pod after it starts.
+Render-time integrations need no controller, webhook or Service. Admission
+injection adds a controller and webhook. Filtering still runs inside each pod.
 
 ## Requirements
 
 - g0efilter v0.8.0 or later. Earlier images start as root and drop privileges, so
   they need `SETUID`, `SETGID` and `CHOWN`, and they fail against the
   `runAsNonRoot: true` the packaging here sets.
-- Kubernetes 1.29 or later, for sidecar init containers (`restartPolicy: Always`).
-  GA since 1.33.
+- Kubernetes 1.29 or later. Native sidecars use `restartPolicy: Always` and are
+  stable in Kubernetes 1.33 and later.
 - A namespace that permits `NET_ADMIN`, which means Pod Security `privileged`.
   See [privileges](configuration.md#privileges) for why, and why the sidecar is
   still unprivileged in every other respect.
-- A `g0efilter-policy` ConfigMap in the workload's namespace.
+- A policy ConfigMap in each workload namespace for render-time integrations.
+  The controller creates policy ConfigMaps for admission injection.
 
 ## Choose an integration
 
 | You control | Use | Covers |
 | --- | --- | --- |
 | Plain manifests | [Kustomize component](#kustomize) | Deployment, StatefulSet, DaemonSet, ReplicaSet, Job, CronJob |
-| Your own Helm chart | [Helm library chart](#helm-library-chart) | Any pod template you template yourself |
-| Nothing - a third-party chart | [Helm post-renderer](#helm-post-renderer) | Any chart, no fork and no values contract |
-| Nothing at all, cluster-wide | [Mutating webhook](#mutating-webhook) | Any pod, including ones an operator creates |
+| Your own Helm chart | [Helm library chart](#helm-library-chart) | Any pod template in that chart |
+| A third-party Helm chart | [Helm post-renderer](#helm-post-renderer) | Any rendered pod template, without forking the chart |
+| Cluster admission | [Mutating webhook](#mutating-webhook) | Any selected pod, including pods created by an operator |
 
 The first three render the sidecar without a controller. The webhook uses the
 [`g0efilter-controller` chart](#installing-the-control-plane) or Kustomize
@@ -54,9 +54,9 @@ helm rollback g0efilter <revision> -n g0efilter-system --wait
 ```
 
 With Helm 4, use `helm upgrade --rollback-on-failure`; with Helm 3, use
-`helm upgrade --atomic`. A rollback restores the rendered Kubernetes resources and
-image tags, not application data. The dashboard claim is retained, so back up SQLite
-before an upgrade whose migrations may not be backward-compatible.
+`helm upgrade --atomic`. A rollback restores rendered Kubernetes resources and
+image tags, not application data. The dashboard claim is retained. Back up SQLite
+before an upgrade if its migrations may not work with an older dashboard.
 
 The controller chart manages CRDs as templates, so their schemas also roll back.
 Existing custom resources do not; check compatibility with the older controller
@@ -64,8 +64,8 @@ first.
 
 ### Kustomize
 
-Reference the component from your overlay. It patches every workload kind it
-finds, so nothing in your own manifests mentions g0efilter:
+Reference the component from your overlay. It patches every supported workload
+in the Kustomization:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -77,8 +77,7 @@ components:
   - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.3
 ```
 
-Pin `ref` to a release tag. The component sets the image tag to match, so the
-sidecar version and the component version never drift apart.
+Pin `ref` to a release tag. The component sets the same image tag.
 
 Layer the optional components after `sidecar`:
 
@@ -146,8 +145,8 @@ Then include the sidecar as the **first** init container, and its volume:
 
 Any init container before the sidecar has unfiltered egress.
 
-Override defaults under a `g0efilter` key; anything you leave out comes from the
-library chart's own `values.yaml`:
+Override defaults under `g0efilter`. Unset values come from the library chart's
+`values.yaml`.
 
 When using `dns` or `dns-strict`, set `dns.upstreams` to the cluster DNS Service.
 The agent's `127.0.0.11:53` default is Docker-specific.
@@ -177,9 +176,8 @@ A numeric value left `null` is not rendered, so the agent applies its own defaul
 That distinction matters where `0` means something: `connections.max: 0` is
 unlimited, and `events.maxDenials: 0` records no Events at all.
 
-Values are validated against
-[values.schema.json](../deploy/helm/g0efilter/values.schema.json), so a misspelled
-key or an invalid mode fails the render instead of silently doing nothing.
+[values.schema.json](../deploy/helm/g0efilter/values.schema.json) validates the
+values. A misspelled key or invalid mode fails the render.
 
 If events are enabled, also render the RBAC and mount the token:
 
@@ -226,8 +224,8 @@ helm install g0efilter oci://ghcr.io/g0lab/helm/g0efilter-controller \
   --namespace g0efilter-system --create-namespace
 ```
 
-The controller itself needs no capabilities, so its namespace can run the
-`restricted` Pod Security Standard - unlike a filtered workload's:
+The controller itself needs no capabilities, so its namespace can use the
+`restricted` Pod Security Standard. Filtered workload namespaces cannot:
 
 ```sh
 kubectl label namespace g0efilter-system pod-security.kubernetes.io/enforce=restricted
@@ -240,7 +238,7 @@ kubectl apply --server-side -f deploy/crds/
 kubectl apply -k deploy/webhook            # or deploy/webhook-cert-manager
 ```
 
-The chart's most useful values:
+Key chart values:
 
 | Value | Default | Effect |
 | --- | --- | --- |
@@ -253,8 +251,8 @@ The chart's most useful values:
 | `replicaCount` | `2` | Leader election keeps one replica reconciling; both serve admission. |
 | `metrics.service.enabled` | `false` | Also `metrics.serviceMonitor.enabled` for Prometheus Operator. |
 
-The release namespace is always excluded from injection, so a failing webhook can
-never stop the control plane being rescheduled.
+The release namespace is always excluded from injection. A failing webhook cannot
+stop the control plane from being rescheduled.
 
 #### Writing a policy
 
@@ -293,14 +291,14 @@ kubectl -n tenant-a wait --for=condition=Ready egresspolicy/web --timeout=2m
 Any pod in `tenant-a` labelled `app: web` gets the sidecar and policy volume, with
 the sidecar first in `initContainers`.
 
-The controller renders one ConfigMap per `EgressPolicy`. Admission waits for the
-policy's current generation to be Ready, so a pod is not created with a missing or
-stale policy volume. If a policy update is rejected, existing pods keep enforcing
-the previous ConfigMap while new selected pods are denied until the policy is fixed.
+The controller renders one ConfigMap per `EgressPolicy`. Admission waits until the
+current policy generation is Ready. If an update is rejected, existing pods keep
+the previous ConfigMap and admission rejects new selected pods until the policy is
+fixed.
 
-`ClusterEgressPolicy` provides additive baseline rules. Its `namespaceSelector`
-chooses namespaces, and its rules are merged into every `EgressPolicy` there. It
-cannot remove an allowance from a namespaced policy.
+`ClusterEgressPolicy` adds baseline rules. Its `namespaceSelector` chooses
+namespaces, and the controller merges its rules into each `EgressPolicy` there.
+It cannot remove an allowance from a namespaced policy.
 
 Rules with ports must match the selected sidecar mode. `https` can enforce ports
 on network peers; `dns-strict` can enforce ports on network and domain peers.
@@ -312,8 +310,8 @@ policy not Ready instead of silently widening it.
 `spec.sidecar` tunes webhook injection. Fields are optional; Kustomize and the
 library chart use their own settings.
 
-`mode` and `enforcement` are different axes. `mode` picks the data path that reads a
-destination; `enforcement` decides what happens once a verdict exists.
+`mode` chooses how the agent reads a destination. `enforcement` decides whether a
+denied verdict is blocked or only logged.
 
 | Field | Sets | Notes |
 | --- | --- | --- |
@@ -346,18 +344,18 @@ destination; `enforcement` decides what happens once a verdict exists.
 | `resources` | - | Requests and limits. |
 | `extraEnv` | - | For agent options this API does not model yet. |
 
-The API server must be allowed when Kubernetes Events are enabled. Dashboard,
-remote-unblock, notification, and upstream-DNS connections use marked sockets
-that bypass the packet filter, and their hostname lookups are marked too, so
-they do not need allowlisting in any mode. Notifications only get that bypass
-over HTTP: `smtp` and `mqtt` services dial unmarked and must be allowlisted.
+Allow the API server when Kubernetes Events are enabled. Dashboard,
+remote-unblock, notification HTTP and upstream-DNS connections use marked
+sockets. Their hostname lookups are marked too, so they need no policy rule.
+The `smtp` and `mqtt` notification services dial unmarked and must be allowed.
 
-Credentials use Secret references because `EgressPolicy` is not a Secret. Kubelet
-resolves them in the pod's namespace; the controller never reads them. Notification
-URLs embed an access token, so they are a Secret reference for the same reason:
+Credentials use Secret references because `EgressPolicy` is readable as a custom
+resource. Kubelet resolves them in the pod's namespace, and the controller never
+reads them. Notification URLs also belong in a Secret because they contain access
+tokens.
 
-A literal on the command line lands in shell history and in `ps`, so read the URLs
-from a file instead:
+Read notification URLs from a file. A command-line literal can appear in shell
+history and process listings.
 
 ```sh
 umask 077 && cat > urls <<'EOF'
@@ -429,18 +427,17 @@ That overlay creates a `Certificate`, mounts its Secret, lets cainjector fill th
 not touch either. It also removes the controller's certificate Secret and
 `MutatingWebhookConfiguration` permissions entirely.
 
-Self-signed is the default to avoid making a fail-closed webhook depend on
-cert-manager startup. Use cert-manager when cluster policy requires a managed
-issuer. In self-signed mode, Secret access is held in a namespace-scoped Role;
-the only cluster-scoped certificate permission is `get` and `update` on the
-named `MutatingWebhookConfiguration`.
+Self-signed is the default, so webhook startup does not depend on cert-manager.
+Use cert-manager when cluster policy requires a managed issuer. In self-signed
+mode, a namespace Role controls Secret access. The only cluster-scoped
+certificate permission is `get` and `update` on the named
+`MutatingWebhookConfiguration`.
 
 ### Webhook network isolation
 
-The webhook Service is cluster-internal, but a ClusterIP alone does not prevent
-other pods from connecting to it. The controller only returns admission patches -
-the Kubernetes API server is still the component that applies them - but restricting
-the listener is useful defense in depth.
+The webhook Service is cluster-internal, but other pods can still connect to its
+ClusterIP. The controller returns admission patches and the API server applies
+them. A NetworkPolicy can limit which sources reach the webhook.
 
 API-server source addresses differ between managed clusters, self-hosted control
 planes and CNIs, so the chart cannot safely guess them. After obtaining the source
@@ -453,29 +450,28 @@ networkPolicy:
     - 10.0.0.0/24 # replace with this cluster's API-server source CIDR
 ```
 
-Enabling the policy with an empty CIDR list is rejected. The policy keeps the health
-probe port reachable, opens controller metrics only when its Service is enabled, and
-accepts webhook traffic only from the configured CIDRs. Confirm pod admission before
-rolling it out to every opted-in namespace: with `failurePolicy: Fail`, an incorrect
-CIDR stops new pods in those namespaces.
+The chart rejects an empty CIDR list. The policy keeps the health probe reachable,
+opens controller metrics only when its Service is enabled, and accepts webhook
+traffic only from the configured CIDRs. Test pod admission before a broad rollout.
+With `failurePolicy: Fail`, a wrong CIDR stops new pods in opted-in namespaces.
 
 The Kustomize webhook overlay does not install a guessed NetworkPolicy. Add an
 equivalent cluster-specific policy when using that installation path.
 
-**Opting out.** Set `g0efilter.g0lab.com/inject: "false"` as a pod annotation or label.
-Pods that already carry a `g0efilter` container, and host-network pods, are
-skipped.
+#### Injection rules
 
-**Two policies selecting one pod is rejected.** Each policy renders its own
-ConfigMap, so admission fails rather than guessing. Set the
-`g0efilter.g0lab.com/policy: <name>` annotation on the pod to choose.
+- Set the pod annotation or label `g0efilter.g0lab.com/inject: "false"` to opt
+  out. The webhook also skips host-network pods and pods that already contain a
+  `g0efilter` container.
+- Admission rejects a pod selected by two policies because each policy has its
+  own ConfigMap. Set the pod annotation
+  `g0efilter.g0lab.com/policy: <name>` to choose one.
 
 > [!WARNING]
-> The webhook is configured `failurePolicy: Fail`, so it fails closed: if the
-> controller is unreachable, pod creation in opted-in namespaces stops rather
-> than admitting unfiltered pods. `g0efilter-system` and `kube-system` are
-> excluded so the controller itself can always be rescheduled. Switch to
-> `Ignore` only if availability matters more than the guarantee.
+> The default `failurePolicy: Fail` stops pod creation in opted-in namespaces
+> when the controller is unreachable. It does not admit an unfiltered pod.
+> The chart excludes its release namespace and `kube-system`. Use `Ignore` only
+> if pod availability matters more than fail-closed admission.
 
 ### Denial visibility
 
@@ -491,9 +487,8 @@ This grants the workload ServiceAccount `create` on Events in its namespace and
 mounts its token. The add-on binds `default`; patch the RoleBinding for another
 ServiceAccount.
 
-**Allow the API server in the policy.** The sidecar's own egress is filtered by the
-policy it enforces, so without a rule for the Kubernetes Service it blocks its own
-Event reports and nothing appears on the pod:
+The policy must allow the Kubernetes API server. Event requests use the
+workload's normal network path, so the sidecar otherwise blocks its own reports:
 
 ```sh
 kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterIP}'
@@ -521,14 +516,14 @@ g0efilter_policy_reloads_total{result}
 g0efilter_panics_total{component}
 ```
 
-Metrics never label by destination. Label combinations are capped and overflow is
-folded into `reason="other"`.
+Metrics never use destinations as labels. Label combinations are capped, and
+extra combinations use `reason="other"`.
 
 `g0efilter_panics_total` counts panics the agent contained. The
 agent recovers these so a single connection, query or packet fails instead of the
 process, which would take filtering away from the whole pod. It should stay at
-zero; any increase is a defect worth reporting, and the matching
-`panic.recovered` log record carries the stack trace.
+zero. An increase is a defect worth reporting. The matching `panic.recovered`
+log record contains the stack trace.
 
 The controller exposes its own metrics on 8080. Enable
 `metrics.service.enabled` in the controller chart, and
@@ -547,20 +542,30 @@ SQLite limits the chart to one replica with a `Recreate` strategy and
 `ReadWriteOnce` claim. The retained claim survives uninstall. For an in-memory
 install, set `ephemeral: true` and `persistence.enabled: false`.
 
-By default the dashboard generates an admin password and a machine API key on first
-start and prints each once:
+On first start, the dashboard generates an admin password and machine API key. It
+prints each credential once:
 
 ```sh
-kubectl -n g0efilter-system logs deploy/g0efilter-dashboard | grep -iE 'password|api key'
+kubectl -n g0efilter-system logs deploy/g0efilter-dashboard | grep 'dashboard.bootstrap_'
 ```
 
-Supply them yourself with a Secret you manage, which keeps them out of the Helm
-release:
+To supply both credentials without storing them in the Helm release, create a
+Secret from files:
 
-```sh
+```bash
+umask 077
+G0EFILTER_CREDENTIAL_DIR="$(mktemp -d)"
+trap 'rm -r "$G0EFILTER_CREDENTIAL_DIR"' EXIT
+openssl rand -hex 32 > "$G0EFILTER_CREDENTIAL_DIR/api-key"
+read -rsp 'Admin password: ' G0EFILTER_ADMIN_PASSWORD
+printf '\n'
+printf '%s' "$G0EFILTER_ADMIN_PASSWORD" | \
+  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.3 hash-password \
+  > "$G0EFILTER_CREDENTIAL_DIR/admin-password-hash"
+unset G0EFILTER_ADMIN_PASSWORD
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
-  --from-literal=api-key="$(openssl rand -hex 32)" \
-  --from-literal=admin-password-hash="$(docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.3 hash-password)"
+  --from-file=api-key="$G0EFILTER_CREDENTIAL_DIR/api-key" \
+  --from-file=admin-password-hash="$G0EFILTER_CREDENTIAL_DIR/admin-password-hash"
 ```
 
 ```yaml
@@ -586,8 +591,8 @@ spec:
         key: api-key
 ```
 
-In `dns` and `dns-strict` modes, also allow the dashboard hostname so the DNS
-proxy resolves it. The marked dashboard connection itself bypasses filtering.
+Dashboard connections and their DNS lookups use marked sockets, so they need no
+policy rule.
 
 `auth.mode` defaults to `session`. Use `none` only behind an authenticating proxy;
 `forward` and `jwt` delegate authentication. See
@@ -606,7 +611,7 @@ components:
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.
 
-Exercise the workload, then turn what it learned into something committable:
+Exercise the workload, then export the learned policy:
 
 ```sh
 kubectl -n <ns> exec <pod> -c g0efilter -- /app/g0efilter policy > policy.yaml
@@ -642,16 +647,16 @@ data:
 Edit the ConfigMap and g0efilter reloads it in place; no pod restart is needed.
 See [policy.md](policy.md) for the full schema.
 
-Kubelet may take a minute or two to refresh the mount. The sidecar's five-second
-check and `SIGHUP` cannot see an update before kubelet writes it.
+Kubelet may take a minute or two to refresh the mount. The sidecar checks every
+five seconds, but it cannot reload content before kubelet writes it. `SIGHUP` has
+the same limit.
 
-A policy the agent refuses to load leaves the previous one in force rather than
-opening egress. That shows up as a `PolicyReloadFailed` Event on the pod when
-`events` are enabled, and as `g0efilter_policy_reloads_total{result="failure"}`.
+If the agent rejects a changed policy, it keeps enforcing the previous one. With
+Events enabled, the pod gets a `PolicyReloadFailed` Event. Metrics record
+`g0efilter_policy_reloads_total{result="failure"}`.
 
-**Allow cluster DNS in `https` mode.** Its default-deny packet filter otherwise
-blocks the workload's resolver, so every request looks blocked for reasons
-unrelated to domain rules:
+In `https` mode, allow the cluster DNS Service. Otherwise the default-deny packet
+filter blocks the workload's resolver:
 
 ```sh
 kubectl -n kube-system get svc -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.clusterIP}'
@@ -660,9 +665,9 @@ kubectl -n kube-system get svc -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.
 In `dns` and `dns-strict` modes, configure that address as `DNS_UPSTREAMS`
 instead. The DNS proxy's marked upstream connection does not need a policy rule.
 
-In `https` mode only ports 80 and 443 are matched by domain. Anything else must be
-allowed by IP or CIDR - including in-cluster traffic to other Services, which
-NetworkPolicy can then narrow further.
+In `https` mode, domain rules match only ports 80 and 443. Allow other traffic by
+IP or CIDR. This includes traffic to in-cluster Services, which NetworkPolicy can
+narrow further.
 
 ## Verify
 
@@ -680,9 +685,10 @@ kubectl -n <ns> exec <pod> -c app -- curl -fsS --max-time 5 https://example.org
 
 ## Troubleshooting
 
-**`exec /app/g0efilter: operation not permitted`, and the pod never starts.**
+### The pod fails with `operation not permitted`
+
 The container lacks `NET_ADMIN`, so the kernel rejects its file capabilities.
-Add the capability:
+Add it:
 
 ```yaml
 securityContext:
@@ -691,10 +697,12 @@ securityContext:
     add: [NET_ADMIN]
 ```
 
-**Everything is blocked, including things you allowed.** Check that `https` mode
-allows the kube-dns ClusterIP, or that a DNS mode sets `DNS_UPSTREAMS` to it.
+### Everything is blocked
 
-**Check a pod's privileges directly:**
+Check that `https` mode allows the kube-dns ClusterIP. In a DNS mode, check that
+`DNS_UPSTREAMS` points to that address.
+
+Check a pod's privileges directly:
 
 ```sh
 kubectl -n <ns> exec <pod> -c g0efilter -- /app/g0efilter caps
@@ -702,8 +710,9 @@ kubectl -n <ns> exec <pod> -c g0efilter -- /app/g0efilter caps
 
 It checks capabilities and child `nft` netlink access.
 
-**A pod is running but unfiltered.** Confirm the sidecar is the first entry in
-`initContainers`:
+### A pod is running but unfiltered
+
+Confirm the sidecar is the first entry in `initContainers`:
 
 ```sh
 kubectl -n <ns> get pod <pod> -o jsonpath='{.spec.initContainers[*].name}'
