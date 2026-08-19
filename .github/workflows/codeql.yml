@@ -62,12 +62,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.26.6'
-          cache: true
-          cache-dependency-path: |
-            agent/go.sum
-            controller/go.sum
-            dashboard/go.sum
-            shared/go.sum
+          cache: false
 
       - name: Set up pnpm
         if: matrix.language == 'go'
@@ -96,12 +91,14 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      # jwx v4 imports encoding/json/v2, so every module needs GOEXPERIMENT=jsonv2.
+      # CodeQL only extracts packages it sees compiled, so a warm build cache
+      # yields an empty database. jwx v4 needs GOEXPERIMENT=jsonv2 to build.
       - name: Build Go modules
         if: matrix.build-mode == 'manual'
         run: |
+          go clean -cache
           for module in shared agent dashboard controller; do
-            go -C "$module" build ./...
+            (cd "$module" && go build -v ./...)
           done
 
       - name: Perform CodeQL Analysis
