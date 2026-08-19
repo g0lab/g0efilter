@@ -8,7 +8,7 @@
 # Helm pipes the rendered manifests in on stdin and expects the result on stdout.
 # Point G0EFILTER_COMPONENT at a pinned remote ref to use this outside this repo:
 #
-#   G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.3'
+#   G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.4'
 #
 # The workload namespace still needs a g0efilter-policy ConfigMap and Pod Security
 # `privileged`, exactly as with the Kustomize component.
