@@ -8,10 +8,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jwx-go/jwkfetch/v4"
 	"github.com/lestrrat-go/httprc/v3"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // AuthModeJWT validates a bearer JWT (OIDC/SSO). Reserved for tokens issued by
@@ -85,9 +86,7 @@ func (s *Server) setupJWT(ctx context.Context, cfg Config) error {
 			return "", false
 		}
 
-		var principal string
-
-		gerr := tok.Get(claim, &principal)
+		principal, gerr := jwt.Get[string](tok, claim)
 		if gerr != nil || principal == "" {
 			s.logger.Debug("auth.jwt_missing_claim", "remote", clientIP(r), "claim", claim)
 
@@ -144,7 +143,7 @@ func pemKeyOption(pemOrPath string) (jwt.ParseOption, error) {
 		data = b
 	}
 
-	key, err := jwk.ParseKey(data, jwk.WithPEM(true))
+	key, err := jwk.ParseKey(data, jwk.WithX509(true))
 	if err != nil {
 		return nil, fmt.Errorf("parse JWT_PUBLIC_KEY: %w", err)
 	}
@@ -220,7 +219,7 @@ var (
 //
 //nolint:ireturn // jwt.ParseOption is the library's key-injection type
 func jwksKeyOption(ctx context.Context, url string) (jwt.ParseOption, error) {
-	cache, err := jwk.NewCache(ctx, httprc.NewClient())
+	cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
 	if err != nil {
 		return nil, fmt.Errorf("jwks cache: %w", err)
 	}

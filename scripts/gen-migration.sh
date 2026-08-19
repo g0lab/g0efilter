@@ -6,6 +6,7 @@
 # migrations, writing a new timestamped .sql file (+ updating atlas.sum).
 # Pure Go - no atlas binary required.
 set -euo pipefail
+export GOEXPERIMENT=jsonv2
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT/dashboard"
 

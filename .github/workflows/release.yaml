@@ -16,6 +16,7 @@ jobs:
     environment: dockerhub
     timeout-minutes: 30
     env:
+      GOEXPERIMENT: jsonv2
       GOWORK: 'off'
     permissions:
       contents: write  # Publish the release.

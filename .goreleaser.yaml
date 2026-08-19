@@ -34,7 +34,7 @@ builds:
     dir: ./dashboard
     main: .
     binary: g0efilter-dashboard
-    env: ['CGO_ENABLED=0', 'GOWORK=off']
+    env: ['CGO_ENABLED=0', 'GOEXPERIMENT=jsonv2', 'GOWORK=off']
     goos: [linux]
     goarch: [amd64, arm64]
     flags: ['-trimpath']
