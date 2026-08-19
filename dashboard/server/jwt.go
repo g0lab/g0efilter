@@ -7,18 +7,23 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/jwx-go/jwkfetch/v4"
 	"github.com/lestrrat-go/httprc/v3"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 // AuthModeJWT validates a bearer JWT (OIDC/SSO). Reserved for tokens issued by
 // an external IdP; see setupJWT for the supported key sources.
 const AuthModeJWT = "jwt"
 
-const defaultJWTUsernameClaim = "sub"
+const (
+	defaultJWTUsernameClaim  = "sub"
+	jwksCacheShutdownTimeout = 5 * time.Second
+)
 
 var (
 	errJWTNoKeySource = errors.New(
@@ -45,10 +50,12 @@ func (s *Server) setupJWT(ctx context.Context, cfg Config) error {
 		return errJWTMultiKeySource
 	}
 
-	keyOpt, err := jwtKeyOption(ctx, cfg)
+	keyOpt, cache, err := jwtKeyOption(ctx, cfg)
 	if err != nil {
 		return err
 	}
+
+	s.jwksCache = cache
 
 	claim := cfg.JWTUsernameClaim
 	if claim == "" {
@@ -85,9 +92,7 @@ func (s *Server) setupJWT(ctx context.Context, cfg Config) error {
 			return "", false
 		}
 
-		var principal string
-
-		gerr := tok.Get(claim, &principal)
+		principal, gerr := jwt.Get[string](tok, claim)
 		if gerr != nil || principal == "" {
 			s.logger.Debug("auth.jwt_missing_claim", "remote", clientIP(r), "claim", claim)
 
@@ -116,13 +121,15 @@ func countTrue(bs ...bool) int {
 // jwtKeyOption returns the jwt.ParseOption carrying the verification key(s).
 //
 //nolint:ireturn // jwt.ParseOption is the library's key-injection type
-func jwtKeyOption(ctx context.Context, cfg Config) (jwt.ParseOption, error) {
+func jwtKeyOption(ctx context.Context, cfg Config) (jwt.ParseOption, *jwkfetch.Cache, error) {
 	switch {
 	case cfg.JWTSecret != "":
-		return jwt.WithKey(jwa.HS256(), []byte(cfg.JWTSecret)), nil
+		return jwt.WithKey(jwa.HS256(), []byte(cfg.JWTSecret)), nil, nil
 
 	case cfg.JWTPublicKeyPEM != "":
-		return pemKeyOption(cfg.JWTPublicKeyPEM)
+		opt, err := pemKeyOption(cfg.JWTPublicKeyPEM)
+
+		return opt, nil, err
 
 	default:
 		return jwksKeyOption(ctx, cfg.JWKSURL)
@@ -144,7 +151,7 @@ func pemKeyOption(pemOrPath string) (jwt.ParseOption, error) {
 		data = b
 	}
 
-	key, err := jwk.ParseKey(data, jwk.WithPEM(true))
+	key, err := jwk.ParseKey(data, jwk.WithX509(true))
 	if err != nil {
 		return nil, fmt.Errorf("parse JWT_PUBLIC_KEY: %w", err)
 	}
@@ -219,29 +226,64 @@ var (
 // its Cache-Control advertises. Fails startup if the set is unreachable.
 //
 //nolint:ireturn // jwt.ParseOption is the library's key-injection type
-func jwksKeyOption(ctx context.Context, url string) (jwt.ParseOption, error) {
-	cache, err := jwk.NewCache(ctx, httprc.NewClient())
+func jwksKeyOption(ctx context.Context, url string) (jwt.ParseOption, *jwkfetch.Cache, error) {
+	cache, err := jwkfetch.NewCache(ctx, httprc.NewClient())
 	if err != nil {
-		return nil, fmt.Errorf("jwks cache: %w", err)
+		return nil, nil, fmt.Errorf("jwks cache: %w", err)
 	}
 
 	err = cache.Register(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("register jwks %s: %w", url, err)
+		setupErr := fmt.Errorf("register jwks %s: %w", url, err)
+
+		return nil, nil, cleanupFailedJWKSSetup(ctx, cache, setupErr)
 	}
 
 	// Prime once so an unreachable/invalid endpoint fails at startup.
 	_, err = cache.Lookup(ctx, url)
 	if err != nil {
-		return nil, fmt.Errorf("fetch jwks %s: %w", url, err)
+		setupErr := fmt.Errorf("fetch jwks %s: %w", url, err)
+
+		return nil, nil, cleanupFailedJWKSSetup(ctx, cache, setupErr)
 	}
 
 	cached, err := cache.CachedSet(url)
 	if err != nil {
-		return nil, fmt.Errorf("jwks cached set: %w", err)
+		setupErr := fmt.Errorf("jwks cached set: %w", err)
+
+		return nil, nil, cleanupFailedJWKSSetup(ctx, cache, setupErr)
 	}
 
-	return jwt.WithKeySet(cached), nil
+	return jwt.WithKeySet(cached), cache, nil
+}
+
+func cleanupFailedJWKSSetup(ctx context.Context, cache *jwkfetch.Cache, setupErr error) error {
+	shutdownErr := shutdownJWKSCache(ctx, cache)
+	if shutdownErr != nil {
+		return errors.Join(setupErr, shutdownErr)
+	}
+
+	return setupErr
+}
+
+func (s *Server) shutdownJWKSCache(ctx context.Context) error {
+	cache := s.jwksCache
+	s.jwksCache = nil
+
+	return shutdownJWKSCache(ctx, cache)
+}
+
+func shutdownJWKSCache(ctx context.Context, cache *jwkfetch.Cache) error {
+	if cache == nil {
+		return nil
+	}
+
+	err := cache.Shutdown(ctx)
+	if err != nil {
+		return fmt.Errorf("shutdown jwks cache: %w", err)
+	}
+
+	return nil
 }
 
 // tokenFromRequest pulls a JWT from the Authorization header or a "jwt" cookie.

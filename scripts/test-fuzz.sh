@@ -6,6 +6,7 @@
 #   FUZZTIME=5m scripts/test-fuzz.sh         # longer campaign
 #   FUZZTIME=2m scripts/test-fuzz.sh filter  # only packages matching "filter"
 set -euo pipefail
+export GOEXPERIMENT=jsonv2
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 

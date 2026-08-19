@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/lestrrat-go/jwx/v4/jwa"
+	"github.com/lestrrat-go/jwx/v4/jwt"
 )
 
 const jwtTestSecret = "test-signing-secret-please-change"
@@ -157,5 +157,35 @@ func TestJWTMode_SetupValidation(t *testing.T) {
 	})
 	if multi == nil {
 		t.Fatal("want error with multiple key sources")
+	}
+}
+
+func TestJWTMode_JWKSCacheShutdown(t *testing.T) {
+	t.Parallel()
+
+	jwks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"keys":[]}`))
+	}))
+	defer jwks.Close()
+
+	srv := newServer(slog.New(slog.DiscardHandler), Config{AuthMode: AuthModeJWT})
+
+	err := srv.setupJWT(context.Background(), Config{AuthMode: AuthModeJWT, JWKSURL: jwks.URL})
+	if err != nil {
+		t.Fatalf("setupJWT: %v", err)
+	}
+
+	if srv.jwksCache == nil {
+		t.Fatal("JWKS cache was not retained")
+	}
+
+	err = srv.shutdownJWKSCache(context.Background())
+	if err != nil {
+		t.Fatalf("shutdown JWKS cache: %v", err)
+	}
+
+	if srv.jwksCache != nil {
+		t.Fatal("JWKS cache was not released")
 	}
 }

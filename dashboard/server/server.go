@@ -17,6 +17,7 @@ import (
 	"github.com/g0lab/g0efilter/dashboard/model"
 	"github.com/g0lab/g0efilter/shared/logging"
 	"github.com/gin-gonic/gin"
+	"github.com/jwx-go/jwkfetch/v4"
 )
 
 const (
@@ -100,6 +101,7 @@ type Server struct {
 	// jwtVerify resolves a request to a principal in jwt mode; built at
 	// startup by setupJWT so key/JWKS errors fail closed before serving.
 	jwtVerify func(r *http.Request) (principal string, ok bool)
+	jwksCache *jwkfetch.Cache
 
 	corsOrigins       []string
 	trustedProxyCIDRs []string
@@ -166,6 +168,16 @@ func Run(ctx context.Context, cfg Config) error {
 
 		return err
 	}
+	//nolint:contextcheck // Cache shutdown must outlive the cancelled server context.
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), jwksCacheShutdownTimeout)
+		defer cancel()
+
+		shutdownErr := srv.shutdownJWKSCache(shutdownCtx)
+		if shutdownErr != nil {
+			lg.Error("dashboard.jwks_cache_shutdown_failed", "error", shutdownErr.Error())
+		}
+	}()
 
 	go srv.sessionGCLoop(ctx)
 

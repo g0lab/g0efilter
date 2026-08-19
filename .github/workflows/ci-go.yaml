@@ -21,6 +21,7 @@ concurrency:
 
 env:
   GOLANGCI_LINT_VERSION: latest
+  GOEXPERIMENT: jsonv2
   GOWORK: 'off'
 
 jobs:
