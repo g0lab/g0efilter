@@ -1,0 +1,110 @@
+---
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+  schedule:
+    - cron: '10 1 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOEXPERIMENT: jsonv2
+  GOWORK: 'off'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.6'
+          cache: true
+          cache-dependency-path: |
+            agent/go.sum
+            controller/go.sum
+            dashboard/go.sum
+            shared/go.sum
+
+      - name: Set up pnpm
+        if: matrix.language == 'go'
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          package_json_file: dashboard/ui/package.json
+
+      - name: Set up Node
+        if: matrix.language == 'go'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
+
+      # The dashboard binary embeds dashboard/ui/dist, which is not committed.
+      - name: Build dashboard UI
+        if: matrix.language == 'go'
+        run: |
+          pnpm --dir dashboard/ui install --frozen-lockfile
+          pnpm --dir dashboard/ui build
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # jwx v4 imports encoding/json/v2, so every module needs GOEXPERIMENT=jsonv2.
+      - name: Build Go modules
+        if: matrix.build-mode == 'manual'
+        run: |
+          for module in shared agent dashboard controller; do
+            go -C "$module" build ./...
+          done
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          category: "/language:${{ matrix.language }}"
