@@ -18,7 +18,6 @@ func portConstraintConfig(mode string) RulesetConfig {
 		"2606:4700:4700::64",
 	})
 
-	//nolint:exhaustruct
 	return RulesetConfig{
 		AllowV4:     v4,
 		AllowV6:     v6,
@@ -102,7 +101,6 @@ func TestApplyPolicyRulesRejectsUnenforceablePortConstraint(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("FILTER_MODE", tt.mode)
 
-			//nolint:exhaustruct
 			err := ApplyPolicyRulesWithContext(
 				context.Background(),
 				PolicyRules{AllowIPs: []string{"tcp/1.2.3.4:3389"}, DefaultAllow: tt.defaultAllow},

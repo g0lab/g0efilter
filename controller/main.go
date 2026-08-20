@@ -121,7 +121,6 @@ func newScheme() (*runtime.Scheme, error) {
 }
 
 func run(opts options) error {
-	//nolint:exhaustruct // zap defaults are appropriate for a controller
 	ctrl.SetLogger(zap.New(zap.UseDevMode(false)))
 
 	logger := ctrl.Log.WithName("setup")
@@ -131,14 +130,13 @@ func run(opts options) error {
 		return err
 	}
 
-	//nolint:exhaustruct // only the options this manager sets
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: opts.metricsAddr}, //nolint:exhaustruct // address only
+		Metrics:                metricsserver.Options{BindAddress: opts.metricsAddr},
 		HealthProbeBindAddress: opts.probeAddr,
 		LeaderElection:         opts.leaderElect,
 		LeaderElectionID:       "g0efilter-controller.g0efilter.g0lab.com",
-		WebhookServer: webhookserver.NewServer(webhookserver.Options{ //nolint:exhaustruct // port and cert dir only
+		WebhookServer: webhookserver.NewServer(webhookserver.Options{
 			Port:    opts.webhookPort,
 			CertDir: opts.certDir,
 		}),
@@ -159,7 +157,23 @@ func run(opts options) error {
 		return fmt.Errorf("set up the EgressPolicy controller: %w", err)
 	}
 
-	err = mgr.AddHealthzCheck("healthz", healthz.Ping)
+	err = addChecks(mgr, opts)
+	if err != nil {
+		return err
+	}
+
+	logger.Info("starting", "version", version, "commit", commit, "date", date)
+
+	err = mgr.Start(ctrl.SetupSignalHandler())
+	if err != nil {
+		return fmt.Errorf("run manager: %w", err)
+	}
+
+	return nil
+}
+
+func addChecks(mgr ctrl.Manager, opts options) error {
+	err := mgr.AddHealthzCheck("healthz", healthz.Ping)
 	if err != nil {
 		return fmt.Errorf("add health check: %w", err)
 	}
@@ -174,13 +188,6 @@ func run(opts options) error {
 		if err != nil {
 			return fmt.Errorf("add webhook ready check: %w", err)
 		}
-	}
-
-	logger.Info("starting", "version", version, "commit", commit, "date", date)
-
-	err = mgr.Start(ctrl.SetupSignalHandler())
-	if err != nil {
-		return fmt.Errorf("run manager: %w", err)
 	}
 
 	return nil
@@ -201,7 +208,7 @@ func namespace() (string, error) {
 func certOptions(opts options) (certs.Options, error) {
 	ns, err := namespace()
 	if err != nil {
-		return certs.Options{}, err //nolint:exhaustruct // the error is the result
+		return certs.Options{}, err
 	}
 
 	return certs.Options{
@@ -235,7 +242,7 @@ func setupCertificates(mgr ctrl.Manager, opts options) error {
 		return err
 	}
 
-	direct, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme}) //nolint:exhaustruct // scheme only
+	direct, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
 	if err != nil {
 		return fmt.Errorf("create a client for certificate setup: %w", err)
 	}
@@ -271,7 +278,6 @@ func startWebhook(mgr ctrl.Manager, opts options) error {
 		Defaults: g0webhook.Defaults{Image: opts.sidecarImage},
 	}
 
-	//nolint:exhaustruct // handler only
 	mgr.GetWebhookServer().Register(webhookPath, &admission.Webhook{Handler: injector})
 
 	return nil

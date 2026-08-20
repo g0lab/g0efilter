@@ -226,7 +226,7 @@ allowlist:
 		s.AssertReachable(t, "https://1.1.1.1")
 	})
 
-	t.Run("removing the IP allowlist switches the behaviour off", func(t *testing.T) {
+	t.Run("removing the IP allowlist switches the behavior off", func(t *testing.T) {
 		s.WritePolicyAndWait(t, `---
 allowlist:
   domains:

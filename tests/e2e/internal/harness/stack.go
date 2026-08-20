@@ -60,7 +60,7 @@ type Stack struct {
 	shared        bool
 	ownsPolicyDir bool
 
-	// mu serialises tests that share this stack. Two tests writing different
+	// mu serializes tests that share this stack. Two tests writing different
 	// policies to one agent would silently invalidate each other, so sharing and
 	// parallelism are reconciled by handing the stack to one test at a time.
 	mu sync.Mutex

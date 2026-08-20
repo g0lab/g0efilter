@@ -121,7 +121,7 @@ func (s *Server) ensureAPIKeys(ctx context.Context) error {
 	return nil
 }
 
-// sessionGCLoop prunes expired sessions until ctx is cancelled.
+// sessionGCLoop prunes expired sessions until ctx is canceled.
 func (s *Server) sessionGCLoop(ctx context.Context) {
 	t := time.NewTicker(sessionGCInterval)
 	defer t.Stop()

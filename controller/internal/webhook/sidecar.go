@@ -124,7 +124,6 @@ func orPullPolicy(value corev1.PullPolicy) corev1.PullPolicy {
 }
 
 func defaultResources() corev1.ResourceRequirements {
-	//nolint:exhaustruct // Claims are not used
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    resource.MustParse("25m"),
@@ -145,7 +144,6 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 	readOnlyRoot := true
 	noEscalation := false
 
-	//nolint:exhaustruct // only the fields the sidecar sets
 	sidecar := corev1.Container{
 		Name:            ContainerName,
 		Image:           settings.image,
@@ -153,7 +151,7 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 		// Native sidecar: nftables is programmed before the app container starts.
 		RestartPolicy: restartAlways(),
 		Env:           env(settings, configMapName),
-		SecurityContext: &corev1.SecurityContext{ //nolint:exhaustruct // only what is set
+		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             &nonRoot,
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
@@ -166,7 +164,7 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 				Add: []corev1.Capability{"NET_ADMIN"},
 			},
 		},
-		VolumeMounts: []corev1.VolumeMount{{ //nolint:exhaustruct // name, path and mode only
+		VolumeMounts: []corev1.VolumeMount{{
 			Name:      VolumeName,
 			MountPath: policyMountPath,
 			ReadOnly:  true,
@@ -175,7 +173,7 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 	}
 
 	if settings.metrics {
-		sidecar.Ports = []corev1.ContainerPort{{ //nolint:exhaustruct // name, port and protocol only
+		sidecar.Ports = []corev1.ContainerPort{{
 			Name:          "metrics",
 			ContainerPort: settings.metricsPort,
 			Protocol:      corev1.ProtocolTCP,
@@ -186,7 +184,6 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 }
 
 func seccompRuntimeDefault() *corev1.SeccompProfile {
-	//nolint:exhaustruct // type only
 	return &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault}
 }
 
@@ -357,7 +354,7 @@ func fieldRef(name, path string) corev1.EnvVar {
 	return corev1.EnvVar{
 		Name:  name,
 		Value: "",
-		ValueFrom: &corev1.EnvVarSource{ //nolint:exhaustruct // field reference only
+		ValueFrom: &corev1.EnvVarSource{
 			FieldRef: &corev1.ObjectFieldSelector{APIVersion: "", FieldPath: path},
 		},
 	}
@@ -369,7 +366,7 @@ func secretRef(name string, selector *corev1.SecretKeySelector) corev1.EnvVar {
 	return corev1.EnvVar{
 		Name:  name,
 		Value: "",
-		ValueFrom: &corev1.EnvVarSource{ //nolint:exhaustruct // secret reference only
+		ValueFrom: &corev1.EnvVarSource{
 			SecretKeyRef: selector.DeepCopy(),
 		},
 	}
@@ -380,8 +377,8 @@ func secretRef(name string, selector *corev1.SecretKeySelector) corev1.EnvVar {
 func policyVolume(configMapName string) corev1.Volume {
 	return corev1.Volume{
 		Name: VolumeName,
-		VolumeSource: corev1.VolumeSource{ //nolint:exhaustruct // configMap only
-			ConfigMap: &corev1.ConfigMapVolumeSource{ //nolint:exhaustruct // name only
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
 			},
 		},

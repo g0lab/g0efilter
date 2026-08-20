@@ -13,7 +13,6 @@ func scriptLines(script string) []string {
 	return strings.Split(strings.TrimSpace(script), "\n")
 }
 
-//nolint:exhaustruct
 func TestBuildResolvedScriptDestroysBeforeAdding(t *testing.T) {
 	t.Parallel()
 
@@ -45,7 +44,6 @@ func TestBuildResolvedScriptDestroysBeforeAdding(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestBuildResolvedScriptBatchesEveryElementIntoOneTransaction(t *testing.T) {
 	t.Parallel()
 
@@ -74,7 +72,6 @@ func TestBuildResolvedScriptBatchesEveryElementIntoOneTransaction(t *testing.T) 
 	}
 }
 
-//nolint:exhaustruct
 func TestBuildResolvedScriptCoversEveryTable(t *testing.T) {
 	t.Parallel()
 
@@ -99,7 +96,6 @@ func TestBuildResolvedScriptCoversEveryTable(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestBuildResolvedScriptRejectsBadElementsWithoutDroppingTheRest(t *testing.T) {
 	t.Parallel()
 
@@ -125,7 +121,6 @@ func TestBuildResolvedScriptRejectsBadElementsWithoutDroppingTheRest(t *testing.
 	}
 }
 
-//nolint:exhaustruct
 func TestBuildResolvedScriptRejectsBadConstraints(t *testing.T) {
 	t.Parallel()
 

@@ -181,7 +181,6 @@ func TestDNSRateLimiterBoundedUnderSourceFlood(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestBlockExfilQueryModes(t *testing.T) {
 	t.Parallel()
 

@@ -849,10 +849,14 @@ func TestUnblockRoutes_Auth(t *testing.T) {
 		{"list with wrong key", http.MethodGet, "/api/v1/unblocks", "nope", "", http.StatusUnauthorized},
 		{"list with key", http.MethodGet, "/api/v1/unblocks", "test-api-key", "", http.StatusOK},
 		{"ack without key", http.MethodPost, "/api/v1/unblocks/ack", "", `{"id":"x"}`, http.StatusUnauthorized},
-		{"ack with key unknown id", http.MethodPost, "/api/v1/unblocks/ack", "test-api-key",
-			`{"id":"x"}`, http.StatusNotFound},
-		{"create is public", http.MethodPost, "/api/v1/unblocks", "",
-			`{"type":"ip","value":"10.0.0.1"}`, http.StatusCreated},
+		{
+			"ack with key unknown id", http.MethodPost, "/api/v1/unblocks/ack", "test-api-key",
+			`{"id":"x"}`, http.StatusNotFound,
+		},
+		{
+			"create is public", http.MethodPost, "/api/v1/unblocks", "",
+			`{"type":"ip","value":"10.0.0.1"}`, http.StatusCreated,
+		},
 		{"status is public", http.MethodGet, "/api/v1/unblocks/status", "", "", http.StatusOK},
 	}
 
@@ -888,7 +892,7 @@ type sseRecorder struct {
 }
 
 func newSSERecorder() *sseRecorder {
-	return &sseRecorder{header: make(http.Header)} //nolint:exhaustruct // zero values are fine
+	return &sseRecorder{header: make(http.Header)}
 }
 
 func (r *sseRecorder) Header() http.Header { return r.header }

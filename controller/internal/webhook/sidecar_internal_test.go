@@ -9,7 +9,7 @@ import (
 func TestSecretRefCopiesSelector(t *testing.T) {
 	t.Parallel()
 
-	selector := &corev1.SecretKeySelector{ //nolint:exhaustruct // name and key only
+	selector := &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "credentials"},
 		Key:                  "token",
 	}

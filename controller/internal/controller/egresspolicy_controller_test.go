@@ -38,12 +38,10 @@ func testScheme(t *testing.T) *runtime.Scheme {
 }
 
 func namespace(labels map[string]string) *corev1.Namespace {
-	//nolint:exhaustruct // only metadata matters
 	return &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS, Labels: labels}}
 }
 
 func rule(name string, domains []string, networks []string) v1alpha1.EgressRule {
-	//nolint:exhaustruct // ports are set by the caller where relevant
 	return v1alpha1.EgressRule{
 		Name: name,
 		To:   []v1alpha1.EgressPeer{{DomainNames: domains, Networks: networks}},
@@ -51,7 +49,6 @@ func rule(name string, domains []string, networks []string) v1alpha1.EgressRule 
 }
 
 func egressPolicy(name string, rules ...v1alpha1.EgressRule) *v1alpha1.EgressPolicy {
-	//nolint:exhaustruct // status is filled by the reconciler
 	return &v1alpha1.EgressPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNS, Generation: 1},
 		Spec:       v1alpha1.EgressPolicySpec{Egress: rules},
@@ -63,11 +60,10 @@ func clusterPolicy(
 	selector map[string]string,
 	rules ...v1alpha1.EgressRule,
 ) *v1alpha1.ClusterEgressPolicy {
-	//nolint:exhaustruct // status is filled by the reconciler
 	return &v1alpha1.ClusterEgressPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1},
 		Spec: v1alpha1.ClusterEgressPolicySpec{
-			NamespaceSelector: metav1.LabelSelector{MatchLabels: selector}, //nolint:exhaustruct // MatchLabels only
+			NamespaceSelector: metav1.LabelSelector{MatchLabels: selector},
 			Egress:            rules,
 		},
 	}
@@ -91,7 +87,6 @@ func newReconciler(t *testing.T, objects ...client.Object) (*EgressPolicyReconci
 func reconcile(t *testing.T, r *EgressPolicyReconciler, name string) {
 	t.Helper()
 
-	//nolint:exhaustruct // NamespacedName is the whole request
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Namespace: testNS, Name: name},
 	})
@@ -353,19 +348,16 @@ func TestReconcileCountsSelectedPods(t *testing.T) {
 	t.Parallel()
 
 	policy := egressPolicy("web", rule("apis", []string{"api.example.com"}, nil))
-	policy.Spec.PodSelector = metav1.LabelSelector{ //nolint:exhaustruct // MatchLabels only
+	policy.Spec.PodSelector = metav1.LabelSelector{
 		MatchLabels: map[string]string{"app": "web"},
 	}
 
-	//nolint:exhaustruct // only labels and phase matter
 	matching := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: "web-1", Namespace: "apps", Labels: map[string]string{"app": "web"},
 	}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}
-	//nolint:exhaustruct // only labels and phase matter
 	other := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: "batch-1", Namespace: "apps", Labels: map[string]string{"app": "batch"},
 	}, Status: corev1.PodStatus{Phase: corev1.PodRunning}}
-	//nolint:exhaustruct // a selected pending pod must not be counted as running
 	pending := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
 		Name: "web-pending", Namespace: "apps", Labels: map[string]string{"app": "web"},
 	}, Status: corev1.PodStatus{Phase: corev1.PodPending}}
@@ -419,7 +411,6 @@ func TestPoliciesInNamespaceEnqueuesOnlyThatNamespace(t *testing.T) {
 
 	r, _ := newReconciler(t, egressPolicy("web"), egressPolicy("batch"), other)
 
-	//nolint:exhaustruct // metadata only
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "web-1", Namespace: testNS}}
 	requests := r.policiesInNamespace(context.Background(), pod)
 

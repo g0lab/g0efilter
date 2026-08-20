@@ -36,7 +36,6 @@ func TestServe53(t *testing.T) {
 
 	// Test that Serve53 can start (will likely timeout in test environment)
 	err := Serve53(ctx, allowedDomains, options)
-
 	// In test environment, we expect this to timeout or fail to bind
 	// We're mainly testing that the function doesn't panic
 	if err != nil {
@@ -57,7 +56,7 @@ func TestCreateDNSHandler(t *testing.T) {
 
 	handler := createDNSHandler(allowedDomains, options)
 
-	// Verify the matcher honours the expected domains
+	// Verify the matcher honors the expected domains
 	for _, host := range []string{"example.com", "mail.google.com"} {
 		if !handler.allowlist.allows(host) {
 			t.Errorf("Expected allowlist to match %q", host)
@@ -585,7 +584,7 @@ func TestDNSServerServeAndStop(t *testing.T) {
 			case err := <-errCh:
 				t.Fatalf("serve returned before start: %v", err)
 			case <-time.After(2 * time.Second):
-				t.Fatal("server never signalled started")
+				t.Fatal("server never signaled started")
 			}
 
 			srv.stop(t.Context())
@@ -682,7 +681,6 @@ func TestDNSForward(t *testing.T) {
 
 	// This will likely fail due to no real upstream, but should not panic
 	_, err := handler.forward(msg)
-
 	// Error is expected in test environment
 	if err != nil {
 		t.Logf("DNS forward failed as expected in test environment: %v", err)
@@ -716,7 +714,6 @@ func TestMarkedDialer(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestHandleRefusesInvalidQname(t *testing.T) {
 	t.Parallel()
 
@@ -739,7 +736,6 @@ func TestHandleRefusesInvalidQname(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestDNSBlockedLogsAtWarn(t *testing.T) {
 	t.Parallel()
 

@@ -46,7 +46,7 @@ type Injector struct {
 
 // Handle implements the admission webhook.
 func (i *Injector) Handle(ctx context.Context, req admission.Request) admission.Response {
-	pod := &corev1.Pod{} //nolint:exhaustruct // decoded into
+	pod := &corev1.Pod{}
 
 	err := i.Decoder.Decode(req, pod)
 	if err != nil {

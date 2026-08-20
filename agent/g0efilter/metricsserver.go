@@ -33,7 +33,6 @@ func startMetricsServer(ctx context.Context, registry *metrics.Metrics, lg *slog
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", registry.Handler())
 
-	//nolint:exhaustruct // only the timeouts and handler matter here
 	server := &http.Server{
 		Addr:              addr,
 		Handler:           mux,
@@ -55,7 +54,7 @@ func startMetricsServer(ctx context.Context, registry *metrics.Metrics, lg *slog
 	go func() {
 		<-ctx.Done()
 
-		// WithoutCancel because the parent is already cancelled; the timeout is what
+		// WithoutCancel because the parent is already canceled; the timeout is what
 		// bounds the drain.
 		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), metricsShutdown)
 		defer cancel()

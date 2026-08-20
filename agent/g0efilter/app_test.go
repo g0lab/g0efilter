@@ -171,12 +171,10 @@ func TestLoadConfigCustomValues(t *testing.T) {
 func TestShouldWatchPolicy(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	if !shouldWatchPolicy(config{learningMode: false}) {
 		t.Error("policy watcher should run when not in learning mode")
 	}
 
-	//nolint:exhaustruct
 	if shouldWatchPolicy(config{learningMode: true}) {
 		t.Error("policy watcher should be disabled in learning mode (reloads have no effect)")
 	}
@@ -254,7 +252,7 @@ func TestResolvePolicyPath(t *testing.T) {
 				want = fallbackPath
 			}
 
-			got := resolvePolicyPath(config{policyPath: defaultPath}, fallbackPath, lg) //nolint:exhaustruct
+			got := resolvePolicyPath(config{policyPath: defaultPath}, fallbackPath, lg)
 			if got.policyPath != want {
 				t.Errorf("policyPath = %q, want %q", got.policyPath, want)
 			}
@@ -415,9 +413,7 @@ func TestSendLatestKeepsMostRecent(t *testing.T) {
 	ctx := context.Background()
 	ch := make(chan policyUpdate, 1)
 
-	//nolint:exhaustruct
 	upd1 := policyUpdate{hash: "h1", pol: &policy.Policy{AllowDomains: []string{"a"}, AllowIPs: []string{"1.1.1.1"}}}
-	//nolint:exhaustruct
 	upd2 := policyUpdate{hash: "h2", pol: &policy.Policy{AllowDomains: []string{"b"}, AllowIPs: []string{"2.2.2.2"}}}
 
 	sendLatest(ctx, ch, upd1)
@@ -715,6 +711,6 @@ func TestFetchPendingUnblocksContextCancelled(t *testing.T) {
 
 	_, err := fetchPendingUnblocks(ctx, client, srv.URL, cfg, discardLogger())
 	if err == nil {
-		t.Fatal("expected error for cancelled context, got nil")
+		t.Fatal("expected error for canceled context, got nil")
 	}
 }

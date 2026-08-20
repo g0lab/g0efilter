@@ -44,10 +44,9 @@ func selfSignedCA(t *testing.T) string {
 		t.Fatalf("generate key: %v", err)
 	}
 
-	//nolint:exhaustruct // only the fields a CA certificate needs
 	template := x509.Certificate{
 		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "test-ca"}, //nolint:exhaustruct // only CN
+		Subject:               pkix.Name{CommonName: "test-ca"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(time.Hour),
 		IsCA:                  true,
@@ -60,7 +59,6 @@ func selfSignedCA(t *testing.T) string {
 		t.Fatalf("create certificate: %v", err)
 	}
 
-	//nolint:exhaustruct // Type and Bytes are the whole PEM block
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 

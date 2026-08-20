@@ -73,7 +73,6 @@ func TestPhase15FileCapabilities(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			//nolint:exhaustruct // Binds and Env are not needed here
 			res := harness.RunOneShot(t, harness.OneShot{
 				Image:       image,
 				Cmd:         []string{"caps"},
@@ -132,7 +131,6 @@ func cliHashPassword(t *testing.T, image string) {
 
 	const password = "container-hash-password"
 
-	//nolint:exhaustruct // only Cmd is needed
 	hashed := harness.RunOneShotStdin(t, harness.OneShot{
 		Image: image,
 		Cmd:   []string{"hash-password"},
@@ -145,7 +143,6 @@ func cliHashPassword(t *testing.T, image string) {
 
 	dataDir := worldWritableDir(t)
 
-	//nolint:exhaustruct // Env defaults are supplied by the helper
 	d := harness.StartDashboardContainer(t, harness.DashboardContainerSpec{
 		Image:     image,
 		DataBind:  dataDir,
@@ -181,7 +178,6 @@ func cliFirstStart(t *testing.T, image string) {
 
 	dataDir := worldWritableDir(t)
 
-	//nolint:exhaustruct // no admin hash: first start generates one
 	d := harness.StartDashboardContainer(t, harness.DashboardContainerSpec{
 		Image:    image,
 		DataBind: dataDir,
@@ -218,7 +214,6 @@ func cliFirstStart(t *testing.T, image string) {
 		// The CLI needs exclusive access to the database file.
 		stopContainer(t, d)
 
-		//nolint:exhaustruct // only Cmd and Binds are needed
 		reset := harness.RunOneShot(t, harness.OneShot{
 			Image: image,
 			Cmd:   []string{"reset-password"},
@@ -230,7 +225,6 @@ func cliFirstStart(t *testing.T, image string) {
 			t.Fatalf("reset-password did not print a generated password: %q", reset.Output)
 		}
 
-		//nolint:exhaustruct // no admin hash: the database now holds the credential
 		restarted := harness.StartDashboardContainer(t, harness.DashboardContainerSpec{
 			Image:    image,
 			DataBind: dataDir,
@@ -309,7 +303,6 @@ func cliFirstStart(t *testing.T, image string) {
 func cliEphemeral(t *testing.T, image string) {
 	t.Helper()
 
-	//nolint:exhaustruct // no DataBind means ephemeral
 	d := harness.StartDashboardContainer(t, harness.DashboardContainerSpec{
 		Image:     image,
 		AdminHash: adminHash,
@@ -339,7 +332,6 @@ func cliEphemeral(t *testing.T, image string) {
 func cliErrors(t *testing.T, image string) {
 	t.Helper()
 
-	//nolint:exhaustruct // only Cmd and Env are needed
 	res := harness.RunOneShot(t, harness.OneShot{
 		Image: image,
 		Cmd:   []string{"reset-password"},
@@ -354,7 +346,6 @@ func cliErrors(t *testing.T, image string) {
 		t.Errorf("unclear ephemeral-mode error: %s", res.Output)
 	}
 
-	//nolint:exhaustruct // only Cmd is needed
 	empty := harness.RunOneShotStdin(t, harness.OneShot{
 		Image: image,
 		Cmd:   []string{"hash-password"},

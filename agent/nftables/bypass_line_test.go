@@ -21,7 +21,6 @@ func TestBypassLinePresentInEveryChain(t *testing.T) {
 	for _, mode := range modes {
 		for _, defaultAllow := range []bool{false, true} {
 			for _, audit := range []bool{false, true} {
-				//nolint:exhaustruct
 				cfg := RulesetConfig{
 					AllowV4:      []string{"192.0.2.1"},
 					AllowV6:      []string{"2001:db8::1"},

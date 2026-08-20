@@ -304,7 +304,7 @@ func TestSleepCtxReportsCancellation(t *testing.T) {
 	cancel()
 
 	if sleepCtx(ctx, time.Hour) {
-		t.Error("sleepCtx waited out the delay on a cancelled context")
+		t.Error("sleepCtx waited out the delay on a canceled context")
 	}
 }
 
@@ -331,7 +331,6 @@ func freeTCPPort(t *testing.T) string {
 	return port
 }
 
-//nolint:exhaustruct // only the fields the filter services read
 func reloadTestConfig(t *testing.T) config {
 	t.Helper()
 
@@ -352,7 +351,6 @@ func TestRestartServicesRebindsWithoutConflict(t *testing.T) {
 
 	cfg := reloadTestConfig(t)
 
-	//nolint:exhaustruct // an allowlist is all the filters need here
 	pol := &policy.Policy{AllowDomains: []string{"example.com"}}
 
 	ctx, cancel := context.WithCancel(t.Context())

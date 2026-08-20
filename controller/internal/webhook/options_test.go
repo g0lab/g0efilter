@@ -14,7 +14,6 @@ func duration(d time.Duration) *metav1.Duration {
 }
 
 func secretKey(name, key string) *corev1.SecretKeySelector {
-	//nolint:exhaustruct // name and key only
 	return &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: name},
 		Key:                  key,
@@ -41,7 +40,7 @@ func TestEnforcementDefaultsToBlock(t *testing.T) {
 func TestEnforcementAudit(t *testing.T) {
 	t.Parallel()
 
-	spec := v1alpha1.SidecarSpec{Enforcement: "audit"} //nolint:exhaustruct // one field under test
+	spec := v1alpha1.SidecarSpec{Enforcement: "audit"}
 	injector := newInjector(t, policy("web", map[string]string{"app": "web"}, spec))
 
 	_, patched := admit(t, injector, pod(map[string]string{"app": "web"}, nil))
@@ -83,7 +82,6 @@ func TestUnsetOptionsRenderNoEnvironment(t *testing.T) {
 // everyOption sets every field the injector can render, so a field added without a
 // matching env entry shows up as a missing variable below.
 func everyOption() v1alpha1.SidecarSpec {
-	//nolint:exhaustruct // image, mode and resources are covered elsewhere
 	return v1alpha1.SidecarSpec{
 		TenantID:         "tenant-a",
 		Events:           true,
@@ -190,7 +188,6 @@ func assertSecretRef(t *testing.T, container corev1.Container, name, secret, key
 func TestExtraEnvIsAppended(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct // one field under test
 	spec := v1alpha1.SidecarSpec{
 		ExtraEnv: []corev1.EnvVar{{Name: "LOG_FILE", Value: "/dev/stdout", ValueFrom: nil}},
 	}
@@ -218,7 +215,6 @@ func TestExtraEnvIsAppended(t *testing.T) {
 func TestRunAsUserAndPullPolicyOverride(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct // only the fields under test
 	spec := v1alpha1.SidecarSpec{
 		ImagePullPolicy: corev1.PullAlways,
 		RunAsUser:       new(int64(1001)),

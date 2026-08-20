@@ -776,7 +776,7 @@ func TestStreamNfLogWithLogger(t *testing.T) {
 
 	t.Parallel()
 
-	// Create a context that will be cancelled after 100ms
+	// Create a context that will be canceled after 100ms
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
@@ -1064,8 +1064,6 @@ func slicesEqualOrBothNil(a, b []string) bool {
 }
 
 // BLOCKED nflog events log at WARN so they survive LOG_LEVEL=WARN.
-//
-//nolint:exhaustruct
 func TestProcessActionEventLevels(t *testing.T) {
 	t.Parallel()
 

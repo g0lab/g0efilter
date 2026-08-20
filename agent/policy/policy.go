@@ -409,7 +409,7 @@ func ReadFile(file string) (*Policy, error) {
 		return nil, err
 	}
 
-	pol := &Policy{DefaultAction: defaultAction} //nolint:exhaustruct
+	pol := &Policy{DefaultAction: defaultAction}
 
 	pol.AllowIPs, pol.AllowDomainRules, err = validateLists(lg, file, cfg.AllowList, true)
 	if err != nil {
@@ -478,7 +478,7 @@ func validateLists(
 }
 
 func loadFromEnv(lg *slog.Logger, allowIPs, allowDomains, denyIPs, denyDomains string) (*Policy, error) {
-	pol := &Policy{} //nolint:exhaustruct
+	pol := &Policy{}
 
 	var err error
 

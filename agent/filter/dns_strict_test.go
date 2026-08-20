@@ -73,7 +73,6 @@ func TestExtractAnswerIPsEmptyAnswer(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestReportResolvedIPsInvokesHook(t *testing.T) {
 	t.Parallel()
 
@@ -101,7 +100,6 @@ func TestReportResolvedIPsInvokesHook(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestReportResolvedIPsNilHookAndEmptyAnswer(t *testing.T) {
 	t.Parallel()
 

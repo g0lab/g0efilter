@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-//nolint:exhaustruct
 func TestGenerateRulesetDefaultAllowHTTPS(t *testing.T) {
 	t.Parallel()
 
@@ -47,7 +46,6 @@ func TestGenerateRulesetDefaultAllowHTTPS(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetDefaultAllowDNS(t *testing.T) {
 	t.Parallel()
 
@@ -73,7 +71,6 @@ func TestGenerateRulesetDefaultAllowDNS(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetEmptyDenySetOmitsElements(t *testing.T) {
 	t.Parallel()
 
@@ -97,7 +94,6 @@ func TestGenerateRulesetEmptyDenySetOmitsElements(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetDefaultDenyUnchanged(t *testing.T) {
 	t.Parallel()
 

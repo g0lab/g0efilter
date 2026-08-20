@@ -8,9 +8,11 @@ import (
 	"testing"
 )
 
-var workflowUses = regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+)`)
-var commitSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
-var containerDigest = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
+var (
+	workflowUses    = regexp.MustCompile(`(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+)`)
+	commitSHA       = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	containerDigest = regexp.MustCompile(`@sha256:[0-9a-f]{64}$`)
+)
 
 func actionIsPinned(action string) bool {
 	if strings.HasPrefix(action, "./") {

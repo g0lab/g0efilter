@@ -170,10 +170,12 @@ func extractFieldsMap(in map[string]any) map[string]any {
 	}
 
 	// Merge top-level fields
-	for _, k := range []string{"action", "component", "protocol", "policy_hit", "payload_len",
+	for _, k := range []string{
+		"action", "component", "protocol", "policy_hit", "payload_len",
 		"reason", "tenant_id", "flow_id", "hostname", "source_ip", "source_port",
 		"destination_ip", "destination_port", "src", "dst", "http_host", "host", keyHTTPS,
-		"qname", "qtype", "version"} {
+		"qname", "qtype", "version",
+	} {
 		if v, ok := in[k]; ok && v != nil {
 			fieldsMap[k] = v
 		}

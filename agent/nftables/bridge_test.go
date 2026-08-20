@@ -74,7 +74,7 @@ func TestBridgeInterfacePatternsAreValidatedBeforeRunningNft(t *testing.T) {
 func TestNoBridgeTablesUnlessConfigured(t *testing.T) {
 	t.Parallel()
 
-	ruleset := GenerateRuleset(RulesetConfig{ //nolint:exhaustruct
+	ruleset := GenerateRuleset(RulesetConfig{
 		HTTPSPort: 65443,
 		HTTPPort:  65080,
 		DNSPort:   65053,
@@ -129,7 +129,7 @@ func TestBridgeRulesCoverEveryPolicyMode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ruleset := GenerateRuleset(RulesetConfig{ //nolint:exhaustruct
+			ruleset := GenerateRuleset(RulesetConfig{
 				AllowV4:          []string{"192.0.2.10"},
 				AllowV6:          []string{"2001:db8::10"},
 				DenyV4:           []string{"198.51.100.10"},

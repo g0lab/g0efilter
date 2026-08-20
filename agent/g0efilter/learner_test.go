@@ -103,7 +103,6 @@ func TestLearnerSeenCap(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestEffectiveDefaultAllow(t *testing.T) {
 	t.Parallel()
 

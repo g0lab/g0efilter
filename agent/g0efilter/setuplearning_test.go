@@ -14,7 +14,6 @@ import (
 func learningConfig(t *testing.T, policyPath string, learning bool) config {
 	t.Helper()
 
-	//nolint:exhaustruct // only the learning-mode fields matter here
 	return config{policyPath: policyPath, learningMode: learning}
 }
 

@@ -24,7 +24,7 @@ func hostSeeds(f *testing.F) {
 
 // sanitizeHost is the boundary between an attacker-controlled Host header or SNI
 // and every policy decision that follows, so what it accepts has to be a name the
-// matcher can reason about - and re-sanitising it must change nothing.
+// matcher can reason about - and re-sanitizing it must change nothing.
 func FuzzSanitizeHost(f *testing.F) {
 	hostSeeds(f)
 
@@ -42,7 +42,7 @@ func FuzzSanitizeHost(f *testing.F) {
 
 		again, ok := sanitizeHost(clean)
 		if !ok {
-			t.Fatalf("%q sanitised to %q, which is then rejected", host, clean)
+			t.Fatalf("%q sanitized to %q, which is then rejected", host, clean)
 		}
 
 		if again != clean {
@@ -122,7 +122,7 @@ func FuzzSanitizeDNSQname(f *testing.F) {
 
 		again, ok := sanitizeDNSQname(clean)
 		if !ok {
-			t.Fatalf("%q sanitised to %q, which is then rejected", qname, clean)
+			t.Fatalf("%q sanitized to %q, which is then rejected", qname, clean)
 		}
 
 		if again != clean {

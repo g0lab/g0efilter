@@ -123,7 +123,7 @@ func TestStartMetricsServerStopsWithTheContext(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	t.Error("the metrics server was still serving after the context was cancelled")
+	t.Error("the metrics server was still serving after the context was canceled")
 }
 
 // Metrics open a listening port, so they must stay off unless enabled.

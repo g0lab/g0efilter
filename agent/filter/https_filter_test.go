@@ -27,7 +27,6 @@ func TestServe443(t *testing.T) {
 
 	// Test that Serve443 can start (will likely timeout in test environment)
 	err := Serve443(ctx, allowedHosts, options)
-
 	// In test environment, we expect this to timeout or fail to bind
 	// We're mainly testing that the function doesn't panic
 	if err != nil {

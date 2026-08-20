@@ -309,7 +309,7 @@ func connectAndSpliceHTTP(
 	return nil
 }
 
-// forwardHTTPRequests re-authorises the Host of every request on a persistent
+// forwardHTTPRequests re-authorizes the Host of every request on a persistent
 // connection so a keep-alive client cannot switch to an unpermitted authority
 // after the first request.
 func forwardHTTPRequests(
@@ -360,7 +360,7 @@ func filterRequestStream(
 
 		wasFirst := first
 
-		// The first request was already authorised and logged by handleHTTP.
+		// The first request was already authorized and logged by handleHTTP.
 		if !wasFirst && !authoriseForwardedRequest(conn, host, allowlist, destIP, destPort, opts) {
 			return
 		}

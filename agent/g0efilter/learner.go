@@ -80,7 +80,7 @@ func (l *learner) record(kind, value string) {
 	l.pending = append(l.pending, learnEntry{kind: kind, value: value})
 }
 
-// run flushes queued entries to the policy file until the context is cancelled.
+// run flushes queued entries to the policy file until the context is canceled.
 func (l *learner) run(ctx context.Context) {
 	t := time.NewTicker(learnFlushInterval)
 	defer t.Stop()

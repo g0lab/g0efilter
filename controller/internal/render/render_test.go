@@ -10,18 +10,16 @@ import (
 )
 
 func domainRule(name string, domains ...string) v1alpha1.EgressRule {
-	//nolint:exhaustruct // ports are set explicitly where they matter
 	return v1alpha1.EgressRule{
 		Name: name,
-		To:   []v1alpha1.EgressPeer{{DomainNames: domains}}, //nolint:exhaustruct // networks unused
+		To:   []v1alpha1.EgressPeer{{DomainNames: domains}},
 	}
 }
 
 func networkRule(name string, networks ...string) v1alpha1.EgressRule {
-	//nolint:exhaustruct // ports are set explicitly where they matter
 	return v1alpha1.EgressRule{
 		Name: name,
-		To:   []v1alpha1.EgressPeer{{Networks: networks}}, //nolint:exhaustruct // domains unused
+		To:   []v1alpha1.EgressPeer{{Networks: networks}},
 	}
 }
 
@@ -204,7 +202,6 @@ func TestRulesRejectsBadInput(t *testing.T) {
 	}{
 		{
 			name: "peer with nothing set",
-			//nolint:exhaustruct // an empty peer is the subject
 			rule: v1alpha1.EgressRule{Name: "empty", To: []v1alpha1.EgressPeer{{}}},
 			want: ErrEmptyPeer,
 		},

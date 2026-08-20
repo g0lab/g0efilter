@@ -143,8 +143,8 @@ func TestSourceIsASCII(t *testing.T) {
 			continue
 		}
 
-		for _, offence := range findNonASCII(string(content)) {
-			t.Errorf("%s: %s\nuse ASCII, or add the file to asciiExempt with a reason", name, offence)
+		for _, offense := range findNonASCII(string(content)) {
+			t.Errorf("%s: %s\nuse ASCII, or add the file to asciiExempt with a reason", name, offense)
 		}
 	}
 }

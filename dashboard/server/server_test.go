@@ -977,7 +977,7 @@ func TestSecurityHeaders(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	// Capture headers once in the parent before spawning parallel sub-tests.
-	// w.Result() lazily initialises internal state and is not safe for concurrent use.
+	// w.Result() lazily initializes internal state and is not safe for concurrent use.
 	headers := w.Result().Header
 
 	tests := []struct {

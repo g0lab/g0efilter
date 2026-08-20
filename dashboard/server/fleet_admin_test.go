@@ -122,14 +122,20 @@ func TestFleet_RequestValidation(t *testing.T) {
 		name, method, path, body string
 		want                     int
 	}{
-		{"group policy rejects unknown filter_mode", http.MethodPut,
+		{
+			"group policy rejects unknown filter_mode", http.MethodPut,
 			"/api/v1/fleet/groups/" + grpID + "/policy",
-			`{"policy":"ALLOW x","filter_mode":"bogus"}`, http.StatusBadRequest},
-		{"instance policy rejects malformed json", http.MethodPut,
+			`{"policy":"ALLOW x","filter_mode":"bogus"}`, http.StatusBadRequest,
+		},
+		{
+			"instance policy rejects malformed json", http.MethodPut,
 			"/api/v1/fleet/instances/whatever/policy",
-			`{not-json`, http.StatusBadRequest},
-		{"create group rejects empty name", http.MethodPost,
-			"/api/v1/fleet/groups", `{"name":"  "}`, http.StatusBadRequest},
+			`{not-json`, http.StatusBadRequest,
+		},
+		{
+			"create group rejects empty name", http.MethodPost,
+			"/api/v1/fleet/groups", `{"name":"  "}`, http.StatusBadRequest,
+		},
 	}
 
 	for _, tc := range cases {

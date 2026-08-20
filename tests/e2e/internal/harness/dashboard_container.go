@@ -60,7 +60,6 @@ func StartDashboardContainer(t *testing.T, spec DashboardContainerSpec) *Dashboa
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	//nolint:exhaustruct // only the fields this container needs
 	req := testcontainers.ContainerRequest{
 		Image:        spec.Image,
 		Env:          env,
@@ -76,7 +75,6 @@ func StartDashboardContainer(t *testing.T, spec DashboardContainerSpec) *Dashboa
 		},
 	}
 
-	//nolint:exhaustruct // Started is the only option needed
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,

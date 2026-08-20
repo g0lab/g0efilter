@@ -32,7 +32,6 @@ func TestServe80(t *testing.T) {
 
 	// Test that Serve80 can start (will likely timeout in test environment)
 	err := Serve80(ctx, allowedHosts, options)
-
 	// In test environment, we expect this to timeout or fail to bind
 	// We're mainly testing that the function doesn't panic
 	if err != nil {
@@ -257,7 +256,6 @@ func testHandleHostInvalidConnection(t *testing.T) {
 		_ = w.Close() // Close immediately to cause read error
 
 		err := handleHTTP(r, newMatcher(allowlist), options)
-
 		// Should handle the error gracefully
 		if err != nil {
 			t.Logf("handleHTTP() returned error: %v", err)
@@ -367,7 +365,7 @@ func TestForwardHTTPRequestsBlocksLaterAuthority(t *testing.T) {
 			"GET / HTTP/1.1\r\nHost: blocked.example.com\r\n\r\n")
 
 	if len(hosts) != 1 || hosts[0] != "allowed.example.com" {
-		t.Fatalf("expected only the first authorised request to reach the backend, got %v", hosts)
+		t.Fatalf("expected only the first authorized request to reach the backend, got %v", hosts)
 	}
 }
 
@@ -702,7 +700,7 @@ func serveUpgradeOrigin(originConn net.Conn, response string, rec *byteRecorder,
 
 	_, _ = io.WriteString(originConn, response)
 
-	// Signalled before draining: the caller only closes the client stream once it
+	// Signaled before draining: the caller only closes the client stream once it
 	// sees this, and the drain below needs that close to reach EOF.
 	close(responded)
 
@@ -721,7 +719,7 @@ func upgradeOutcome(t *testing.T, request, backendResponse, followUp string) str
 
 	go func() { _, _ = io.Copy(io.Discard, clientConn) }()
 
-	rec := &byteRecorder{} //nolint:exhaustruct // zero value is the empty buffer
+	rec := &byteRecorder{}
 
 	responded := make(chan struct{})
 	originDone := make(chan struct{})

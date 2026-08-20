@@ -200,7 +200,6 @@ type policyErrorReporter interface {
 }
 
 func loadConfig() config {
-	//nolint:exhaustruct // learner is wired up in Run when learning mode is enabled
 	return config{
 		policyPath:          getenvDefault("POLICY_PATH", "/app/policy.yaml"),
 		httpPort:            getenvDefault("HTTP_PORT", "65080"),
@@ -722,7 +721,7 @@ func runServiceWithRetry(
 
 		for {
 			if ctx.Err() != nil {
-				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
+				lg.Info(serviceName+".shutdown", "reason", "context canceled")
 
 				return
 			}
@@ -731,7 +730,7 @@ func runServiceWithRetry(
 			err := recovery.Recovered(serviceFunc)
 
 			if ctx.Err() != nil {
-				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
+				lg.Info(serviceName+".shutdown", "reason", "context canceled")
 
 				return
 			}
@@ -743,7 +742,7 @@ func runServiceWithRetry(
 			logServiceExit(ctx, lg, serviceName, retry.level, err, delay)
 
 			if !sleepCtx(ctx, delay) {
-				lg.Info(serviceName+".shutdown", "reason", "context cancelled")
+				lg.Info(serviceName+".shutdown", "reason", "context canceled")
 
 				return
 			}
@@ -783,7 +782,6 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 }
 
 func startServices(ctx context.Context, tracked *group, cfg config, pol *policy.Policy, lg *slog.Logger) {
-	//nolint:exhaustruct
 	opts := filter.Options{
 		DialTimeout:  defaultDialTimeout,
 		IdleTimeout:  cfg.connMaxLifetime,

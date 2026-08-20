@@ -102,7 +102,7 @@ func (p prefixRule) matches(info BlockedConnectionInfo) bool {
 	return ok && p.prefix.Contains(addr)
 }
 
-// addrClasses name the noisy ranges; IPv6 neighbour discovery alone floods ff02:: blocks.
+// addrClasses name the noisy ranges; IPv6 neighbor discovery alone floods ff02:: blocks.
 //
 //nolint:gochecknoglobals // A fixed lookup table, keyed by the documented names.
 var addrClasses = map[string]func(netip.Addr) bool{

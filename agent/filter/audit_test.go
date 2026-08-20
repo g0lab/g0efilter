@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-//nolint:exhaustruct
 func TestAudited(t *testing.T) {
 	t.Parallel()
 
@@ -22,7 +21,6 @@ func TestAudited(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestHostPermittedUnchangedByAuditMode(t *testing.T) {
 	t.Parallel()
 

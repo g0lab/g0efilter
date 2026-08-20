@@ -33,7 +33,7 @@ func assertEquivalent(t *testing.T, patterns []string, host string) {
 	}
 }
 
-// allDomainPatternVariants covers every matcher bucket, emphasising domain regex shapes.
+// allDomainPatternVariants covers every matcher bucket, emphasizing domain regex shapes.
 func allDomainPatternVariants() []string {
 	return []string{
 		// empty and exact

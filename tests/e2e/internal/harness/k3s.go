@@ -33,8 +33,10 @@ const (
 	dockerRetryDelay    = 2 * time.Second
 )
 
-var errKubectlFailed = errors.New("kubectl failed")
-var errUnexpectedRBACDecision = errors.New("unexpected RBAC decision")
+var (
+	errKubectlFailed          = errors.New("kubectl failed")
+	errUnexpectedRBACDecision = errors.New("unexpected RBAC decision")
+)
 
 var controllerBuild struct { //nolint:gochecknoglobals // shared by parallel Kubernetes phases
 	sync.Once

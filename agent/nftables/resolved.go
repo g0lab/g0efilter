@@ -171,7 +171,7 @@ func runNft(ctx context.Context, args []string) error {
 // slice allows the address on every port.
 func AddResolvedIPs(ctx context.Context, ips []string, ttl time.Duration, rules []policy.DomainRule) error {
 	if len(rules) == 0 {
-		rules = []policy.DomainRule{{}} //nolint:exhaustruct // zero value is "unconstrained"
+		rules = []policy.DomainRule{{}}
 	}
 
 	prefixes := resolvedTablePrefixes()

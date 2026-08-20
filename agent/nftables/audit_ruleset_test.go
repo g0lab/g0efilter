@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-//nolint:exhaustruct
 func TestGenerateRulesetAuditHTTPS(t *testing.T) {
 	t.Parallel()
 
@@ -41,7 +40,6 @@ func TestGenerateRulesetAuditHTTPS(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetAuditDefaultAllowDenylist(t *testing.T) {
 	t.Parallel()
 

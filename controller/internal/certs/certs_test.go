@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/g0lab/g0efilter/controller/internal/certs"
-	admissionv1 "k8s.io/api/admissionregistration/v1"
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,13 +46,12 @@ func newClient(t *testing.T, objects ...client.Object) client.Client {
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
 
-func webhookConfiguration(name string) *admissionv1.MutatingWebhookConfiguration {
-	//nolint:exhaustruct // only the fields under test
-	return &admissionv1.MutatingWebhookConfiguration{
+func webhookConfiguration(name string) *admissionregv1.MutatingWebhookConfiguration {
+	return &admissionregv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Webhooks: []admissionv1.MutatingWebhook{{
+		Webhooks: []admissionregv1.MutatingWebhook{{
 			Name:         "sidecar.g0efilter.g0lab.com",
-			ClientConfig: admissionv1.WebhookClientConfig{CABundle: nil}, //nolint:exhaustruct // bundle only
+			ClientConfig: admissionregv1.WebhookClientConfig{CABundle: nil},
 		}},
 	}
 }
@@ -111,7 +110,7 @@ func TestEnsureIssuesAndPublishesACertificate(t *testing.T) {
 
 	// Without the caBundle the API server cannot verify the webhook, and under
 	// failurePolicy Fail that blocks pod creation in every opted-in namespace.
-	var configuration admissionv1.MutatingWebhookConfiguration
+	var configuration admissionregv1.MutatingWebhookConfiguration
 
 	err = c.Get(context.Background(), client.ObjectKey{Name: opts.WebhookName}, &configuration)
 	if err != nil {
@@ -153,7 +152,6 @@ func TestEnsureReplacesUnusableMaterial(t *testing.T) {
 
 	opts := options(t)
 
-	//nolint:exhaustruct // only the fields under test
 	broken := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: opts.SecretName, Namespace: opts.Namespace},
 		Type:       corev1.SecretTypeTLS,
@@ -202,7 +200,7 @@ func TestEnsureKeepsThePreviousCertificateTrustedDuringRotation(t *testing.T) {
 		t.Fatalf("rotate certificate: %v", err)
 	}
 
-	var configuration admissionv1.MutatingWebhookConfiguration
+	var configuration admissionregv1.MutatingWebhookConfiguration
 
 	err = c.Get(context.Background(), client.ObjectKey{Name: opts.WebhookName}, &configuration)
 	if err != nil {

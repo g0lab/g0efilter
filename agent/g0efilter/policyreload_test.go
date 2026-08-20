@@ -52,7 +52,6 @@ func TestApplyPolicyChangeKeepsThePreviousPolicy(t *testing.T) {
 
 	reporter := &recordedError{causes: nil}
 
-	//nolint:exhaustruct // only the fields the reload path reads
 	cfg := config{
 		policyPath:   policyFile(t, "allowlist:\n  domains: not-a-list\n"),
 		metrics:      metrics.New(),
@@ -78,7 +77,6 @@ func TestApplyPolicyChangeKeepsThePreviousPolicy(t *testing.T) {
 func TestApplyPolicyChangeWithoutAReporter(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct // only the fields the reload path reads
 	cfg := config{
 		policyPath: policyFile(t, "allowlist:\n  domains: not-a-list\n"),
 		metrics:    metrics.New(),
@@ -97,7 +95,6 @@ func TestForceReloadReportsAnUnreadablePolicy(t *testing.T) {
 
 	reporter := &recordedError{causes: nil}
 
-	//nolint:exhaustruct // only the fields the reload path reads
 	cfg := config{
 		policyPath:   filepath.Join(t.TempDir(), "absent.yaml"),
 		metrics:      metrics.New(),

@@ -174,7 +174,6 @@ func TestCRDAcceptsTheFullSidecarSpec(t *testing.T) {
 	httpsPort := int32(15443)
 	unlimited := int32(0)
 
-	//nolint:exhaustruct // the fields under test
 	policy.Spec.Sidecar = v1alpha1.SidecarSpec{
 		Mode:             "dns-strict",
 		Enforcement:      "audit",

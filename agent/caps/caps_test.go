@@ -21,7 +21,7 @@ type fakeSystem struct {
 }
 
 func newFake(effective, permitted, inheritable bool) *fakeSystem {
-	f := &fakeSystem{uid: 65534} //nolint:exhaustruct // zero values are the defaults under test
+	f := &fakeSystem{uid: 65534}
 
 	if effective {
 		f.current.effective = with(f.current.effective, NetAdmin)
