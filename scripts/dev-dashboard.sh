@@ -7,7 +7,6 @@
 # frontend dev server (cd dashboard/ui && pnpm dev) for HMR, or hit
 # :8081 directly to use the embedded build.
 set -euo pipefail
-export GOEXPERIMENT=jsonv2
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 

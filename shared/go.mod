@@ -1,6 +1,6 @@
 module github.com/g0lab/g0efilter/shared
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/rs/zerolog v1.35.1

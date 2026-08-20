@@ -1,9 +1,12 @@
 package repo_test
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -17,16 +20,43 @@ var (
 func workflowFiles(t *testing.T) []string {
 	t.Helper()
 
-	files, err := filepath.Glob(filepath.Join("..", "..", ".github", "workflows", "*.yaml"))
-	if err != nil {
-		t.Fatalf("glob workflows: %v", err)
-	}
+	// Both extensions, so a stale pin in a .yml workflow cannot hide from the glob.
+	files := globAll(t, filepath.Join("..", "..", ".github", "workflows"), "*.yaml", "*.yml")
 
 	if len(files) == 0 {
 		t.Fatal("no workflows found; the glob no longer matches")
 	}
 
 	return files
+}
+
+func globAll(t *testing.T, dir string, patterns ...string) []string {
+	t.Helper()
+
+	sets := make([][]string, 0, len(patterns))
+
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(dir, pattern))
+		if err != nil {
+			t.Fatalf("glob %s: %v", pattern, err)
+		}
+
+		sets = append(sets, matches)
+	}
+
+	return slices.Concat(sets...)
+}
+
+// builderFiles returns every Containerfile that pins a golang builder image.
+func builderFiles(t *testing.T) []string {
+	t.Helper()
+
+	root := filepath.Join("..", "..")
+
+	return slices.Concat(
+		globAll(t, filepath.Join(root, "tests", "e2e"), "Containerfile*"),
+		globAll(t, filepath.Join(root, "examples", "build"), "Containerfile*"),
+	)
 }
 
 // workflowGoVersions maps each workflow that pins a Go version to that version.
@@ -98,17 +128,86 @@ func TestWorkflowGoVersionsAgree(t *testing.T) {
 	}
 }
 
-// The E2E builder images are the only Go pin outside the workflows, so a bump
-// that misses them has to fail here rather than in a scan of a test image.
+// Renovate matches the customManager that owns the setup-go pins by file pattern, so
+// a workflow it does not match silently keeps a stale Go version through a bump.
+func TestRenovateCoversEveryWorkflowGoPin(t *testing.T) {
+	t.Parallel()
+
+	patterns := renovateGoPatterns(t)
+
+	for workflow := range workflowGoVersions(t) {
+		path := ".github/workflows/" + workflow
+
+		matched := slices.ContainsFunc(patterns, func(p *regexp.Regexp) bool {
+			return p.MatchString(path)
+		})
+
+		if !matched {
+			t.Errorf("%s pins a Go version but no Renovate managerFilePatterns entry matches it", path)
+		}
+	}
+}
+
+func renovateGoPatterns(t *testing.T) []*regexp.Regexp {
+	t.Helper()
+
+	var config struct {
+		CustomManagers []struct {
+			DatasourceTemplate  string   `json:"datasourceTemplate"`
+			ManagerFilePatterns []string `json:"managerFilePatterns"`
+		} `json:"customManagers"`
+	}
+
+	file := readFile(t, filepath.Join("..", "..", ".github", "renovate.json"))
+
+	err := json.Unmarshal([]byte(file), &config)
+	if err != nil {
+		t.Fatalf("parse renovate.json: %v", err)
+	}
+
+	patterns := make([]*regexp.Regexp, 0, len(config.CustomManagers))
+
+	for _, manager := range config.CustomManagers {
+		if manager.DatasourceTemplate != "golang-version" {
+			continue
+		}
+
+		for _, pattern := range manager.ManagerFilePatterns {
+			patterns = append(patterns, compileRenovatePattern(t, pattern))
+		}
+	}
+
+	if len(patterns) == 0 {
+		t.Fatal("no Renovate customManager resolves the Go toolchain version")
+	}
+
+	return patterns
+}
+
+// Renovate reads a pattern wrapped in slashes as a regex; anything else is a glob
+// this test cannot reason about.
+func compileRenovatePattern(t *testing.T, pattern string) *regexp.Regexp {
+	t.Helper()
+
+	if !strings.HasPrefix(pattern, "/") || !strings.HasSuffix(pattern, "/") {
+		t.Fatalf("managerFilePatterns entry %q is a glob, not a regex", pattern)
+	}
+
+	compiled, err := regexp.Compile(strings.TrimSuffix(strings.TrimPrefix(pattern, "/"), "/"))
+	if err != nil {
+		t.Fatalf("compile %q: %v", pattern, err)
+	}
+
+	return compiled
+}
+
+// The builder images are the only Go pin outside the workflows, so a bump that
+// misses them has to fail here rather than in a scan of a built image.
 func TestBuilderImagesMatchTheReleaseToolchain(t *testing.T) {
 	t.Parallel()
 
 	want := releaseGoVersion(t)
-
-	builders, err := filepath.Glob(filepath.Join("..", "..", "tests", "e2e", "Containerfile.*"))
-	if err != nil {
-		t.Fatalf("glob builders: %v", err)
-	}
+	builders := builderFiles(t)
 
 	found := 0
 
@@ -182,10 +281,7 @@ func compareVersions(a, b string) int {
 func TestBuilderImagesUseTheSameTag(t *testing.T) {
 	t.Parallel()
 
-	builders, err := filepath.Glob(filepath.Join("..", "..", "tests", "e2e", "Containerfile.*"))
-	if err != nil {
-		t.Fatalf("glob builders: %v", err)
-	}
+	builders := builderFiles(t)
 
 	tags := make(map[string]string)
 
@@ -195,7 +291,7 @@ func TestBuilderImagesUseTheSameTag(t *testing.T) {
 			continue
 		}
 
-		tags[filepath.Base(builder)] = match[1]
+		tags[builder] = match[1]
 	}
 
 	if len(tags) < 2 {

@@ -26,6 +26,11 @@ linters:
       - text: 'struct-tag: unknown option "inline" in json tag'
         linters:
           - revive
+      # Go 1.27 lets a literal set an embedded field directly, but ObjectMeta: is the
+      # universal Kubernetes idiom and keeps the metadata/spec boundary visible.
+      - text: 'embedlit: embedded field type can be removed'
+        linters:
+          - modernize
       - path: tests/e2e
         linters:
           # Shared stacks mutate policy and must remain serial.

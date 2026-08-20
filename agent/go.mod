@@ -1,6 +1,6 @@
 module github.com/g0lab/g0efilter/agent
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/florianl/go-nflog/v2 v2.3.0

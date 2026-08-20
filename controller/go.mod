@@ -2,7 +2,7 @@
 // tree that the agent and dashboard binaries must not carry.
 module github.com/g0lab/g0efilter/controller
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11

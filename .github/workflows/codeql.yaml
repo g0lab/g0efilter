@@ -23,7 +23,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOEXPERIMENT: jsonv2
   GOWORK: 'off'
 
 jobs:
@@ -61,7 +60,7 @@ jobs:
         if: matrix.language == 'go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: '1.26.6'
+          go-version: '1.27.0'
           cache: false
 
       - name: Set up pnpm
@@ -92,7 +91,7 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
 
       # CodeQL only extracts packages it sees compiled, so a warm build cache
-      # yields an empty database. jwx v4 needs GOEXPERIMENT=jsonv2 to build.
+      # yields an empty database.
       - name: Build Go modules
         if: matrix.build-mode == 'manual'
         run: |

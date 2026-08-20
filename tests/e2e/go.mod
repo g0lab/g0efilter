@@ -2,7 +2,7 @@
 // it stays out of the production modules.
 module github.com/g0lab/g0efilter/tests/e2e
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/moby/moby/api v1.55.0
