@@ -54,8 +54,7 @@ func trackedFiles(t *testing.T) []string {
 	out, err := exec.CommandContext(ctx, bin, "-C", filepath.Join("..", ".."),
 		"ls-files", "--cached", "--others", "--exclude-standard").Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			t.Fatalf("git ls-files: %v\n%s", err, exitErr.Stderr)
 		}
 

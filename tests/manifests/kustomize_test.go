@@ -51,8 +51,7 @@ func run(t *testing.T, name string, args ...string) []byte {
 	//nolint:gosec // fixed tool names resolved through LookPath, with literal arguments
 	out, err := exec.CommandContext(ctx, bin, args...).Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			t.Fatalf("%s %v: %v\n%s", name, args, err, exitErr.Stderr)
 		}
 

@@ -10,7 +10,8 @@ linters:
   disable:
     - wsl  # Deprecated
     - varnamelen  # Too strict
-    - exhaustruct  # Too strict
+    - exhaustruct  # Deprecated
+    - exhaustruct_v5  # Too strict
     - mnd  # Too strict
     - gomodguard  # Replaced by gomodguard_v2
   exclusions:

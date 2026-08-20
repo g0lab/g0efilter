@@ -47,8 +47,7 @@ func (s *sender) send(title, message string) error {
 			continue
 		}
 
-		var targetErr *types.TargetError
-		if errors.As(err, &targetErr) {
+		if targetErr, ok := errors.AsType[*types.TargetError](err); ok {
 			slog.Warn("notification.target_failed", "target", targetErr.URL, "err", targetErr.Err)
 		}
 
