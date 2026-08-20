@@ -10,7 +10,6 @@
 # UI:  http://localhost:5000   (HMR)
 # API: http://localhost:8081   (embedded UI also served here)
 set -euo pipefail
-export GOEXPERIMENT=jsonv2
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 

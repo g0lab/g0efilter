@@ -27,7 +27,7 @@ RUN GOWORK=off go -C dashboard mod download
 COPY . .
 COPY --from=ui /ui/dist ./dashboard/ui/dist
 
-ENV CGO_ENABLED=0 GOEXPERIMENT=jsonv2 GOOS=linux
+ENV CGO_ENABLED=0 GOOS=linux
 RUN GOWORK=off go -C dashboard build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /build/g0efilter-dashboard .

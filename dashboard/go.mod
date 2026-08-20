@@ -1,6 +1,6 @@
 module github.com/g0lab/g0efilter/dashboard
 
-go 1.26.4
+go 1.27.0
 
 require (
 	entgo.io/ent v0.14.6

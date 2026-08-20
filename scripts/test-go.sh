@@ -6,7 +6,6 @@
 # of the per-module steps in .github/workflows/ci-go.yaml.
 # Requires the Go toolchain and golangci-lint; chart linting also needs ct.
 set -euo pipefail
-export GOEXPERIMENT=jsonv2
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 

@@ -4,9 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+var workspaceGoPattern = regexp.MustCompile(`(?m)^go (\d+\.\d+\.\d+)$`)
 
 func TestGoWorkspaceContainsEveryModule(t *testing.T) {
 	t.Parallel()
@@ -20,14 +23,20 @@ func TestGoWorkspaceContainsEveryModule(t *testing.T) {
 		t.Fatalf("root go.mod must not exist after the component module split: %v", err)
 	}
 
+	// go.work is the single source of truth, so a bump only has to happen once.
+	match := workspaceGoPattern.FindStringSubmatch(workspace)
+	if match == nil {
+		t.Fatal("go.work has no go directive")
+	}
+
 	for _, module := range modules {
 		if !strings.Contains(workspace, "\t./"+module+"\n") {
 			t.Errorf("go.work does not include ./%s", module)
 		}
 
 		moduleFile := readFile(t, filepath.Join(root, module, "go.mod"))
-		if !strings.Contains(moduleFile, "\ngo 1.26.4\n") {
-			t.Errorf("%s/go.mod does not use Go 1.26.4", module)
+		if !strings.Contains(moduleFile, "\ngo "+match[1]+"\n") {
+			t.Errorf("%s/go.mod uses a different Go version than go.work (%s)", module, match[1])
 		}
 	}
 }
