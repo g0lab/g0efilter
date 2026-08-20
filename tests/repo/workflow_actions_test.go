@@ -23,9 +23,9 @@ func actionIsPinned(action string) bool {
 		return containerDigest.MatchString(action)
 	}
 
-	separator := strings.LastIndexByte(action, '@')
+	_, sha, found := strings.CutLast(action, "@")
 
-	return separator >= 0 && commitSHA.MatchString(action[separator+1:])
+	return found && commitSHA.MatchString(sha)
 }
 
 func TestWorkflowActionsArePinnedToCommits(t *testing.T) {

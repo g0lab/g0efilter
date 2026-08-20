@@ -121,7 +121,9 @@ func TestSeriesCountIsCapped(t *testing.T) {
 
 		var value uint64
 
-		_, err := fmt.Sscanf(line[strings.LastIndex(line, " ")+1:], "%d", &value)
+		_, field, _ := strings.CutLast(line, " ")
+
+		_, err := fmt.Sscanf(field, "%d", &value)
 		if err != nil {
 			t.Fatalf("parse %q: %v", line, err)
 		}

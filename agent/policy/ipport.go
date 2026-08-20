@@ -179,17 +179,17 @@ func ParseDomainRule(entry string) (DomainRule, error) {
 // a regex pattern always ends with '/', so only an all-digit suffix is read as a
 // port - a colon inside a regex body is left alone.
 func splitDomainPort(s string) (string, int, error) {
-	idx := strings.LastIndex(s, ":")
-	if idx < 0 || idx == len(s)-1 || !isAllDigits(s[idx+1:]) {
+	domain, portStr, found := strings.CutLast(s, ":")
+	if !found || portStr == "" || !isAllDigits(portStr) {
 		return s, 0, nil
 	}
 
-	port, err := parsePortStr(s[idx+1:])
+	port, err := parsePortStr(portStr)
 	if err != nil {
 		return "", 0, err
 	}
 
-	return s[:idx], port, nil
+	return domain, port, nil
 }
 
 func parsePortStr(s string) (int, error) {
