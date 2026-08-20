@@ -333,7 +333,7 @@ func dashPersistence(t *testing.T, s *harness.Stack, c *harness.DashboardClient,
 	}
 }
 
-// dashBrowser runs the Playwright suite against this stack. Browser behaviour is
+// dashBrowser runs the Playwright suite against this stack. Browser behavior is
 // not something Go HTTP requests can stand in for, so it stays as Playwright and
 // the Go test just owns the environment.
 func dashBrowser(t *testing.T, s *harness.Stack) {

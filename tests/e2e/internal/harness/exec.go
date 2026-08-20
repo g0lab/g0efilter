@@ -83,7 +83,7 @@ func (s *Stack) exec(t *testing.T, c *testcontainers.DockerContainer, command ..
 	return res
 }
 
-// StripANSI removes the colour escapes the agent's console logger emits.
+// StripANSI removes the color escapes the agent's console logger emits.
 func StripANSI(s string) string {
 	return ansiPattern.ReplaceAllString(s, "")
 }

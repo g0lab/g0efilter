@@ -48,7 +48,7 @@ func newInjector(t *testing.T, objects ...client.Object) *g0webhook.Injector {
 
 	scheme := testScheme(t)
 	withDependencies := []client.Object{
-		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}}, //nolint:exhaustruct // metadata only
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}},
 	}
 
 	for _, object := range objects {
@@ -78,7 +78,6 @@ func newInjector(t *testing.T, objects ...client.Object) *g0webhook.Injector {
 }
 
 func policy(name string, selector map[string]string, sidecar v1alpha1.SidecarSpec) *v1alpha1.EgressPolicy {
-	//nolint:exhaustruct // only the fields under test
 	return &v1alpha1.EgressPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNS, Generation: 1},
 		Spec: v1alpha1.EgressPolicySpec{
@@ -89,7 +88,7 @@ func policy(name string, selector map[string]string, sidecar v1alpha1.SidecarSpe
 		Status: v1alpha1.EgressPolicyStatus{
 			ObservedGeneration: 1,
 			ConfigMapName:      "g0efilter-" + name,
-			Conditions: []metav1.Condition{{ //nolint:exhaustruct // readiness fields only
+			Conditions: []metav1.Condition{{
 				Type: "Ready", Status: metav1.ConditionTrue, ObservedGeneration: 1,
 			}},
 		},
@@ -97,11 +96,10 @@ func policy(name string, selector map[string]string, sidecar v1alpha1.SidecarSpe
 }
 
 func pod(labels, annotations map[string]string) *corev1.Pod {
-	//nolint:exhaustruct // only the fields under test
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: testNS, Labels: labels, Annotations: annotations},
 		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{{Name: "app", Image: "app:1"}}, //nolint:exhaustruct // name and image only
+			Containers: []corev1.Container{{Name: "app", Image: "app:1"}},
 		},
 	}
 }
@@ -115,7 +113,6 @@ func admit(t *testing.T, injector *g0webhook.Injector, subject *corev1.Pod) (adm
 		t.Fatalf("marshal pod: %v", err)
 	}
 
-	//nolint:exhaustruct // only the fields the handler reads
 	response := injector.Handle(context.Background(), admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Namespace: testNS,
@@ -151,7 +148,7 @@ func applyPatches(t *testing.T, raw []byte, response admission.Response) *corev1
 		t.Fatalf("apply patches: %v", err)
 	}
 
-	result := &corev1.Pod{} //nolint:exhaustruct // decoded into
+	result := &corev1.Pod{}
 
 	err = json.Unmarshal(out, result)
 	if err != nil {
@@ -164,7 +161,6 @@ func applyPatches(t *testing.T, raw []byte, response admission.Response) *corev1
 func TestInjectsTheSidecarFirst(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct // the defaults are the subject
 	injector := newInjector(t, policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{}))
 	_, patched := admit(t, injector, pod(map[string]string{"app": "web"}, nil))
 
@@ -224,7 +220,6 @@ func TestSkipsPodsThatShouldNotBeFiltered(t *testing.T) {
 
 	selector := map[string]string{"app": "web"}
 
-	//nolint:exhaustruct // only the fields under test
 	withSidecar := pod(selector, nil)
 	withSidecar.Spec.InitContainers = []corev1.Container{{Name: g0webhook.ContainerName, Image: "old"}}
 
@@ -243,7 +238,7 @@ func TestSkipsPodsThatShouldNotBeFiltered(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			injector := newInjector(t, policy("web", selector, v1alpha1.SidecarSpec{})) //nolint:exhaustruct // defaults
+			injector := newInjector(t, policy("web", selector, v1alpha1.SidecarSpec{}))
 			response, patched := admit(t, injector, subject)
 
 			if !response.Allowed {
@@ -265,8 +260,8 @@ func TestDeniesWhenSeveralPoliciesSelectThePod(t *testing.T) {
 	selector := map[string]string{"app": "web"}
 
 	injector := newInjector(t,
-		policy("alpha", selector, v1alpha1.SidecarSpec{}), //nolint:exhaustruct // defaults
-		policy("beta", selector, v1alpha1.SidecarSpec{}),  //nolint:exhaustruct // defaults
+		policy("alpha", selector, v1alpha1.SidecarSpec{}),
+		policy("beta", selector, v1alpha1.SidecarSpec{}),
 	)
 
 	response, _ := admit(t, injector, pod(selector, nil))
@@ -288,8 +283,8 @@ func TestPolicyAnnotationChoosesBetweenPolicies(t *testing.T) {
 	selector := map[string]string{"app": "web"}
 
 	injector := newInjector(t,
-		policy("alpha", selector, v1alpha1.SidecarSpec{}), //nolint:exhaustruct // defaults
-		policy("beta", selector, v1alpha1.SidecarSpec{}),  //nolint:exhaustruct // defaults
+		policy("alpha", selector, v1alpha1.SidecarSpec{}),
+		policy("beta", selector, v1alpha1.SidecarSpec{}),
 	)
 
 	_, patched := admit(t, injector, pod(selector, map[string]string{g0webhook.PolicyAnnotation: "beta"}))
@@ -304,7 +299,7 @@ func TestDeniesWhenTheNamedPolicyDoesNotSelectThePod(t *testing.T) {
 	t.Parallel()
 
 	selector := map[string]string{"app": "web"}
-	injector := newInjector(t, policy("alpha", selector, v1alpha1.SidecarSpec{})) //nolint:exhaustruct // defaults
+	injector := newInjector(t, policy("alpha", selector, v1alpha1.SidecarSpec{}))
 
 	response, _ := admit(t, injector, pod(selector, map[string]string{g0webhook.PolicyAnnotation: "missing"}))
 	if response.Allowed {
@@ -350,12 +345,11 @@ func TestDeniesWhenAClusterPolicyHasNotReachedTheConfigMap(t *testing.T) {
 	t.Parallel()
 
 	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
-	//nolint:exhaustruct // selector and status are intentionally empty
 	baseline := &v1alpha1.ClusterEgressPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: "baseline"},
 		Spec: v1alpha1.ClusterEgressPolicySpec{Egress: []v1alpha1.EgressRule{{
 			Name: "dns",
-			To:   []v1alpha1.EgressPeer{{Networks: []string{"10.96.0.10"}}}, //nolint:exhaustruct // networks only
+			To:   []v1alpha1.EgressPeer{{Networks: []string{"10.96.0.10"}}},
 		}}},
 	}
 

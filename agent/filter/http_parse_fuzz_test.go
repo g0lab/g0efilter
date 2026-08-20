@@ -9,7 +9,7 @@ import (
 
 // The raw HTTP path exists so a transparent proxy forwards exactly what the
 // client sent. Everything it writes to the backend must therefore be a verbatim
-// prefix of what it read: no invented bytes, no reordering, no re-serialisation.
+// prefix of what it read: no invented bytes, no reordering, no re-serialization.
 
 func httpParseSeeds(f *testing.F) {
 	f.Helper()

@@ -35,7 +35,6 @@ func startEnvtest(t *testing.T) client.Client {
 		t.Skip("KUBEBUILDER_ASSETS is not set; run scripts/test-go.sh or setup-envtest")
 	}
 
-	//nolint:exhaustruct // only the CRD paths matter
 	environment := &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "deploy", "crds")},
 		ErrorIfCRDPathMissing: true,
@@ -57,7 +56,7 @@ func newEnvtestClient(t *testing.T, cfg *rest.Config) client.Client {
 
 	scheme := testScheme(t)
 
-	c, err := client.New(cfg, client.Options{Scheme: scheme}) //nolint:exhaustruct // scheme only
+	c, err := client.New(cfg, client.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatalf("build client: %v", err)
 	}
@@ -68,7 +67,6 @@ func newEnvtestClient(t *testing.T, cfg *rest.Config) client.Client {
 func createNamespace(t *testing.T, c client.Client, name string, labels map[string]string) {
 	t.Helper()
 
-	//nolint:exhaustruct // metadata only
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}}
 
 	err := c.Create(context.Background(), ns)
@@ -215,7 +213,6 @@ func TestReconcileAgainstARealAPIServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	//nolint:exhaustruct // NamespacedName is the whole request
 	_, err = reconciler.Reconcile(ctx, ctrl.Request{
 		NamespacedName: client.ObjectKey{Namespace: testNS, Name: "web"},
 	})

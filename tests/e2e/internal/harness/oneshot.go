@@ -52,7 +52,6 @@ func RunOneShot(t *testing.T, spec OneShot) OneShotResult {
 	ctx, cancel := context.WithTimeout(context.Background(), oneShotTimeout)
 	defer cancel()
 
-	//nolint:exhaustruct // only the fields a one-shot run needs
 	req := testcontainers.ContainerRequest{
 		Image:      spec.Image,
 		Cmd:        spec.Cmd,
@@ -68,7 +67,6 @@ func RunOneShot(t *testing.T, spec OneShot) OneShotResult {
 		},
 	}
 
-	//nolint:exhaustruct // Started is the only option needed
 	created, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          false,
@@ -157,8 +155,7 @@ func RunOneShotStdin(t *testing.T, spec OneShot, stdin string) OneShotResult {
 	code := 0
 
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			code = exitErr.ExitCode()
 		} else {
 			t.Fatalf("docker run %v: %v", args, err)

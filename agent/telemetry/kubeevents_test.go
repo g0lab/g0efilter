@@ -37,7 +37,7 @@ type eventSink struct {
 func newEventSink(t *testing.T) *eventSink {
 	t.Helper()
 
-	sink := &eventSink{} //nolint:exhaustruct // fields accumulate per request
+	sink := &eventSink{}
 
 	sink.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -76,7 +76,6 @@ func (s *eventSink) recorded() []recordedEvent {
 }
 
 func newShipperWithSink(sink *eventSink) *Shipper {
-	//nolint:exhaustruct // only the Kubernetes Events sink is under test
 	return &Shipper{
 		kubeevent: kubeevents.New(kubeevents.Config{
 			Client:    sink.server.Client(),
@@ -200,7 +199,6 @@ func TestShipperCountsVerdicts(t *testing.T) {
 
 	registry := metrics.New()
 
-	//nolint:exhaustruct // only the metrics sink is under test
 	shipper := &Shipper{metrics: registry}
 
 	shipper.Handle(context.Background(), time.Now(), "https.allowed", map[string]any{
@@ -244,7 +242,6 @@ func TestShipperCountsVerdicts(t *testing.T) {
 func TestShipperWithoutSinksIsSafe(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct // deliberately empty
 	shipper := &Shipper{}
 
 	shipper.Handle(context.Background(), time.Now(), "https.blocked", map[string]any{

@@ -55,7 +55,7 @@ type StackConfig struct {
 	TesterImage    string
 }
 
-// BaselineConfig is the default-deny stack the shared behaviour phases use.
+// BaselineConfig is the default-deny stack the shared behavior phases use.
 func BaselineConfig(t *testing.T, mode FilterMode) StackConfig {
 	t.Helper()
 

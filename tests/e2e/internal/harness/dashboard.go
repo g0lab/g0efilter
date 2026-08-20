@@ -66,7 +66,7 @@ func newClient(t *testing.T, baseURL, apiKey string) *DashboardClient {
 	}
 }
 
-// RequestOption customises one request.
+// RequestOption customizes one request.
 type RequestOption func(*http.Request)
 
 // WithHeader sets a request header.

@@ -190,12 +190,21 @@ func phase03UnblockReload(t *testing.T, s *harness.Stack) {
 			want int
 			opts []harness.RequestOption
 		}{
-			{"invalid type", harness.UnblockRequest{Type: "badtype", Value: "example.com"},
-				harness.APIRoot + "/unblocks", http.StatusBadRequest, nil},
-			{"invalid ip", harness.UnblockRequest{Type: "ip", Value: "not-an-ip"},
-				harness.APIRoot + "/unblocks", http.StatusBadRequest, nil},
-			{"unknown ack id", map[string]string{"id": "nonexistent-id"},
-				harness.APIRoot + "/unblocks/ack", http.StatusNotFound, nil},
+			{
+				"invalid type",
+				harness.UnblockRequest{Type: "badtype", Value: "example.com"},
+				harness.APIRoot + "/unblocks", http.StatusBadRequest, nil,
+			},
+			{
+				"invalid ip",
+				harness.UnblockRequest{Type: "ip", Value: "not-an-ip"},
+				harness.APIRoot + "/unblocks", http.StatusBadRequest, nil,
+			},
+			{
+				"unknown ack id",
+				map[string]string{"id": "nonexistent-id"},
+				harness.APIRoot + "/unblocks/ack", http.StatusNotFound, nil,
+			},
 		}
 
 		for _, tc := range cases {

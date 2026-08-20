@@ -63,7 +63,7 @@ func TestIgnoreAddressClassRules(t *testing.T) {
 	t.Parallel()
 
 	runIgnoreCases(t, []ignoreCase{
-		// IPv6 neighbour discovery is the noisiest source of nflog blocks.
+		// IPv6 neighbor discovery is the noisiest source of nflog blocks.
 		{"multicast matches ff02", "multicast", BlockedConnectionInfo{Destination: "ff02::16"}, true},
 		{"multicast matches ipv4", "multicast", BlockedConnectionInfo{DestinationIP: "224.0.0.251"}, true},
 		{"multicast spares unicast", "multicast", BlockedConnectionInfo{DestinationIP: "1.2.3.4"}, false},

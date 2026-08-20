@@ -11,7 +11,6 @@ import (
 	"github.com/g0lab/g0efilter/agent/recovery"
 )
 
-//nolint:exhaustruct
 func TestGuardNflogHookContainsPanic(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +36,6 @@ func TestGuardNflogHookContainsPanic(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGuardNflogHookPassesThroughVerdicts(t *testing.T) {
 	t.Parallel()
 

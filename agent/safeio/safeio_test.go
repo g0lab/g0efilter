@@ -357,7 +357,7 @@ func ExampleDrainAndClose() {
 }
 
 func ExampleCloseWithErr() {
-	var err = errPrimaryOp
+	err := errPrimaryOp
 
 	// We still want to close resources even if the primary operation failed
 	closer := &mockCloser{}

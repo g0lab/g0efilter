@@ -352,7 +352,8 @@ func testEmitSyntheticUDPCase(t *testing.T, tt struct {
 	destination string
 	logger      *slog.Logger
 	expectID    bool
-}) {
+},
+) {
 	t.Helper()
 
 	result := EmitSyntheticUDP(
@@ -617,7 +618,8 @@ func testEmitSyntheticCase(t *testing.T, tt struct {
 	target    string
 	logger    *slog.Logger
 	expectID  bool
-}) {
+},
+) {
 	t.Helper()
 
 	// Create a mock connection for the test
@@ -736,7 +738,7 @@ func TestDecisionLogLevels(t *testing.T) {
 	newCapture := func() (*bytes.Buffer, Options) {
 		var buf bytes.Buffer
 
-		return &buf, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))} //nolint:exhaustruct
+		return &buf, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))}
 	}
 
 	conn1, conn2 := net.Pipe()

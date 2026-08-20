@@ -671,7 +671,7 @@ func createTempFile(t *testing.T, content string) string {
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "test-policy.yaml")
 
-	err := os.WriteFile(tmpFile, []byte(content), 0600)
+	err := os.WriteFile(tmpFile, []byte(content), 0o600)
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
@@ -726,17 +726,36 @@ type envTestCase struct {
 
 func getLoadFromEnvTests() []envTestCase {
 	return []envTestCase{
-		{"Both IPs and domains", "1.1.1.1,8.8.8.8", "google.com,*.github.com",
-			[]string{"1.1.1.1", "8.8.8.8"}, []string{"google.com", "*.github.com"}, false},
-		{"Only IPs", "192.168.1.0/24,10.0.0.1", "",
-			[]string{"192.168.1.0/24", "10.0.0.1"}, nil, false},
-		{"Only domains", "", "example.com,*.cloudflare.com",
-			nil, []string{"example.com", "*.cloudflare.com"}, false},
+		{
+			"Both IPs and domains", "1.1.1.1,8.8.8.8", "google.com,*.github.com",
+			[]string{"1.1.1.1", "8.8.8.8"},
+			[]string{"google.com", "*.github.com"},
+			false,
+		},
+		{
+			"Only IPs", "192.168.1.0/24,10.0.0.1", "",
+			[]string{"192.168.1.0/24", "10.0.0.1"},
+			nil, false,
+		},
+		{
+			"Only domains", "", "example.com,*.cloudflare.com",
+			nil,
+			[]string{"example.com", "*.cloudflare.com"},
+			false,
+		},
 		{"Empty values", "", "", nil, nil, false},
-		{"Whitespace trimming", " 1.1.1.1 , 8.8.8.8 ", " google.com , *.github.com ",
-			[]string{"1.1.1.1", "8.8.8.8"}, []string{"google.com", "*.github.com"}, false},
-		{"Skip empty entries", "1.1.1.1,,8.8.8.8", "google.com,,*.github.com",
-			[]string{"1.1.1.1", "8.8.8.8"}, []string{"google.com", "*.github.com"}, false},
+		{
+			"Whitespace trimming", " 1.1.1.1 , 8.8.8.8 ", " google.com , *.github.com ",
+			[]string{"1.1.1.1", "8.8.8.8"},
+			[]string{"google.com", "*.github.com"},
+			false,
+		},
+		{
+			"Skip empty entries", "1.1.1.1,,8.8.8.8", "google.com,,*.github.com",
+			[]string{"1.1.1.1", "8.8.8.8"},
+			[]string{"google.com", "*.github.com"},
+			false,
+		},
 		{"Invalid IP", "1.1.1.1,invalid-ip", "google.com", nil, nil, true},
 		{"Invalid domain", "1.1.1.1", "google.com,invalid domain with spaces", nil, nil, true},
 	}
@@ -780,6 +799,7 @@ func TestReadPolicyWithEnvVars(t *testing.T) {
 		})
 	}
 } // policyTestCase defines test case structure for ReadPolicy with environment variables.
+
 type policyTestCase struct {
 	name            string
 	envIPs          string
@@ -800,19 +820,29 @@ func getReadPolicyWithEnvVarsTests() []policyTestCase {
 	return []policyTestCase{
 		{
 			"Env vars take precedence over file", "1.1.1.1", "env.example.com",
-			filePolicy, []string{"1.1.1.1"}, []string{"env.example.com"}, false,
+			filePolicy,
+			[]string{"1.1.1.1"},
+			[]string{"env.example.com"},
+			false,
 		},
 		{
 			"Fall back to file when env vars empty", "", "",
-			filePolicy, []string{"192.168.1.1"}, []string{"file.example.com"}, false,
+			filePolicy,
+			[]string{"192.168.1.1"},
+			[]string{"file.example.com"},
+			false,
 		},
 		{
 			"Only IP env var set", "1.1.1.1,8.8.8.8", "",
-			filePolicy, []string{"1.1.1.1", "8.8.8.8"}, nil, false,
+			filePolicy,
+			[]string{"1.1.1.1", "8.8.8.8"},
+			nil, false,
 		},
 		{
 			"Only domain env var set", "", "env.example.com,*.github.com",
-			filePolicy, nil, []string{"env.example.com", "*.github.com"}, false,
+			filePolicy, nil,
+			[]string{"env.example.com", "*.github.com"},
+			false,
 		},
 	}
 }

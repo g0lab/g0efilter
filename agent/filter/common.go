@@ -42,9 +42,7 @@ const (
 	componentHTTP  = "http"
 )
 
-var (
-	errListenAddrEmpty = errors.New("listenAddr cannot be empty")
-)
+var errListenAddrEmpty = errors.New("listenAddr cannot be empty")
 
 // Options contains configuration for network filtering.
 type Options struct {
@@ -708,7 +706,7 @@ func serveTCP(
 		return errListenAddrEmpty
 	}
 
-	lc := &net.ListenConfig{} //nolint:exhaustruct
+	lc := &net.ListenConfig{}
 
 	ln, err := lc.Listen(ctx, "tcp", listenAddr)
 	if err != nil {

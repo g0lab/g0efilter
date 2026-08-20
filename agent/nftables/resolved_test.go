@@ -85,7 +85,6 @@ func TestClampTTL(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetDNSStrict(t *testing.T) {
 	t.Parallel()
 
@@ -118,7 +117,6 @@ func TestGenerateRulesetDNSStrict(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestGenerateRulesetDNSStrictDefaultAllowDegrades(t *testing.T) {
 	t.Parallel()
 

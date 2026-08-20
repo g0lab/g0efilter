@@ -284,7 +284,6 @@ func TestNewFromEnvShipsBlocked(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct // only the metrics registry participates in this path
 func TestHandleCountsContainedPanics(t *testing.T) {
 	t.Parallel()
 
@@ -308,7 +307,6 @@ func TestHandleCountsContainedPanics(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct // only the metrics registry participates in this path
 func TestHandleDoesNotTreatAPanicAsADenial(t *testing.T) {
 	t.Parallel()
 

@@ -25,7 +25,7 @@ type series struct {
 	value  uint64
 }
 
-// counter is a labelled monotonic counter with a bounded series count.
+// counter is a labeled monotonic counter with a bounded series count.
 type counter struct {
 	name string
 	help string

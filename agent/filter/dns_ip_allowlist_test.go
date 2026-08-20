@@ -35,7 +35,7 @@ func startTestUpstream(t *testing.T, records map[string][]dns.RR) string {
 		}
 
 		_ = w.WriteMsg(reply)
-	})} //nolint:exhaustruct
+	})}
 
 	go func() { _ = srv.ActivateAndServe() }()
 
@@ -168,7 +168,7 @@ func TestFilterToAllowlistedIPs(t *testing.T) {
 func TestResolveViaIPAllowlistNoIPsSkips(t *testing.T) {
 	t.Parallel()
 
-	handler := createDNSHandler(nil, Options{}) //nolint:exhaustruct
+	handler := createDNSHandler(nil, Options{})
 
 	msg := new(dns.Msg)
 	msg.SetQuestion("blocked.example.com.", dns.TypeA)
@@ -195,7 +195,7 @@ func TestSiblingResolvesToAllowlistedIP(t *testing.T) {
 		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
 	})
 
-	handler := createDNSHandler(nil, Options{}) //nolint:exhaustruct
+	handler := createDNSHandler(nil, Options{})
 	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
 	handler.upstreams = []string{up}
 
@@ -225,11 +225,11 @@ func TestResolveViaIPAllowlistSiblingSinkhole(t *testing.T) {
 		name + "/AAAA": {answerAAAA(name, "2606:4700::1", 60)},
 	})
 
-	handler := createDNSHandler(nil, Options{}) //nolint:exhaustruct
+	handler := createDNSHandler(nil, Options{})
 	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
 	handler.upstreams = []string{up}
 
-	writer := &mockDNSResponseWriter{responses: make([]*dns.Msg, 0)} //nolint:exhaustruct
+	writer := &mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}
 	msg := new(dns.Msg)
 	msg.SetQuestion(name, dns.TypeAAAA)
 
@@ -270,13 +270,13 @@ func TestHandleAAAASiblingLogsAllowedNotBlocked(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))}) //nolint:exhaustruct
+	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))})
 	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
 	handler.upstreams = []string{up}
 
 	msg := new(dns.Msg)
 	msg.SetQuestion(name, dns.TypeAAAA)
-	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg) //nolint:exhaustruct
+	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg)
 
 	logged := buf.String()
 	if strings.Contains(logged, "dns.blocked") || strings.Contains(logged, `"action":"BLOCKED"`) {
@@ -305,13 +305,13 @@ func TestHandleAAAANeitherFamilyBlocks(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))}) //nolint:exhaustruct
+	handler := createDNSHandler(nil, Options{Logger: slog.New(slog.NewJSONHandler(&buf, nil))})
 	handler.ipAllow = newIPAllowlist([]string{"40.89.244.232"})
 	handler.upstreams = []string{up}
 
 	msg := new(dns.Msg)
 	msg.SetQuestion(name, dns.TypeAAAA)
-	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg) //nolint:exhaustruct
+	handler.handle(&mockDNSResponseWriter{responses: make([]*dns.Msg, 0)}, msg)
 
 	logged := buf.String()
 	if !strings.Contains(logged, "dns.blocked") {

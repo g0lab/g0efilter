@@ -47,7 +47,6 @@ func TestNormalizePatternsKeepsRegexIntact(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestHostPermittedDefaultDeny(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +66,6 @@ func TestHostPermittedDefaultDeny(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestHostPermittedDefaultAllow(t *testing.T) {
 	t.Parallel()
 
@@ -98,7 +96,6 @@ func TestHostPermittedDefaultAllow(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestHostPermittedLearningModeNeverBlocks(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +108,6 @@ func TestHostPermittedLearningModeNeverBlocks(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestMaybeLearnHost(t *testing.T) {
 	t.Parallel()
 
@@ -140,7 +136,6 @@ func TestMaybeLearnHost(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestMaybeLearnDisabledOutsideLearningMode(t *testing.T) {
 	t.Parallel()
 

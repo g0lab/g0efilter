@@ -27,7 +27,7 @@ func controllerDocs(t *testing.T, args ...string) []map[string]any {
 }
 
 // The chart installs the same control plane as deploy/webhook. A difference means an
-// operator gets different admission behaviour depending on how they installed it.
+// operator gets different admission behavior depending on how they installed it.
 func TestControllerChartMatchesTheWebhookOverlay(t *testing.T) {
 	t.Parallel()
 

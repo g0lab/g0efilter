@@ -27,7 +27,7 @@ func (c oracleConn) SetWriteDeadline(time.Time) error { return nil }
 func oracleSNI(data []byte) (string, bool) {
 	var hello *tls.ClientHelloInfo
 
-	_ = tls.Server(oracleConn{r: bytes.NewReader(data)}, &tls.Config{ //nolint:exhaustruct // parse-only oracle
+	_ = tls.Server(oracleConn{r: bytes.NewReader(data)}, &tls.Config{
 		GetConfigForClient: func(ch *tls.ClientHelloInfo) (*tls.Config, error) {
 			cp := *ch
 			hello = &cp

@@ -121,7 +121,6 @@ func assertLacksAll(t *testing.T, s string, subs ...string) {
 	}
 }
 
-//nolint:exhaustruct
 func httpsDefaultDenyConfig() RulesetConfig {
 	return RulesetConfig{
 		AllowV4:   []string{"192.0.2.10", "198.51.100.0/24"},
@@ -189,7 +188,6 @@ func TestRulesetSemanticsInvalidStateDroppedBeforeAnyLog(t *testing.T) {
 	for _, mode := range modes {
 		for _, defaultAllow := range []bool{false, true} {
 			for _, audit := range []bool{false, true} {
-				//nolint:exhaustruct
 				cfg := RulesetConfig{
 					AllowV4:      []string{"192.0.2.1"},
 					AllowV6:      []string{"2001:db8::1"},
@@ -234,7 +232,6 @@ func assertInvalidDropBeforeLog(t *testing.T, cfg RulesetConfig, name, body stri
 func TestRulesetSemanticsDNSDefaultDeny(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4: []string{"192.0.2.10"},
 		AllowV6: []string{"2001:db8::5"},
@@ -268,7 +265,6 @@ func TestRulesetSemanticsDNSDefaultDeny(t *testing.T) {
 func TestRulesetSemanticsDNSStrictDefaultDeny(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4: []string{"192.0.2.10"},
 		AllowV6: []string{"2001:db8::5"},
@@ -310,7 +306,6 @@ func TestRulesetSemanticsDNSStrictDefaultDeny(t *testing.T) {
 func TestRulesetSemanticsDNSStrictQUICProtocolAgnostic(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4: []string{"192.0.2.10"},
 		AllowV6: []string{"2001:db8::5"},
@@ -343,7 +338,6 @@ func TestRulesetSemanticsDNSStrictQUICProtocolAgnostic(t *testing.T) {
 func TestRulesetSemanticsDefaultAllowDenylist(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4:      []string{"192.0.2.10"},
 		AllowV6:      []string{"2001:db8::5"},
@@ -404,7 +398,6 @@ func TestRulesetSemanticsModeSelection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			//nolint:exhaustruct
 			ruleset := GenerateRuleset(RulesetConfig{
 				HTTPSPort: 8443,
 				HTTPPort:  8080,
@@ -428,7 +421,6 @@ func TestRulesetSemanticsModeSelection(t *testing.T) {
 func TestRulesetSemanticsEmptyAllowlistPlaceholders(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		HTTPSPort: 8443,
 		HTTPPort:  8080,
@@ -443,7 +435,6 @@ func TestRulesetSemanticsEmptyAllowlistPlaceholders(t *testing.T) {
 func TestRulesetSemanticsAuditDNSStrict(t *testing.T) {
 	t.Parallel()
 
-	//nolint:exhaustruct
 	ruleset := GenerateRuleset(RulesetConfig{
 		AllowV4: []string{"192.0.2.10"},
 		DNSPort: 5353,
@@ -470,7 +461,6 @@ func TestGenerateNftRulesetMatchesGenerateRuleset(t *testing.T) {
 
 	fromWrapper := GenerateNftRuleset([]string{"192.0.2.10"}, []string{"2001:db8::5"}, 8443, 8080, 5353, "https")
 
-	//nolint:exhaustruct
 	fromConfig := GenerateRuleset(RulesetConfig{
 		AllowV4:   []string{"192.0.2.10"},
 		AllowV6:   []string{"2001:db8::5"},

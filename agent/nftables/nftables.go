@@ -278,8 +278,8 @@ func ApplyNftRulesWithContext(
 	allowlist []string,
 	httpsPortStr,
 	httpPortStr,
-	dnsPortStr string) error {
-	//nolint:exhaustruct
+	dnsPortStr string,
+) error {
 	return ApplyPolicyRulesWithContext(ctx, PolicyRules{AllowIPs: allowlist}, httpsPortStr, httpPortStr, dnsPortStr)
 }
 
@@ -289,7 +289,8 @@ func ApplyPolicyRulesWithContext(
 	rules PolicyRules,
 	httpsPortStr,
 	httpPortStr,
-	dnsPortStr string) error {
+	dnsPortStr string,
+) error {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("FILTER_MODE")))
 	if mode == "" {
 		mode = actions.ModeHTTPS
@@ -746,7 +747,7 @@ table ip6 g0efilter_v6 {
         # Allow ping to allow-listed destinations
         icmpv6 type echo-request ip6 daddr @allow_daddr_v6 accept
 
-        # ICMPv6 neighbour discovery is required for any IPv6 connectivity
+        # ICMPv6 neighbor discovery is required for any IPv6 connectivity
         icmpv6 type { nd-neighbor-solicit, nd-neighbor-advert, nd-router-solicit, nd-router-advert } accept
 
         # Allow and log statically allow-listed destinations
@@ -1070,7 +1071,6 @@ table ip6 g0efilter_nat_v6 {
 // GenerateNftRuleset generates a complete default-deny nftables ruleset for the specified
 // mode, ports, and allowlists. v4 and v6 are pre-split IPv4 and IPv6 allowlist entries.
 func GenerateNftRuleset(v4, v6 []string, httpsPort, httpPort, dnsPort int, mode string) string {
-	//nolint:exhaustruct
 	return GenerateRuleset(RulesetConfig{
 		AllowV4:   v4,
 		AllowV6:   v6,
@@ -1681,7 +1681,7 @@ func StreamNfLogWithLogger(ctx context.Context, lg *slog.Logger) error {
 		return fmt.Errorf("register failed: %w", err)
 	}
 
-	// Block until context is cancelled
+	// Block until context is canceled
 	<-ctx.Done()
 
 	return nil

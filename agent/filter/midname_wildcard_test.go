@@ -66,7 +66,6 @@ func TestLeadingAndMidWildcardCombined(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestMidNameWildcardInDenylist(t *testing.T) {
 	t.Parallel()
 

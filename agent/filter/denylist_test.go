@@ -6,7 +6,6 @@ import "testing"
 // Gaps left by TestHostPermittedDefaultAllow, which already covers exact and
 // wildcard denies, the allowlist override and the empty host.
 
-//nolint:exhaustruct
 func TestDenylistRegexPatterns(t *testing.T) {
 	t.Parallel()
 
@@ -35,8 +34,6 @@ func TestDenylistRegexPatterns(t *testing.T) {
 
 // Under default-deny the allowlist is authoritative and the denylist is never
 // consulted, so a host in neither list is blocked and one in both is allowed.
-//
-//nolint:exhaustruct
 func TestDenylistIgnoredUnderDefaultDeny(t *testing.T) {
 	t.Parallel()
 
@@ -54,8 +51,6 @@ func TestDenylistIgnoredUnderDefaultDeny(t *testing.T) {
 
 // Serve80 prebuilds denyMatcher; the []string path builds one per call. A
 // divergence would mean the hot path enforces differently from the tested one.
-//
-//nolint:exhaustruct
 func TestDenylistPrebuiltMatcherMatchesLazyPath(t *testing.T) {
 	t.Parallel()
 
@@ -79,7 +74,6 @@ func TestDenylistPrebuiltMatcherMatchesLazyPath(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestDenylistNormalisesHostForm(t *testing.T) {
 	t.Parallel()
 
@@ -101,8 +95,6 @@ func TestDenylistNormalisesHostForm(t *testing.T) {
 
 // Learning writes into the allowlist, which overrides the denylist, so recording
 // a denied entry would permanently undo the deny.
-//
-//nolint:exhaustruct
 func TestLearningModeSkipsDenylistedEntries(t *testing.T) {
 	t.Parallel()
 

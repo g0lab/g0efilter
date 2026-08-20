@@ -10,7 +10,6 @@ import (
 	"github.com/g0lab/g0efilter/shared/actions"
 )
 
-//nolint:exhaustruct
 func TestNormalizeModeAcceptsDNSStrict(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +38,6 @@ func TestIsDNSMode(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestStrictResolvedHookDegradesWhenPermissive(t *testing.T) {
 	t.Parallel()
 
@@ -58,7 +56,6 @@ func TestStrictResolvedHookDegradesWhenPermissive(t *testing.T) {
 	}
 }
 
-//nolint:exhaustruct
 func TestCheckDomainConstraints(t *testing.T) {
 	t.Parallel()
 

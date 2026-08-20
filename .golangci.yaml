@@ -4,22 +4,28 @@ version: '2'
 formatters:
   enable:
     - gci
+    - gofumpt
 
 linters:
   default: all
   disable:
-    - wsl  # Deprecated
-    - varnamelen  # Too strict
-    - exhaustruct  # Too strict
-    - mnd  # Too strict
-    - gomodguard  # Replaced by gomodguard_v2
+    # wsl, exhaustruct and gomodguard are the deprecated majors of wsl_v5, exhaustruct_v5 and gomodguard_v2.
+    - wsl
+    - exhaustruct
+    - gomodguard
+    - exhaustruct_v5
+    - mnd
+    - varnamelen
   exclusions:
     rules:
-      # A kubebuilder marker is one comment line by definition: controller-gen does
-      # not join continuations, so a CEL rule cannot be wrapped to fit.
+      # controller-gen does not join continuations, so a CEL rule cannot be wrapped to fit.
       - source: '^\s*// \+kubebuilder:'
         linters:
           - lll
+      # revive does not know the encoding/json ",inline" convention the CRD types use.
+      - text: 'struct-tag: unknown option "inline" in json tag'
+        linters:
+          - revive
       - path: tests/e2e
         linters:
           # Shared stacks mutate policy and must remain serial.
@@ -36,12 +42,14 @@ linters:
       - path: tests/e2e/internal/harness/.*_test\.go
         linters:
           - testpackage
-      # Ent schema definitions are framework boilerplate (Fields/Edges/Indexes/
-      # Annotations); the generated client is auto-excluded but the hand-written
-      # schema and codegen entrypoint are not.
+      # The hand-written Ent schema is framework boilerplate; only the generated client is auto-excluded.
       - path: dashboard/store/ent
         linters:
           - revive
+      - path: dashboard/store/ent
+        text: 'ST1000'
+        linters:
+          - staticcheck
   settings:
     depguard:
       rules:
@@ -59,6 +67,24 @@ linters:
       replace-local: true
     gomodguard_v2:
       local-replace-directives: true
+    govet:
+      enable-all: true
+      disable:
+        - shadow
+        - fieldalignment
+    importas:
+      no-unaliased: true
+      alias:
+        - pkg: k8s.io/api/admission/v1
+          alias: admissionv1
+        - pkg: k8s.io/api/admissionregistration/v1
+          alias: admissionregv1
+        - pkg: k8s.io/api/core/v1
+          alias: corev1
+        - pkg: k8s.io/apimachinery/pkg/api/errors
+          alias: apierrors
+        - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+          alias: metav1
     ireturn:
       allow:
         - anon
@@ -66,3 +92,37 @@ linters:
         - empty
         - stdlib
         - github.com/google/gopacket.Packet
+    misspell:
+      locale: US
+    perfsprint:
+      err-error: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: struct-tag
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    staticcheck:
+      checks:
+        - all

@@ -114,7 +114,7 @@ rm -rf "$out"
 	res := s.ExecTester(t, "sh", "-c", script, "load-batch", req.URL)
 	elapsed := time.Since(started)
 
-	out := BatchResult{} //nolint:exhaustruct // populated from JSON
+	out := BatchResult{}
 
 	line := lastJSONLine(res.Output)
 	if line == "" {

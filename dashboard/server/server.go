@@ -168,7 +168,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 		return err
 	}
-	//nolint:contextcheck // Cache shutdown must outlive the cancelled server context.
+	//nolint:contextcheck // Cache shutdown must outlive the canceled server context.
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), jwksCacheShutdownTimeout)
 		defer cancel()
@@ -225,9 +225,9 @@ func Run(ctx context.Context, cfg Config) error {
 		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		lg.Debug("dashboard.shutting_down", "reason", "context_cancelled")
+		lg.Debug("dashboard.shutting_down", "reason", "context_canceled")
 
-		//nolint:contextcheck // Intentionally using fresh context for graceful shutdown after parent ctx cancelled.
+		//nolint:contextcheck // Intentionally using fresh context for graceful shutdown after parent ctx canceled.
 		err := httpSrv.Shutdown(shCtx)
 		if err != nil {
 			lg.Error("dashboard.shutdown_failed",

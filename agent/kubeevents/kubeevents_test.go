@@ -46,7 +46,7 @@ type apiServer struct {
 func newAPIServer(t *testing.T) *apiServer {
 	t.Helper()
 
-	api := &apiServer{status: http.StatusCreated} //nolint:exhaustruct // remaining fields accumulate per request
+	api := &apiServer{status: http.StatusCreated}
 
 	api.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -283,7 +283,7 @@ func TestNilRecorderIsANoOp(t *testing.T) {
 func TestNewAppliesTheDefaultCap(t *testing.T) {
 	t.Parallel()
 
-	if got := New(Config{}).max; got != defaultMaxEvents { //nolint:exhaustruct // defaults are the subject
+	if got := New(Config{}).max; got != defaultMaxEvents {
 		t.Errorf("max = %d, want %d", got, defaultMaxEvents)
 	}
 }

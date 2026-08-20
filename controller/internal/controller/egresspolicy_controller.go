@@ -87,7 +87,7 @@ func (r *EgressPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, r.markReady(ctx, &policy, name, pods) //nolint:exhaustruct // no requeue needed
+	return ctrl.Result{}, r.markReady(ctx, &policy, name, pods)
 }
 
 // ConfigMapNameFor is the ConfigMap a policy renders into. Pods mount it by name,
@@ -200,7 +200,6 @@ func (r *EgressPolicyReconciler) applyConfigMap(
 	policy *v1alpha1.EgressPolicy,
 	name, document string,
 ) error {
-	//nolint:exhaustruct // CreateOrUpdate fills the rest
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: policy.Namespace},
 	}
@@ -281,7 +280,7 @@ func (r *EgressPolicyReconciler) markDegraded(ctx context.Context, policy *v1alp
 }
 
 func setCondition(policy *v1alpha1.EgressPolicy, status metav1.ConditionStatus, reason, message string) {
-	condition := metav1.Condition{ //nolint:exhaustruct // LastTransitionTime is set by the helper
+	condition := metav1.Condition{
 		Type:               conditionReady,
 		Status:             status,
 		Reason:             reason,

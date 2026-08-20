@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"time"
 
-	admissionv1 "k8s.io/api/admissionregistration/v1"
+	admissionregv1 "k8s.io/api/admissionregistration/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -186,7 +186,6 @@ func create(ctx context.Context, c client.Client, opts Options) (*Bundle, error)
 		return nil, err
 	}
 
-	//nolint:exhaustruct // name, namespace and data only
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: opts.SecretName, Namespace: opts.Namespace},
 		Type:       corev1.SecretTypeTLS,
@@ -267,10 +266,9 @@ func generate(opts Options) (*Bundle, error) {
 
 	now := time.Now()
 
-	//nolint:exhaustruct // only the fields a serving certificate needs
 	template := x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: opts.DNSNames()[2]}, //nolint:exhaustruct // CN only
+		Subject:               pkix.Name{CommonName: opts.DNSNames()[2]},
 		DNSNames:              opts.DNSNames(),
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(validFor),
@@ -292,7 +290,6 @@ func generate(opts Options) (*Bundle, error) {
 }
 
 func encode(blockType string, der []byte) []byte {
-	//nolint:exhaustruct // PEM blocks carry no headers here
 	return pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der})
 }
 
@@ -345,7 +342,7 @@ func writeAtomic(dir, name string, data []byte) error {
 // publish writes the CA into the configuration. Without it every admission fails,
 // which under failurePolicy Fail blocks pod creation outright.
 func publish(ctx context.Context, c client.Client, opts Options, ca []byte) error {
-	var configuration admissionv1.MutatingWebhookConfiguration
+	var configuration admissionregv1.MutatingWebhookConfiguration
 
 	err := c.Get(ctx, client.ObjectKey{Name: opts.WebhookName}, &configuration)
 	if apierrors.IsNotFound(err) {
