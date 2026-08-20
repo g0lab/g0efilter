@@ -29,7 +29,7 @@ jobs:
       relevant: ${{ steps.paths.outputs.relevant }}
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
         with:
           egress-policy: audit
 
@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
         with:
           egress-policy: audit
 
@@ -114,7 +114,7 @@ jobs:
 
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
         with:
           egress-policy: audit
 
@@ -182,7 +182,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
         with:
           egress-policy: audit
 
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@588576788dabd34c91363ded753d3277cc0a4d8c # v0.9.3
+        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
         with:
           egress-policy: audit
 
