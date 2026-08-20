@@ -26,8 +26,8 @@ github.com/mdlayher/netlink v1.9.1-0.20260312172110-2a932c0fc1ae h1:sOtbiuSoORJR
 github.com/mdlayher/netlink v1.9.1-0.20260312172110-2a932c0fc1ae/go.mod h1:YBnl5BXsCoRuwBjKKlZ+aYmEoq0r12FDA/3JC+94KDg=
 github.com/mdlayher/socket v0.5.1 h1:VZaqt6RkGkt2OE9l3GcC6nZkqD3xKeQLyfleW/uBcos=
 github.com/mdlayher/socket v0.5.1/go.mod h1:TjPLHI1UgwEv5J1B5q0zTZq12A/6H7nKmtTanQE37IQ=
-github.com/miekg/dns v1.1.72 h1:vhmr+TF2A3tuoGNkLDFK9zi36F2LS+hKTRW0Uf8kbzI=
-github.com/miekg/dns v1.1.72/go.mod h1:+EuEPhdHOsfk6Wk5TT2CzssZdqkmFhf8r+aVyDEToIs=
+github.com/miekg/dns v1.1.73 h1:uhT8nJxmTrPJYClxVxTCX+CVn6qnzSiybRk72Z6DgrE=
+github.com/miekg/dns v1.1.73/go.mod h1:RW2Obtfd5NZHvOFe3zYG0W8koWOQtAzyHaLo8vASBuQ=
 github.com/nicholas-fedor/shoutrrr v0.17.1 h1:tpIM/hBgM1RKmfcoGsVsfvra5EsQClH8qFkvMoP6fVs=
 github.com/nicholas-fedor/shoutrrr v0.17.1/go.mod h1:vMer/4ey2s4xF8mHyeIOwq5ze8outIMvJZ0DuqE8kvc=
 github.com/onsi/ginkgo/v2 v2.32.1 h1:6tlvcDm/3sE8lGJbZ4+d4mO3RLy24/tQWOFzVSQNIfw=
