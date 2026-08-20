@@ -29,7 +29,7 @@
     {
       "customType": "regex",
       "description": "The setup-go pins are the release toolchain.",
-      "managerFilePatterns": ["/^\\.github/workflows/.+\\.yaml$/"],
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
       "matchStrings": ["go-version:\\s*'(?<currentValue>\\d+\\.\\d+\\.\\d+)'"],
       "depNameTemplate": "go",
       "datasourceTemplate": "golang-version"
