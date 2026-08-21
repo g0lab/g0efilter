@@ -7,9 +7,9 @@ go 1.27.0
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	golang.org/x/net v0.58.0
-	k8s.io/api v0.36.3
-	k8s.io/apimachinery v0.36.3
-	k8s.io/client-go v0.36.3
+	k8s.io/api v0.36.4
+	k8s.io/apimachinery v0.36.4
+	k8s.io/client-go v0.36.4
 	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/yaml v1.6.0
 )
