@@ -18,7 +18,7 @@ const ContainerName = "g0efilter"
 const VolumeName = "g0efilter-policy"
 
 // DefaultImage must track the tag deploy/kustomize/sidecar and the Helm chart pin.
-const DefaultImage = "docker.io/g0lab/g0efilter:v0.9.4"
+const DefaultImage = "docker.io/g0lab/g0efilter:v0.9.5"
 
 const (
 	policyMountPath = "/app/policy"

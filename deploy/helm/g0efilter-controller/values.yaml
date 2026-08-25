@@ -7,7 +7,7 @@
 # never stops filtering: a running sidecar keeps enforcing its mounted ConfigMap.
 image:
   repository: docker.io/g0lab/g0efilter-controller
-  tag: v0.9.4
+  tag: v0.9.5
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -26,8 +26,8 @@ crds:
   # Install the EgressPolicy and ClusterEgressPolicy CRDs with the chart. Set false
   # when they are applied out of band, which is what Argo CD users with a separate
   # CRD sync wave usually want:
-  #   kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v0.9.4/deploy/crds/g0efilter.g0lab.com_egresspolicies.yaml
-  #   kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v0.9.4/deploy/crds/g0efilter.g0lab.com_clusteregresspolicies.yaml
+  #   kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v0.9.5/deploy/crds/g0efilter.g0lab.com_egresspolicies.yaml
+  #   kubectl apply --server-side -f https://raw.githubusercontent.com/g0lab/g0efilter/v0.9.5/deploy/crds/g0efilter.g0lab.com_clusteregresspolicies.yaml
   #
   # They carry helm.sh/resource-policy: keep, so `helm uninstall` leaves them and the
   # policies they hold in place. Removing them deletes every EgressPolicy in the
