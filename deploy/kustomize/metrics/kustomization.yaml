@@ -3,8 +3,8 @@
 # and annotates the pod for scrape discovery.
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.4
-#     - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.4
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.5
+#     - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.5
 #
 # Label cardinality is bounded by design: series are keyed on component, verdict and
 # reason, never on destination, so a port scan cannot grow the series count.
