@@ -27,7 +27,7 @@ jobs:
       TARGET: ${{ inputs.target }}
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@a3e2f766b0a74af88a0101a9ad966ed45c688e12 # v0.9.4
+        uses: g0lab/g0efilter@797aa833188053c41187319d195dbc865d7cae0a # v0.9.5
         with:
           egress-policy: audit
 
