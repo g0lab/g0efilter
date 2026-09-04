@@ -6,7 +6,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     helm.sh/resource-policy: keep
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: clusteregresspolicies.g0efilter.g0lab.com
 spec:
   group: g0efilter.g0lab.com
