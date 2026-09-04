@@ -72,6 +72,12 @@
       "rangeStrategy": "bump"
     },
     {
+      "description": "engines.node is a deliberate major floor, held in step with the node-version pins in the workflows, the devcontainer and the dashboard Containerfiles. bump would narrow it to a patch-precise floor on every 24.x release, which changes nothing CI resolves and only risks rejecting a contributor. replace stays quiet until a new Node major is latest, then offers it as a major for a human to land alongside the other pins.",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["engines"],
+      "rangeStrategy": "replace"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["github-actions"],
       "groupName": "github-actions"
