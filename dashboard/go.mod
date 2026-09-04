@@ -10,8 +10,8 @@ require (
 	github.com/jwx-go/jwkfetch/v4 v4.0.4
 	github.com/lestrrat-go/httprc/v3 v3.0.6
 	github.com/lestrrat-go/jwx/v4 v4.4.0
-	golang.org/x/crypto v0.55.0
-	modernc.org/sqlite v1.57.0
+	golang.org/x/crypto v0.56.0
+	modernc.org/sqlite v1.58.0
 )
 
 require (
@@ -72,9 +72,9 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.74.4 // indirect
+	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
 
 replace github.com/g0lab/g0efilter/shared => ../shared
