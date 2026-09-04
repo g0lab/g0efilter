@@ -7,10 +7,10 @@ require (
 	github.com/g0lab/g0efilter/shared v0.0.0
 	github.com/google/gopacket v1.1.19
 	github.com/miekg/dns v1.1.73
-	github.com/nicholas-fedor/shoutrrr v0.17.2
+	github.com/nicholas-fedor/shoutrrr v0.19.0
 	github.com/rs/zerolog v1.35.1
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.47.0
 )
