@@ -67,6 +67,11 @@
       "groupName": "npm"
     },
     {
+      "description": "The default replace strategy rewrites a range only once the new version falls outside it, so a caret range keeps its stale floor while the lockfile moves underneath it. bump keeps the declared minimum equal to the version pnpm installs and CI actually tests.",
+      "matchManagers": ["npm"],
+      "rangeStrategy": "bump"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchManagers": ["github-actions"],
       "groupName": "github-actions"

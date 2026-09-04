@@ -28,19 +28,19 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3(vite@8.2.2(jiti@2.7.0))
       eslint:
-        specifier: ^10.8.1
+        specifier: ^10.9.1
         version: 10.9.1(jiti@2.7.0)
       eslint-plugin-svelte:
-        specifier: ^3.22.0
+        specifier: ^3.23.0
         version: 3.23.0(eslint@10.9.1(jiti@2.7.0))(svelte@5.57.0(@typescript-eslint/types@8.69.0))
       globals:
-        specifier: ^17.9.0
+        specifier: ^17.12.0
         version: 17.12.0
       svelte:
-        specifier: ^5.56.8
+        specifier: ^5.57.0
         version: 5.57.0(@typescript-eslint/types@8.69.0)
       svelte-check:
-        specifier: ^4.7.5
+        specifier: ^4.7.6
         version: 4.7.6(picomatch@4.0.7)(svelte@5.57.0(@typescript-eslint/types@8.69.0))(typescript@6.0.3)
       tailwindcss:
         specifier: ^4.3.3
@@ -55,10 +55,10 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
       typescript-eslint:
-        specifier: ^8.67.0
+        specifier: ^8.69.0
         version: 8.69.0(eslint@10.9.1(jiti@2.7.0))(typescript@6.0.3)
       vite:
-        specifier: ^8.2.1
+        specifier: ^8.2.2
         version: 8.2.2(jiti@2.7.0)
 
 packages:
