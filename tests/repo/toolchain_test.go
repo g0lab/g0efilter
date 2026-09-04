@@ -201,17 +201,12 @@ func compileRenovatePattern(t *testing.T, pattern string) *regexp.Regexp {
 	return compiled
 }
 
-// Builder images can receive Docker updates independently of the release
-// toolchain, but they must remain new enough to build every module.
-func TestBuilderImagesMeetTheModuleGoDirective(t *testing.T) {
+// The builder images are the only Go pin outside the workflows, so a bump that
+// misses them has to fail here rather than in a scan of a built image.
+func TestBuilderImagesMatchTheReleaseToolchain(t *testing.T) {
 	t.Parallel()
 
-	match := workspaceGoPattern.FindStringSubmatch(readFile(t, filepath.Join("..", "..", "go.work")))
-	if match == nil {
-		t.Fatal("go.work has no go directive")
-	}
-
-	want := match[1]
+	want := releaseGoVersion(t)
 	builders := builderFiles(t)
 
 	found := 0
@@ -224,9 +219,8 @@ func TestBuilderImagesMeetTheModuleGoDirective(t *testing.T) {
 
 		found++
 
-		if compareVersions(match[1], want) < 0 {
-			t.Errorf("%s builds with Go %s, which is older than the module go directive %s",
-				filepath.Base(builder), match[1], want)
+		if match[1] != want {
+			t.Errorf("%s builds with golang:%s, want golang:%s", filepath.Base(builder), match[1], want)
 		}
 	}
 
