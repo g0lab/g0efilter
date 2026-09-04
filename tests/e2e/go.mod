@@ -5,7 +5,7 @@ module github.com/g0lab/g0efilter/tests/e2e
 go 1.27.0
 
 require (
-	github.com/moby/moby/api v1.55.0
+	github.com/moby/moby/api v1.56.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/compose v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/k3s v0.44.0
