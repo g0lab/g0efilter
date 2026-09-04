@@ -34,8 +34,8 @@ const (
 	defaultTTL            = 60              // DNS response TTL in seconds
 	connectionReadTimeout = 5 * time.Second // Timeout for initial connection reads
 
-	acceptBackoffMin = 5 * time.Millisecond
-	acceptBackoffMax = 1 * time.Second
+	acceptBackoffInitial = 5 * time.Millisecond
+	acceptBackoffMax     = 1 * time.Second
 
 	// Component names for logging.
 	componentHTTPS = "https"
@@ -816,7 +816,7 @@ func handleAcceptError(
 
 func nextAcceptBackoff(current time.Duration) time.Duration {
 	if current <= 0 {
-		return acceptBackoffMin
+		return acceptBackoffInitial
 	}
 
 	next := current * 2

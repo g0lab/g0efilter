@@ -3,6 +3,7 @@ package webhook_test
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/g0lab/g0efilter/controller/api/v1alpha1"
@@ -150,7 +151,7 @@ func assertMountMatches(t *testing.T, got, want corev1.Container) {
 		t.Fatalf("volume mounts: webhook=%v kustomize=%v", got.VolumeMounts, want.VolumeMounts)
 	}
 
-	if got.VolumeMounts[0] != want.VolumeMounts[0] {
+	if !reflect.DeepEqual(got.VolumeMounts[0], want.VolumeMounts[0]) {
 		t.Errorf("volume mount differs:\nwebhook:   %v\nkustomize: %v", got.VolumeMounts[0], want.VolumeMounts[0])
 	}
 }

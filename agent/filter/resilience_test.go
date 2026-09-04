@@ -219,8 +219,8 @@ func TestNextAcceptBackoff(t *testing.T) {
 		current time.Duration
 		want    time.Duration
 	}{
-		{0, acceptBackoffMin},
-		{acceptBackoffMin, 2 * acceptBackoffMin},
+		{0, acceptBackoffInitial},
+		{acceptBackoffInitial, 2 * acceptBackoffInitial},
 		{acceptBackoffMax / 2, acceptBackoffMax},
 		{acceptBackoffMax, acceptBackoffMax},
 		{2 * acceptBackoffMax, acceptBackoffMax},
@@ -363,13 +363,13 @@ func TestAcceptLoopResetsBackoffAfterSuccess(t *testing.T) {
 	}
 
 	grown := ln.gapAfter(succeedOn - 1)
-	if grown < 4*acceptBackoffMin {
+	if grown < 4*acceptBackoffInitial {
 		t.Fatalf("backoff did not grow across failures: gap was %v", grown)
 	}
 
 	reset := ln.gapAfter(succeedOn + 1)
-	if reset > 20*acceptBackoffMin {
-		t.Errorf("retry %v after a successful accept, want it reset to about %v", reset, acceptBackoffMin)
+	if reset > 20*acceptBackoffInitial {
+		t.Errorf("retry %v after a successful accept, want it reset to about %v", reset, acceptBackoffInitial)
 	}
 }
 

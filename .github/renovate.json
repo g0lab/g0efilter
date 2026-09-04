@@ -120,9 +120,9 @@
       "enabled": false
     },
     {
-      "description": "The release toolchain lives in the workflow setup-go pins and the E2E builder images. Group them so one PR moves every copy; tests/repo fails a bump that misses one.",
-      "matchPackageNames": ["go", "golang"],
-      "matchDatasources": ["golang-version", "docker"],
+      "description": "Keep every setup-go pin on one release toolchain version. Container builders are updated independently by the Docker manager and only need to satisfy the modules' go directive.",
+      "matchPackageNames": ["go"],
+      "matchDatasources": ["golang-version"],
       "groupName": "go toolchain"
     },
     {
