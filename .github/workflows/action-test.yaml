@@ -43,7 +43,7 @@ jobs:
             exit 0
           fi
           if git diff --name-only "$BASE" "$HEAD" | grep -qE \
-            '^(agent|shared|action)/|^action\.yml$|^\.github/(actions|test-actions|scripts)/|^tests/e2e/Containerfile\.agent$|^go\.work$|^scripts/test-action\.sh$|^\.github/workflows/action-test\.yaml$'; then
+            '^(agent|shared|action)/|^action\.yml$|^\.github/(actions|test-actions|scripts)/|^tests/e2e/(Containerfile\.agent|compose\.build\.yaml)$|^go\.work$|^scripts/test-action\.sh$|^\.github/workflows/action-test\.yaml$'; then
             echo 'relevant=true' >> "$GITHUB_OUTPUT"
           else
             echo 'relevant=false' >> "$GITHUB_OUTPUT"
@@ -93,6 +93,8 @@ jobs:
 
   unit:
     name: Scripts
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -471,6 +473,8 @@ jobs:
 
   invalid-input:
     name: Input validation
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

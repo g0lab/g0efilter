@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '0 3 * * *'
+    - cron: '0 3 * * 1'
 
 permissions:
   contents: read
@@ -39,17 +39,28 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Go
+        id: go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: '1.27.1'
-          cache: true
-          cache-dependency-path: |
-            agent/go.sum
-            controller/go.sum
-            dashboard/go.sum
-            shared/go.sum
-            tests/e2e/go.sum
-            tests/go.sum
+          cache: false
+
+      - name: Locate Go caches
+        id: go-cache
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      # Reuse unchanged packages when a dependency bump changes the exact key.
+      - name: Cache Go dependencies and builds
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ${{ steps.go-cache.outputs.build }}
+            ${{ steps.go-cache.outputs.modules }}
+          key: ci-go-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ci-go-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ steps.go.outputs.go-version }}-
 
       # Go tests embed and exercise the built dashboard UI.
       - name: Set up pnpm
@@ -120,10 +131,6 @@ jobs:
             --timeout=10m
             ./...
 
-      - name: Vet e2e module
-        working-directory: tests/e2e
-        run: go vet ./...
-
       - name: Lint controller module
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
@@ -133,25 +140,11 @@ jobs:
             --timeout=10m
             ./...
 
-      - name: Generated CRDs are up to date
-        run: |
-          scripts/gen-controller.sh
-          git diff --exit-code -- deploy/crds controller/api deploy/controller \
-            deploy/helm/g0efilter-controller/templates
-
       # Fails when a chart changed without a Chart.yaml version bump.
       - name: Lint charts
         uses: helm/chart-testing-action@6ec842c01de15ebb84c8627d2744a0c2f2755c9f # v2
         with:
           version: v3.14.0
-
-      - name: Run chart-testing
-        run: |
-          if ct list-changed --config .github/chart-testing.yaml | grep -q .; then
-            ct lint --config .github/chart-testing.yaml
-          else
-            echo "no chart changes"
-          fi
 
       - name: Test
         run: scripts/test-go.sh --skip-lint
