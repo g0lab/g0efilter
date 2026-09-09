@@ -43,7 +43,7 @@ metadata:
     {{- include "g0efilter-controller.labels" . | nindent 4 }}
 rules:
   - apiGroups: ['admissionregistration.k8s.io']
-    resources: ['mutatingwebhookconfigurations']
+    resources: ['mutatingwebhookconfigurations', 'validatingwebhookconfigurations']
     resourceNames:
       - {{ include "g0efilter-controller.webhookConfigName" . }}
     verbs: ['get', 'update']

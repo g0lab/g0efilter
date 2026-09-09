@@ -17,6 +17,16 @@ resources:
   - certificate.yaml
 
 patches:
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: g0efilter-sidecar-injector
+    patch: |-
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: g0efilter-sidecar-injector
+        annotations:
+          cert-manager.io/inject-ca-from: g0efilter-system/g0efilter-webhook
   # External certificate management needs neither Secret access nor permission to
   # update the webhook configuration; cert-manager and cainjector own both.
   - target:

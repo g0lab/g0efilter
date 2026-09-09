@@ -1,4 +1,26 @@
 ---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: g0efilter-sidecar-injector
+webhooks:
+  - name: policy.g0efilter.g0lab.com
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    clientConfig:
+      service:
+        name: g0efilter-webhook
+        namespace: g0efilter-system
+        path: /validate-policy
+        port: 443
+    rules:
+      - operations: ['CREATE', 'UPDATE']
+        apiGroups: ['g0efilter.g0lab.com']
+        apiVersions: ['v1alpha1']
+        resources: ['egresspolicies', 'clusteregresspolicies']
+    failurePolicy: Fail
+    timeoutSeconds: 10
+---
 apiVersion: v1
 kind: Service
 metadata:

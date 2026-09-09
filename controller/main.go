@@ -35,6 +35,7 @@ const (
 	webhookServiceName = "g0efilter-webhook"
 	webhookConfigName  = "g0efilter-sidecar-injector"
 	webhookPath        = "/inject-sidecar"
+	validatePath       = "/validate-policy"
 )
 
 // Set by GoReleaser via ldflags (wired in init()).
@@ -283,7 +284,13 @@ func startWebhook(mgr ctrl.Manager, opts options) error {
 		Defaults: sidecarDefaults(opts),
 	}
 
+	validator := &g0webhook.Validator{
+		Client:  mgr.GetAPIReader(),
+		Decoder: admission.NewDecoder(mgr.GetScheme()),
+	}
+
 	mgr.GetWebhookServer().Register(webhookPath, &admission.Webhook{Handler: injector})
+	mgr.GetWebhookServer().Register(validatePath, &admission.Webhook{Handler: validator})
 
 	return nil
 }
