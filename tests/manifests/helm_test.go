@@ -133,7 +133,10 @@ func TestHelmAndKustomizeAgreeOnTheSidecar(t *testing.T) {
 	helmSidecar := containerNamed(t, list(t, helmPod, "initContainers"), sidecarName)
 	kzSidecar := containerNamed(t, list(t, kzPod, "initContainers"), sidecarName)
 
-	for _, key := range []string{"image", "restartPolicy", "securityContext", "resources", "volumeMounts"} {
+	for _, key := range []string{
+		"image", "restartPolicy", "securityContext", "resources", "volumeMounts",
+		"startupProbe", "readinessProbe",
+	} {
 		if normalise(t, helmSidecar[key]) != normalise(t, kzSidecar[key]) {
 			t.Errorf("sidecar %s differs between Helm and Kustomize:\nhelm:      %s\nkustomize: %s",
 				key, normalise(t, helmSidecar[key]), normalise(t, kzSidecar[key]))

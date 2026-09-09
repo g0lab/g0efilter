@@ -32,6 +32,18 @@ patches:
               - name: g0efilter
                 image: docker.io/g0lab/g0efilter
                 restartPolicy: Always
+                startupProbe:
+                  exec:
+                    command: ['/app/g0efilter', 'healthcheck']
+                  periodSeconds: 1
+                  timeoutSeconds: 1
+                  failureThreshold: 150
+                readinessProbe:
+                  exec:
+                    command: ['/app/g0efilter', 'healthcheck']
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 3
                 env:
                   - name: FILTER_MODE
                     value: https
@@ -94,6 +106,18 @@ patches:
                   - name: g0efilter
                     image: docker.io/g0lab/g0efilter
                     restartPolicy: Always
+                    startupProbe:
+                      exec:
+                        command: ['/app/g0efilter', 'healthcheck']
+                      periodSeconds: 1
+                      timeoutSeconds: 1
+                      failureThreshold: 150
+                    readinessProbe:
+                      exec:
+                        command: ['/app/g0efilter', 'healthcheck']
+                      periodSeconds: 5
+                      timeoutSeconds: 3
+                      failureThreshold: 3
                     env:
                       - name: FILTER_MODE
                         value: https

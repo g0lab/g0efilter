@@ -24,6 +24,18 @@ a pod template's initContainers: anything ordered before it has unfiltered egres
   imagePullPolicy: {{ $c.image.pullPolicy }}
   # A native sidecar: nftables is programmed before the application container starts.
   restartPolicy: Always
+  startupProbe:
+    exec:
+      command: ['/app/g0efilter', 'healthcheck']
+    periodSeconds: 1
+    timeoutSeconds: 1
+    failureThreshold: 150
+  readinessProbe:
+    exec:
+      command: ['/app/g0efilter', 'healthcheck']
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
   env:
     - name: FILTER_MODE
       value: {{ $c.mode | quote }}
