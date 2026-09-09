@@ -74,6 +74,25 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	t.Run("AuditModeAllowsUnmatchedTraffic", func(t *testing.T) { auditModeAllowsUnmatchedTraffic(t, cluster, audited) })
 	t.Run("AuditModeLogsTheDecision", func(t *testing.T) { auditModeLogsTheDecision(t, cluster, audited) })
 	t.Run("AuditModeSwitchesToBlock", func(t *testing.T) { auditModeSwitchesToBlock(t, cluster, audited) })
+
+	t.Run("ValidatorRefusesAnUnenforceablePolicy", func(t *testing.T) {
+		theValidatorRefusesAnUnenforceablePolicy(t, cluster)
+	})
+
+	runtimePod := clusterDNSNeedsNoPolicyRule(t, cluster)
+
+	t.Run("ClusterResolverRuleIsScopedToDNS", func(t *testing.T) {
+		theClusterResolverRuleIsScopedToDNS(t, cluster, runtimePod)
+	})
+	t.Run("SidecarGatesTheApplicationOnItsStartupProbe", func(t *testing.T) {
+		theSidecarGatesTheApplicationOnItsStartupProbe(t, cluster, runtimePod)
+	})
+	t.Run("EnforcementReloadsWithoutARestart", func(t *testing.T) {
+		enforcementReloadsWithoutARestart(t, cluster, runtimePod)
+	})
+	t.Run("StalePodsStillAdmitTheirReplacements", func(t *testing.T) {
+		stalePodsStillAdmitTheirReplacements(t, cluster)
+	})
 }
 
 // docs/kubernetes.md tells operators a filtered namespace needs Pod Security

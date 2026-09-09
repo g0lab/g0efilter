@@ -130,7 +130,7 @@ func auditModeSwitchesToBlock(t *testing.T, cluster *harness.K3sCluster, oldPod 
 	cluster.Kubectl(t, "wait", "--for=condition=Ready", "-n", auditNamespace,
 		"egresspolicy/web", "--timeout=3m")
 
-	// Enforcement is baked into the pod at admission, so it takes a new pod.
+	// Enforcement also reloads in place; this path covers the ENFORCE env a fresh admission writes.
 	cluster.Kubectl(t, "rollout", "restart", "-n", auditNamespace, "deployment/web")
 	cluster.Kubectl(t, "rollout", "status", "-n", auditNamespace, "deployment/web", "--timeout=3m")
 	cluster.Kubectl(t, "wait", "--for=delete", "-n", auditNamespace,
