@@ -2,6 +2,7 @@
 package policy
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -311,6 +312,7 @@ type AllowList struct {
 
 // Config is the YAML shape of the policy file.
 type Config struct {
+	Runtime       *Runtime  `yaml:"runtime,omitempty"`
 	DefaultAction string    `yaml:"default_action,omitempty"` //nolint:tagliatelle // policy file uses snake_case
 	AllowList     AllowList `yaml:"allowlist"`
 	DenyList      AllowList `yaml:"denylist,omitempty"`
@@ -319,6 +321,8 @@ type Config struct {
 // Policy is the validated, normalized policy.
 // DefaultAction is "" when the policy file does not set it (caller applies its default).
 type Policy struct {
+	Runtime       *Runtime
+	Hash          string
 	DefaultAction string
 	AllowIPs      []string
 	AllowDomains  []string
@@ -328,38 +332,54 @@ type Policy struct {
 	AllowDomainRules []DomainRule
 }
 
+// Runtime holds reloadable proxy settings; a present block replaces the environment as a unit.
+type Runtime struct {
+	Mode         string   `yaml:"mode"`
+	Enforcement  string   `yaml:"enforcement"`
+	DNSUpstreams []string `yaml:"dnsUpstreams"`
+	DNSHardening *bool    `yaml:"dnsHardening"`
+	DNSRateQPS   int      `yaml:"dnsRateQps"`
+	DNSRateBurst int      `yaml:"dnsRateBurst"`
+}
+
 // loadConfig reads and parses a YAML policy file with path validation.
 func loadConfig(file string) (Config, error) {
+	cfg, _, err := loadSnapshot(file)
+
+	return cfg, err
+}
+
+func loadSnapshot(file string) (Config, string, error) {
 	var cfg Config
 
 	// Validate file path to prevent directory traversal
 	cleanPath := filepath.Clean(file)
 
 	if strings.Contains(cleanPath, "..") {
-		return cfg, fmt.Errorf("%w: %s", errPathTraversalNotAllowed, file)
+		return cfg, "", fmt.Errorf("%w: %s", errPathTraversalNotAllowed, file)
 	}
 
 	// Ensure file is readable regular file
 	fileInfo, err := os.Stat(cleanPath)
 	if err != nil {
-		return cfg, fmt.Errorf("error accessing file: %w", err)
+		return cfg, "", fmt.Errorf("error accessing file: %w", err)
 	}
 
 	if !fileInfo.Mode().IsRegular() {
-		return cfg, fmt.Errorf("%w: %s", errNotRegularFile, cleanPath)
+		return cfg, "", fmt.Errorf("%w: %s", errNotRegularFile, cleanPath)
 	}
 
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
-		return cfg, fmt.Errorf("error reading file: %w", err)
+		return cfg, "", fmt.Errorf("error reading file: %w", err)
 	}
 
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
-		return cfg, fmt.Errorf("error parsing YAML: %w", err)
+		return cfg, "", fmt.Errorf("error parsing YAML: %w", err)
 	}
 
-	return cfg, nil
+	return cfg, fmt.Sprintf("%x", sha256.Sum256(data)), nil
 }
 
 // ReadPolicy loads and validates the policy, returning only the allowlist IPs and domains.
@@ -399,7 +419,7 @@ func ReadFile(file string) (*Policy, error) {
 
 	lg.Debug("policy.read_start", "component", "policy", "source", "file", "file", strings.TrimSpace(file))
 
-	cfg, err := loadConfig(file)
+	cfg, hash, err := loadSnapshot(file)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +429,7 @@ func ReadFile(file string) (*Policy, error) {
 		return nil, err
 	}
 
-	pol := &Policy{DefaultAction: defaultAction}
+	pol := &Policy{DefaultAction: defaultAction, Runtime: cfg.Runtime, Hash: hash}
 
 	pol.AllowIPs, pol.AllowDomainRules, err = validateLists(lg, file, cfg.AllowList, true)
 	if err != nil {
