@@ -105,7 +105,9 @@ func TestDispatchConnContainsHandlerPanic(t *testing.T) {
 
 	<-done
 
-	waitFor(t, func() bool { return strings.Contains(buf.String(), recovery.PanicMessage) })
+	waitFor(t, "the panic to be recovered and logged", func() bool {
+		return strings.Contains(buf.String(), recovery.PanicMessage)
+	})
 
 	if !strings.Contains(buf.String(), `"component":"https"`) {
 		t.Errorf("panic was not attributed to the listener: %q", buf.String())
@@ -154,7 +156,7 @@ func TestDispatchConnReleasesSemaphoreOnPanic(t *testing.T) {
 		<-done
 	}
 
-	waitFor(t, func() bool { return len(sem) == 0 })
+	waitFor(t, "the connection semaphore to drain", func() bool { return len(sem) == 0 })
 }
 
 func TestDispatchConnAbandonsQueuedConnectionOnCancel(t *testing.T) {
@@ -403,7 +405,9 @@ func TestServeTCPSurvivesAPanickingHandler(t *testing.T) {
 		serveErr <- serveTCP(ctx, addr, lg, handler, newMatcher(nil), opts, "https")
 	}()
 
-	waitFor(t, func() bool { return strings.Contains(buf.String(), "https.filter_listen") })
+	waitFor(t, "the https listener to log that it is up", func() bool {
+		return strings.Contains(buf.String(), "https.filter_listen")
+	})
 
 	for range 2 {
 		conn, dialErr := dialTCP(t, addr)
@@ -416,7 +420,7 @@ func TestServeTCPSurvivesAPanickingHandler(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	waitFor(t, func() bool { return handled.Load() >= 2 })
+	waitFor(t, "both connections to be handled", func() bool { return handled.Load() >= 2 })
 
 	if !strings.Contains(buf.String(), recovery.PanicMessage) {
 		t.Error("the panic was not reported")
@@ -540,10 +544,13 @@ func udpPortHeld(addr string) bool {
 	return false
 }
 
-func waitFor(t *testing.T, cond func() bool) {
+// waitTimeout is generous because a loaded CI runner schedules goroutines late.
+const waitTimeout = 30 * time.Second
+
+func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(waitTimeout)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -552,7 +559,29 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	t.Fatal("condition was not met within the deadline")
+	t.Fatalf("timed out after %s waiting for %s", waitTimeout, what)
+}
+
+// waitForBind reports the server's own error, which a failed bind would otherwise hide.
+func waitForBind(t *testing.T, returned <-chan error, what string, cond func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(waitTimeout)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-returned:
+			t.Fatalf("the server returned before %s: %v", what, err)
+		default:
+		}
+
+		if cond() {
+			return
+		}
+
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	t.Fatalf("timed out after %s waiting for %s", waitTimeout, what)
 }
 
 func TestServeTCPReleasesThePortBeforeReturning(t *testing.T) {
@@ -574,7 +603,7 @@ func TestServeTCPReleasesThePortBeforeReturning(t *testing.T) {
 			returned <- serveTCP(ctx, addr, lg, handler, newMatcher(nil), Options{Logger: lg}, "https")
 		}()
 
-		waitFor(t, func() bool { return tcpPortHeld(t, addr) })
+		waitForBind(t, returned, "serveTCP to bind "+addr, func() bool { return tcpPortHeld(t, addr) })
 
 		cancel()
 

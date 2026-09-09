@@ -71,7 +71,9 @@ func TestRunDNSServersStopsSiblingWhenOneFails(t *testing.T) {
 		returned <- runDNSServers(t.Context(), udpSrv, tcpSrv, handler.upstreams, opts)
 	}()
 
-	waitFor(t, func() bool { return tcpPortHeld(t, addr) && udpPortHeld(addr) })
+	waitForBind(t, returned, "both DNS listeners to bind "+addr, func() bool {
+		return tcpPortHeld(t, addr) && udpPortHeld(addr)
+	})
 
 	err := tcpSrv.Shutdown()
 	if err != nil {
@@ -111,7 +113,9 @@ func TestRunDNSServersReturnsNilOnCancellation(t *testing.T) {
 		returned <- runDNSServers(ctx, udpSrv, tcpSrv, handler.upstreams, opts)
 	}()
 
-	waitFor(t, func() bool { return tcpPortHeld(t, addr) && udpPortHeld(addr) })
+	waitForBind(t, returned, "both DNS listeners to bind "+addr, func() bool {
+		return tcpPortHeld(t, addr) && udpPortHeld(addr)
+	})
 
 	cancel()
 
