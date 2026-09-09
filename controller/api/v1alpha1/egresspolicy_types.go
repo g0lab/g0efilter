@@ -214,8 +214,7 @@ type NotificationsSpec struct {
 
 // DNSSpec tunes the sidecar's DNS proxy.
 type DNSSpec struct {
-	// Upstreams are the resolvers the proxy forwards to, as `host:port`. The default
-	// is Docker's `127.0.0.11:53`; set this to cluster DNS on Kubernetes.
+	// Upstreams are the resolvers the proxy forwards to, as `host:port`. Discovered from resolv.conf when unset.
 	// +optional
 	// +listType=atomic
 	Upstreams []string `json:"upstreams,omitempty"`
@@ -352,6 +351,10 @@ type EgressPolicyStatus struct {
 	// +optional
 	SelectedPods int32 `json:"selectedPods,omitempty"`
 
+	// OutOfDatePods counts selected running pods off the current startup revision, or whose sidecar is not ready.
+	// +optional
+	OutOfDatePods int32 `json:"outOfDatePods,omitempty"`
+
 	// Conditions reports whether the current generation is Ready.
 	// +optional
 	// +listType=map
@@ -366,6 +369,7 @@ type EgressPolicyStatus struct {
 // +kubebuilder:resource:shortName=g0ep,categories=g0efilter
 // +kubebuilder:printcolumn:name="ConfigMap",type=string,JSONPath=`.status.configMapName`
 // +kubebuilder:printcolumn:name="Pods",type=integer,JSONPath=`.status.selectedPods`
+// +kubebuilder:printcolumn:name="OutOfDate",type=integer,JSONPath=`.status.outOfDatePods`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 

@@ -261,9 +261,8 @@ func assertReadyStatus(ctx context.Context, t *testing.T, c client.Client) {
 		t.Errorf("status.configMapName = %q", stored.Status.ConfigMapName)
 	}
 
-	if len(stored.Status.Conditions) != 1 || stored.Status.Conditions[0].Status != metav1.ConditionTrue {
-		t.Errorf("conditions = %+v", stored.Status.Conditions)
-	}
+	assertCondition(t, &stored, conditionReady, metav1.ConditionTrue, reasonRendered)
+	assertCondition(t, &stored, conditionConfigurationReady, metav1.ConditionTrue, reasonRendered)
 }
 
 // Short names are how operators reach the API; a clash would only show up here.

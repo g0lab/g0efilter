@@ -150,7 +150,12 @@ func run(opts options) error {
 		return err
 	}
 
-	reconciler := &controller.EgressPolicyReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
+	reconciler := &controller.EgressPolicyReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("g0efilter-controller"),
+		Defaults: sidecarDefaults(opts),
+	}
 
 	err = reconciler.SetupWithManager(mgr)
 	if err != nil {
@@ -275,12 +280,17 @@ func startWebhook(mgr ctrl.Manager, opts options) error {
 	injector := &g0webhook.Injector{
 		Client:   mgr.GetClient(),
 		Decoder:  admission.NewDecoder(mgr.GetScheme()),
-		Defaults: g0webhook.Defaults{Image: opts.sidecarImage},
+		Defaults: sidecarDefaults(opts),
 	}
 
 	mgr.GetWebhookServer().Register(webhookPath, &admission.Webhook{Handler: injector})
 
 	return nil
+}
+
+// sidecarDefaults has one copy: if the reconciler and injector disagree, every pod reads as stale.
+func sidecarDefaults(opts options) g0webhook.Defaults {
+	return g0webhook.Defaults{Image: opts.sidecarImage}
 }
 
 func main() {

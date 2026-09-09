@@ -64,9 +64,14 @@ func newInjector(t *testing.T, objects ...client.Object) *g0webhook.Injector {
 			t.Fatalf("render test policy: %v", err)
 		}
 
+		rendered, docErr := document.DocumentFor(policy.Spec.Sidecar)
+		if docErr != nil {
+			t.Fatalf("render the policy document: %v", docErr)
+		}
+
 		withDependencies = append(withDependencies, &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{Name: policy.Status.ConfigMapName, Namespace: policy.Namespace},
-			Data:       map[string]string{"policy.yaml": document.Document()},
+			Data:       map[string]string{"policy.yaml": rendered},
 		})
 	}
 

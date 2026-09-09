@@ -28,6 +28,9 @@ spec:
     - jsonPath: .status.selectedPods
       name: Pods
       type: integer
+    - jsonPath: .status.outOfDatePods
+      name: OutOfDate
+      type: integer
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
@@ -297,9 +300,8 @@ spec:
                         minimum: 1
                         type: integer
                       upstreams:
-                        description: |-
-                          Upstreams are the resolvers the proxy forwards to, as `host:port`. The default
-                          is Docker's `127.0.0.11:53`; set this to cluster DNS on Kubernetes.
+                        description: Upstreams are the resolvers the proxy forwards
+                          to, as `host:port`. Discovered from resolv.conf when unset.
                         items:
                           type: string
                         type: array
@@ -799,6 +801,11 @@ spec:
                 description: ObservedGeneration is the spec generation this status
                   was computed from.
                 format: int64
+                type: integer
+              outOfDatePods:
+                description: OutOfDatePods counts selected running pods off the current
+                  startup revision, or whose sidecar is not ready.
+                format: int32
                 type: integer
               selectedPods:
                 description: |-

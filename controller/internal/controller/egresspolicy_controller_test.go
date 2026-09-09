@@ -8,6 +8,7 @@ import (
 
 	"github.com/g0lab/g0efilter/controller/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -157,8 +158,25 @@ func TestReconcileRendersAConfigMap(t *testing.T) {
 		t.Errorf("status = %+v", policy.Status)
 	}
 
-	if len(policy.Status.Conditions) != 1 || policy.Status.Conditions[0].Status != metav1.ConditionTrue {
-		t.Errorf("conditions = %+v", policy.Status.Conditions)
+	assertCondition(t, policy, conditionReady, metav1.ConditionTrue, reasonRendered)
+}
+
+func assertCondition(
+	t *testing.T,
+	policy *v1alpha1.EgressPolicy,
+	conditionType string,
+	status metav1.ConditionStatus,
+	reason string,
+) {
+	t.Helper()
+
+	got := meta.FindStatusCondition(policy.Status.Conditions, conditionType)
+	if got == nil {
+		t.Fatalf("policy has no %s condition: %+v", conditionType, policy.Status.Conditions)
+	}
+
+	if got.Status != status || got.Reason != reason {
+		t.Errorf("%s condition = %s/%s, want %s/%s", conditionType, got.Status, got.Reason, status, reason)
 	}
 }
 
@@ -267,13 +285,7 @@ func TestInvalidSpecLeavesThePreviousConfigMapIntact(t *testing.T) {
 	}
 
 	updated := getPolicy(t, c, "web")
-	if len(updated.Status.Conditions) != 1 || updated.Status.Conditions[0].Status != metav1.ConditionFalse {
-		t.Fatalf("conditions = %+v", updated.Status.Conditions)
-	}
-
-	if updated.Status.Conditions[0].Reason != reasonInvalidPolicy {
-		t.Errorf("reason = %q", updated.Status.Conditions[0].Reason)
-	}
+	assertCondition(t, updated, conditionReady, metav1.ConditionFalse, reasonInvalidPolicy)
 }
 
 // Reconciling repeatedly must converge, or every resync would rewrite the ConfigMap
