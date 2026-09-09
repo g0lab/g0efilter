@@ -1,9 +1,8 @@
 # Helm library chart
 
 This chart shows the minimum templates needed to consume the published g0efilter
-library chart. Replace `10.96.0.10` in `values.yaml` with your cluster DNS Service
-address (`kubectl -n kube-system get service -l k8s-app=kube-dns -o
-jsonpath='{.items[0].spec.clusterIP}'`), then run from the repository root:
+library chart. Cluster DNS needs no policy entry, because the sidecar allows the
+pod's own resolver on port 53. Run from the repository root:
 
 This example requires Kubernetes 1.29 or later.
 

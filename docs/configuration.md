@@ -18,7 +18,8 @@
 | `HTTP_PORT` | Local HTTP proxy port | `65080` |
 | `HTTPS_PORT` | Local HTTPS proxy port | `65443` |
 | `DNS_PORT` | Local DNS proxy port | `65053` |
-| `DNS_UPSTREAMS` | Upstream DNS servers (comma-separated). Set this to cluster DNS in Kubernetes `dns` modes | `127.0.0.11:53` (Docker) |
+| `DNS_UPSTREAMS` | Upstream DNS servers (comma-separated). Only needed to send external lookups somewhere other than the pod resolver | Pod resolver on Kubernetes, else `127.0.0.11:53` |
+| `ALLOW_CLUSTER_RESOLVER` | In `https` mode on Kubernetes, allows the pod's own resolver on port 53 so cluster DNS needs no policy rule | `true` |
 | `DNS_HARDENING` | Anti-exfil checks in the DNS proxy: qname/label length caps, NULL and bulky-TXT answer rejection, per-source rate limiting | `true` |
 | `DNS_RATE_QPS` | Sustained queries/sec. Redirected workloads share one budget | `50` |
 | `DNS_RATE_BURST` | Hardening rate limiter: burst allowance per source | `100` |
