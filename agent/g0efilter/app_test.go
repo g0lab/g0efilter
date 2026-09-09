@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -93,29 +94,30 @@ func TestLoadConfigDefaults(t *testing.T) {
 	t.Setenv("HOSTNAME", "")
 
 	want := config{
-		policyPath:          "/app/policy.yaml",
-		httpPort:            "65080",
-		httpsPort:           "65443",
-		dnsPort:             "65053",
-		logLevel:            "INFO",
-		logFile:             "",
-		hostname:            "",
-		mode:                "https",
-		defaultAction:       "deny",
-		learningMode:        false,
-		learner:             nil,
-		dnsHardening:        true,
-		maxConns:            defaultMaxConns,
-		connMaxLifetime:     defaultIdleTimeout,
-		enableRemoteUnblock: false,
-		dashboardHost:       "",
-		dashboardAPIKey:     "",
-		unblockPollInterval: 10 * time.Second,
-		notificationURLs:    "",
+		policyPath:           "/app/policy.yaml",
+		httpPort:             "65080",
+		httpsPort:            "65443",
+		dnsPort:              "65053",
+		logLevel:             "INFO",
+		logFile:              "",
+		hostname:             "",
+		mode:                 "https",
+		defaultAction:        "deny",
+		learningMode:         false,
+		learner:              nil,
+		dnsHardening:         true,
+		allowClusterResolver: true,
+		maxConns:             defaultMaxConns,
+		connMaxLifetime:      defaultIdleTimeout,
+		enableRemoteUnblock:  false,
+		dashboardHost:        "",
+		dashboardAPIKey:      "",
+		unblockPollInterval:  10 * time.Second,
+		notificationURLs:     "",
 	}
 
 	got := loadConfig()
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("loadConfig() defaults:\ngot  %+v\nwant %+v", got, want)
 	}
 }
@@ -141,29 +143,30 @@ func TestLoadConfigCustomValues(t *testing.T) {
 	t.Setenv("CONN_MAX_LIFETIME_MS", "120000")
 
 	want := config{
-		policyPath:          "/custom/policy.yaml",
-		httpPort:            "9080",
-		httpsPort:           "9443",
-		dnsPort:             "5353",
-		logLevel:            "DEBUG",
-		logFile:             "/var/log/g0efilter.log",
-		hostname:            "test-host",
-		mode:                "dns",
-		defaultAction:       "allow",
-		learningMode:        true,
-		learner:             nil,
-		dnsHardening:        false,
-		maxConns:            2000,
-		connMaxLifetime:     120000,
-		enableRemoteUnblock: true,
-		dashboardHost:       "dash.example.com",
-		dashboardAPIKey:     "secret123",
-		unblockPollInterval: 30 * time.Second,
-		notificationURLs:    "ntfy://ntfy.example.com/topic",
+		policyPath:           "/custom/policy.yaml",
+		httpPort:             "9080",
+		httpsPort:            "9443",
+		dnsPort:              "5353",
+		logLevel:             "DEBUG",
+		logFile:              "/var/log/g0efilter.log",
+		hostname:             "test-host",
+		mode:                 "dns",
+		defaultAction:        "allow",
+		learningMode:         true,
+		learner:              nil,
+		dnsHardening:         false,
+		allowClusterResolver: true,
+		maxConns:             2000,
+		connMaxLifetime:      120000,
+		enableRemoteUnblock:  true,
+		dashboardHost:        "dash.example.com",
+		dashboardAPIKey:      "secret123",
+		unblockPollInterval:  30 * time.Second,
+		notificationURLs:     "ntfy://ntfy.example.com/topic",
 	}
 
 	got := loadConfig()
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("loadConfig() custom:\ngot  %+v\nwant %+v", got, want)
 	}
 }
