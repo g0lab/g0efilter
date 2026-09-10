@@ -172,14 +172,29 @@ func TestLoadConfigCustomValues(t *testing.T) {
 }
 
 func TestShouldWatchPolicy(t *testing.T) {
-	t.Parallel()
-
-	if !shouldWatchPolicy(config{learningMode: false}) {
+	watch, _ := shouldWatchPolicy(config{learningMode: false})
+	if !watch {
 		t.Error("policy watcher should run when not in learning mode")
 	}
 
-	if shouldWatchPolicy(config{learningMode: true}) {
+	watch, reason := shouldWatchPolicy(config{learningMode: true})
+	if watch {
 		t.Error("policy watcher should be disabled in learning mode (reloads have no effect)")
+	}
+
+	if reason == "" {
+		t.Error("a disabled watcher should say why")
+	}
+
+	t.Setenv("ALLOWLIST_DOMAINS", "example.com")
+
+	watch, reason = shouldWatchPolicy(config{learningMode: false})
+	if watch {
+		t.Error("policy watcher should be disabled while an environment policy overrides the file")
+	}
+
+	if reason == "" {
+		t.Error("a disabled watcher should say why")
 	}
 }
 

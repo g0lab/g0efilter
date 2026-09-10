@@ -800,8 +800,9 @@ spec:
                 format: int64
                 type: integer
               outOfDatePods:
-                description: OutOfDatePods counts selected running pods off the current
-                  startup revision, or whose sidecar is not ready.
+                description: |-
+                  OutOfDatePods counts selected running pods off the current startup revision, or
+                  whose sidecar is not ready. Zero is reported, so a rollout can be waited on.
                 format: int32
                 type: integer
               selectedPods:

@@ -349,11 +349,12 @@ type EgressPolicyStatus struct {
 	// SelectedPods counts the running pods matching PodSelector. It is reported for
 	// visibility only; a pod is filtered by the policy it mounts, not by this count.
 	// +optional
-	SelectedPods int32 `json:"selectedPods,omitempty"`
+	SelectedPods int32 `json:"selectedPods"`
 
-	// OutOfDatePods counts selected running pods off the current startup revision, or whose sidecar is not ready.
+	// OutOfDatePods counts selected running pods off the current startup revision, or
+	// whose sidecar is not ready. Zero is reported, so a rollout can be waited on.
 	// +optional
-	OutOfDatePods int32 `json:"outOfDatePods,omitempty"`
+	OutOfDatePods int32 `json:"outOfDatePods"`
 
 	// Conditions reports whether the current generation is Ready.
 	// +optional

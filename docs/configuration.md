@@ -11,7 +11,7 @@
 | `DEFAULT_ACTION` | `deny` (allowlist) or `allow` (denylist). Policy file `default_action` wins when set | `deny` |
 | `ENFORCE` | `block` or `audit` (dry-run: log would-be blocks, allow traffic) | `block` |
 | `LEARNING_MODE` | `true` to observe without blocking and auto-append seen domains/IPs to the policy | `false` |
-| `ALLOWLIST_IPS` | Comma-separated allowed IPs/CIDRs (takes precedence over policy file) | unset |
+| `ALLOWLIST_IPS` | Comma-separated allowed IPs/CIDRs (takes precedence over the policy file, which is then no longer watched) | unset |
 | `ALLOWLIST_DOMAINS` | Comma-separated allowed domains (exact/wildcard/regex) | unset |
 | `DENYLIST_IPS` | Comma-separated denied IPs/CIDRs (with `DEFAULT_ACTION=allow`) | unset |
 | `DENYLIST_DOMAINS` | Comma-separated denied domains (with `DEFAULT_ACTION=allow`) | unset |

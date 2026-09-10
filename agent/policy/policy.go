@@ -3,6 +3,7 @@ package policy
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -393,21 +394,31 @@ func ReadPolicy(file string) ([]string, []string, error) {
 	return pol.AllowIPs, pol.AllowDomains, nil
 }
 
+// EnvOverride reports whether an environment policy replaces the policy file.
+func EnvOverride() bool {
+	allowIPs, allowDomains, denyIPs, denyDomains := envLists()
+
+	return allowIPs != "" || allowDomains != "" || denyIPs != "" || denyDomains != ""
+}
+
+func envLists() (string, string, string, string) {
+	return strings.TrimSpace(os.Getenv("ALLOWLIST_IPS")),
+		strings.TrimSpace(os.Getenv("ALLOWLIST_DOMAINS")),
+		strings.TrimSpace(os.Getenv("DENYLIST_IPS")),
+		strings.TrimSpace(os.Getenv("DENYLIST_DOMAINS"))
+}
+
 // Read loads and validates the full policy, first checking environment variables
 // (ALLOWLIST_IPS, ALLOWLIST_DOMAINS, DENYLIST_IPS, DENYLIST_DOMAINS), then falling
 // back to the policy file if none are set.
 func Read(file string) (*Policy, error) {
 	lg := slog.Default()
 
-	envAllowIPs := strings.TrimSpace(os.Getenv("ALLOWLIST_IPS"))
-	envAllowDomains := strings.TrimSpace(os.Getenv("ALLOWLIST_DOMAINS"))
-	envDenyIPs := strings.TrimSpace(os.Getenv("DENYLIST_IPS"))
-	envDenyDomains := strings.TrimSpace(os.Getenv("DENYLIST_DOMAINS"))
-
-	if envAllowIPs != "" || envAllowDomains != "" || envDenyIPs != "" || envDenyDomains != "" {
+	allowIPs, allowDomains, denyIPs, denyDomains := envLists()
+	if allowIPs != "" || allowDomains != "" || denyIPs != "" || denyDomains != "" {
 		lg.Debug("policy.read_start", "component", "policy", "source", "environment")
 
-		return loadFromEnv(lg, envAllowIPs, envAllowDomains, envDenyIPs, envDenyDomains)
+		return loadFromEnv(lg, allowIPs, allowDomains, denyIPs, denyDomains)
 	}
 
 	return ReadFile(file)
@@ -498,7 +509,9 @@ func validateLists(
 }
 
 func loadFromEnv(lg *slog.Logger, allowIPs, allowDomains, denyIPs, denyDomains string) (*Policy, error) {
-	pol := &Policy{}
+	// Hash the environment lists, so health and logs report the active source rather than a file.
+	digest := sha256.Sum256([]byte(strings.Join([]string{allowIPs, allowDomains, denyIPs, denyDomains}, "\x00")))
+	pol := &Policy{Hash: hex.EncodeToString(digest[:])}
 
 	var err error
 

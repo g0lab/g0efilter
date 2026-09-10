@@ -395,7 +395,7 @@ func applyReload(
 	svc **services,
 ) config {
 	lg.Info(
-		"policy.reloaded",
+		"policy.reload_started",
 		"hash", upd.hash,
 		"domain_count", len(upd.pol.AllowDomains),
 		"ip_count", len(upd.pol.AllowIPs),
@@ -1060,10 +1060,20 @@ func startRemoteUnblockPolling(ctx context.Context, tracked *group, cfg config, 
 	tracked.run(lg, "remote_unblock", func() { pollRemoteUnblocks(ctx, cfg, lg) })
 }
 
-// shouldWatchPolicy is false in learning mode: the ruleset is forced permissive and
-// the learner keeps appending to the policy file, so a reload only churns services.
-func shouldWatchPolicy(cfg config) bool {
-	return !cfg.learningMode
+// shouldWatchPolicy reports whether the policy file drives the running ruleset,
+// and why it does not when it is false.
+func shouldWatchPolicy(cfg config) (bool, string) {
+	// The learner keeps appending to the file, so reloading it only churns services.
+	if cfg.learningMode {
+		return false, "learning mode forces a permissive ruleset, so policy reloads have no effect"
+	}
+
+	// The file is not the active source, so its hash would report permanent drift.
+	if policy.EnvOverride() {
+		return false, "an environment policy overrides the policy file, so its content is not enforced"
+	}
+
+	return true, ""
 }
 
 func startPolicyWatcher(
@@ -1075,9 +1085,9 @@ func startPolicyWatcher(
 	reloadCh chan policyUpdate,
 	hupCh <-chan os.Signal,
 ) {
-	if !shouldWatchPolicy(cfg) {
-		lg.Info("policy.watcher_disabled",
-			"reason", "learning mode forces a permissive ruleset, so policy reloads have no effect")
+	watch, reason := shouldWatchPolicy(cfg)
+	if !watch {
+		lg.Info("policy.watcher_disabled", "reason", reason)
 
 		return
 	}

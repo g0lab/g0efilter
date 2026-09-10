@@ -278,3 +278,51 @@ func TestCRDIsReachableByShortName(t *testing.T) {
 		t.Fatalf("list policies: %v", err)
 	}
 }
+
+// The validator reads the other policies as committed, so a namespaced and a cluster
+// edit admitted at the same instant can still commit a combination no sidecar can
+// enforce. The reconciler is what has to hold the line then.
+//
+//nolint:paralleltest // starts a real apiserver and etcd
+func TestARacedClusterBaselineIsCaughtByTheReconciler(t *testing.T) {
+	c := startEnvtest(t)
+
+	createNamespace(t, c, testNS, map[string]string{"tier": "prod"})
+
+	policy := egressPolicy("web", rule("apis", []string{"api.example.com"}, nil))
+	policy.Spec.Sidecar.Mode = "https"
+
+	err := c.Create(context.Background(), policy)
+	if err != nil {
+		t.Fatalf("create policy: %v", err)
+	}
+
+	reconciler := &EgressPolicyReconciler{Client: c, Scheme: testScheme(t)}
+
+	reconcile(t, reconciler, "web")
+
+	before := getConfigMap(t, c, "g0efilter-web").Data[PolicyKey]
+
+	// A baseline validated against the policy as it was: its domain port is enforceable
+	// only in dns-strict, and the policy this merges into runs https.
+	baseline := clusterPolicy("baseline", map[string]string{"tier": "prod"}, v1alpha1.EgressRule{
+		Name:  "domain-port",
+		To:    []v1alpha1.EgressPeer{{DomainNames: []string{"api.example.com"}}},
+		Ports: []v1alpha1.EgressPort{{Protocol: "TCP", Port: 8443}},
+	})
+
+	err = c.Create(context.Background(), baseline)
+	if err != nil {
+		t.Fatalf("create cluster policy: %v", err)
+	}
+
+	reconcile(t, reconciler, "web")
+
+	if got := getConfigMap(t, c, "g0efilter-web").Data[PolicyKey]; got != before {
+		t.Errorf("an unenforceable combination rewrote the ConfigMap:\n%s", got)
+	}
+
+	stored := getPolicy(t, c, "web")
+	assertCondition(t, stored, conditionReady, metav1.ConditionFalse, reasonInvalidPolicy)
+	assertCondition(t, stored, conditionConfigurationReady, metav1.ConditionFalse, reasonInvalidPolicy)
+}
