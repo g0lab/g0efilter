@@ -4,6 +4,8 @@ package g0efilter
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -329,6 +331,127 @@ func TestHealthRecoversWhenThePolicyBecomesReadableAgain(t *testing.T) {
 
 	got := health.snapshot(start.Add(2 * reloadGrace))
 	if !got.Ready {
+		t.Errorf("readiness stayed failed after the policy became readable again: %q", got.Reason)
+	}
+}
+
+// tickHarness drives checkPolicyTick over a real policy file, so these tests cover
+// the poll loop's wiring and not only the health methods it calls.
+type tickHarness struct {
+	health  *runtimeHealth
+	path    string
+	content []byte
+	hash    string
+	tick    func() string
+}
+
+func newTickHarness(t *testing.T) tickHarness {
+	t.Helper()
+
+	harness := tickHarness{
+		path:    filepath.Join(t.TempDir(), "policy.yaml"),
+		content: []byte("allowlist:\n  domains:\n    - 'example.com'\n"),
+	}
+
+	err := os.WriteFile(harness.path, harness.content, 0o600)
+	if err != nil {
+		t.Fatalf("write policy: %v", err)
+	}
+
+	harness.hash, err = fileSHA256Hex(harness.path)
+	if err != nil {
+		t.Fatalf("hash policy: %v", err)
+	}
+
+	harness.health = httpsHealth(t)
+	harness.health.applyOK(config{mode: "https", httpPort: "65080", httpsPort: "65443"}, harness.hash)
+
+	cfg := config{policyPath: harness.path, health: harness.health}
+	reloadCh := make(chan policyUpdate, 1)
+
+	harness.tick = func() string {
+		return checkPolicyTick(context.Background(), cfg, discardLogger(), harness.hash, reloadCh)
+	}
+
+	if got := harness.tick(); got != harness.hash {
+		t.Fatalf("an unchanged policy moved the applied hash to %q", got)
+	}
+
+	if !harness.health.snapshot(time.Now().Add(2 * reloadGrace)).Ready {
+		t.Fatal("readiness failed while the mounted policy was the applied one")
+	}
+
+	return harness
+}
+
+func (h tickHarness) remove(t *testing.T) {
+	t.Helper()
+
+	err := os.Remove(h.path)
+	if err != nil {
+		t.Fatalf("remove policy: %v", err)
+	}
+}
+
+func TestCheckPolicyTickFailsReadinessWhenThePolicyGoesUnreadable(t *testing.T) {
+	t.Parallel()
+
+	harness := newTickHarness(t)
+	harness.remove(t)
+
+	if got := harness.tick(); got != harness.hash {
+		t.Errorf("a failed read moved the applied hash to %q", got)
+	}
+
+	started := harness.health.driftSince
+	if started.IsZero() {
+		t.Fatal("a failed read did not start the drift clock")
+	}
+
+	if !harness.health.snapshot(started.Add(reloadGrace - time.Second)).Ready {
+		t.Error("one failed read evicted the pod inside the grace period")
+	}
+
+	// A restarted clock would hold readiness open for another grace period on every tick.
+	time.Sleep(time.Millisecond)
+	harness.tick()
+
+	if !harness.health.driftSince.Equal(started) {
+		t.Errorf("repeated read failures restarted the drift clock: %s then %s",
+			started, harness.health.driftSince)
+	}
+
+	got := harness.health.snapshot(started.Add(reloadGrace + time.Second))
+	if got.Ready {
+		t.Fatal("readiness held while the mounted policy stayed unreadable")
+	}
+
+	if !strings.Contains(got.Reason, "could not be read") {
+		t.Errorf("reason = %q, want the unreadable policy named", got.Reason)
+	}
+}
+
+// A transient failure must not evict the pod a grace period later.
+func TestCheckPolicyTickRecoversWhenThePolicyReturns(t *testing.T) {
+	t.Parallel()
+
+	harness := newTickHarness(t)
+	harness.remove(t)
+	harness.tick()
+
+	started := harness.health.driftSince
+
+	// The content that returns is the content already applied, so recovery needs no reload.
+	err := os.WriteFile(harness.path, harness.content, 0o600)
+	if err != nil {
+		t.Fatalf("restore policy: %v", err)
+	}
+
+	if got := harness.tick(); got != harness.hash {
+		t.Errorf("the restored policy moved the applied hash to %q", got)
+	}
+
+	if got := harness.health.snapshot(started.Add(2 * reloadGrace)); !got.Ready {
 		t.Errorf("readiness stayed failed after the policy became readable again: %q", got.Reason)
 	}
 }
