@@ -164,6 +164,13 @@ func stalePodsStillAdmitTheirReplacements(t *testing.T, cluster *harness.K3sClus
 		t.Errorf("PodsUpToDate = %q, want False while a pod predates the change", upToDate)
 	}
 
+	// The recorder writes through events.k8s.io, which needs its own RBAC rule: without
+	// it the drift is reported in status but the operator's Event never arrives.
+	message := cluster.WaitForEvent(t, runtimeNamespace, "web", "PodsOutOfDate")
+	if !strings.Contains(message, "rollout") {
+		t.Errorf("unexpected drift event message: %q", message)
+	}
+
 	cluster.Kubectl(t, "rollout", "restart", "-n", runtimeNamespace, "deployment/web")
 	cluster.Kubectl(t, "rollout", "status", "-n", runtimeNamespace, "deployment/web", "--timeout=3m")
 
@@ -192,7 +199,7 @@ spec:
         - domainNames: ['api.example.com']
       ports:
         - port: 8443
-          protocol: tcp
+          protocol: TCP
 `, runtimeNamespace))
 	if err == nil {
 		t.Fatalf("a policy https mode cannot enforce was admitted: %s", out)

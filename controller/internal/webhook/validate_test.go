@@ -193,6 +193,40 @@ func TestValidatorAdmitsABaselineTheSelectedNamespacesCanEnforce(t *testing.T) {
 	}
 }
 
+// A policy the baseline does not select cannot be made unenforceable by it, and one
+// already-broken policy must not freeze every later baseline edit.
+func TestValidatorIgnoresAPolicyTheBaselineDoesNotSelect(t *testing.T) {
+	t.Parallel()
+
+	other := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "other", Labels: map[string]string{"tier": "legacy"}},
+	}
+	broken := &v1alpha1.EgressPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: other.Name},
+		Spec: v1alpha1.EgressPolicySpec{
+			Sidecar: v1alpha1.SidecarSpec{Mode: "https"},
+			Egress: []v1alpha1.EgressRule{
+				domainRule("apis", []string{"api.example.com"}, v1alpha1.EgressPort{Port: 8443, Protocol: "tcp"}),
+			},
+		},
+	}
+	selected := policyWithRules(v1alpha1.SidecarSpec{Mode: "https"}, domainRule("apis", []string{"api.example.com"}))
+
+	v := newValidator(t, testNamespace(map[string]string{"tier": "app"}), other, selected, broken)
+
+	baseline := &v1alpha1.ClusterEgressPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "base"},
+		Spec: v1alpha1.ClusterEgressPolicySpec{
+			NamespaceSelector: metav1.LabelSelector{MatchLabels: map[string]string{"tier": "app"}},
+			Egress:            []v1alpha1.EgressRule{domainRule("logs", []string{"logs.example.com"})},
+		},
+	}
+
+	if got := validate(t, v, "ClusterEgressPolicy", baseline); !got.Allowed {
+		t.Errorf("an unrelated broken policy blocked a baseline edit: %s", got.Result.Message)
+	}
+}
+
 // Replacing a baseline must be judged on the new rules, not the committed ones.
 func TestValidatorJudgesABaselineUpdateOnItsNewRules(t *testing.T) {
 	t.Parallel()

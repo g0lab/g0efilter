@@ -11,6 +11,8 @@ import (
 	"github.com/g0lab/g0efilter/controller/api/v1alpha1"
 	"github.com/g0lab/g0efilter/controller/internal/render"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -38,12 +40,12 @@ func (v *Validator) Handle(ctx context.Context, req admission.Request) admission
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	affected, refused := v.affectedPolicies(ctx, req, &clusters)
+	namespaces := newNamespaceCache(v.Client)
+
+	affected, refused := v.affectedPolicies(ctx, req, &clusters, namespaces)
 	if refused != nil {
 		return *refused
 	}
-
-	namespaces := newNamespaceCache(v.Client)
 
 	for _, candidate := range affected {
 		labels, nsErr := namespaces.labels(ctx, candidate.Namespace)
@@ -65,6 +67,7 @@ func (v *Validator) affectedPolicies(
 	ctx context.Context,
 	req admission.Request,
 	clusters *v1alpha1.ClusterEgressPolicyList,
+	namespaces *namespaceCache,
 ) ([]v1alpha1.EgressPolicy, *admission.Response) {
 	if req.Kind.Kind != clusterPolicyKind {
 		var candidate v1alpha1.EgressPolicy
@@ -100,7 +103,38 @@ func (v *Validator) affectedPolicies(
 		return nil, new(admission.Errored(http.StatusInternalServerError, err))
 	}
 
-	return policies.Items, nil
+	return selectedPolicies(ctx, policies.Items, candidate, namespaces)
+}
+
+// selectedPolicies narrows a baseline edit to the policies it can actually change.
+// Dropping a namespace only removes rules from it, so a policy there cannot become
+// unenforceable; validating it anyway would let one already-broken policy block every
+// later baseline edit, including edits for unrelated namespaces.
+func selectedPolicies(
+	ctx context.Context,
+	policies []v1alpha1.EgressPolicy,
+	candidate v1alpha1.ClusterEgressPolicy,
+	namespaces *namespaceCache,
+) ([]v1alpha1.EgressPolicy, *admission.Response) {
+	selector, err := metav1.LabelSelectorAsSelector(&candidate.Spec.NamespaceSelector)
+	if err != nil {
+		return nil, new(admission.Denied(fmt.Sprintf("namespaceSelector: %s", err)))
+	}
+
+	kept := make([]v1alpha1.EgressPolicy, 0, len(policies))
+
+	for _, policy := range policies {
+		policyLabels, err := namespaces.labels(ctx, policy.Namespace)
+		if err != nil {
+			return nil, new(admission.Errored(http.StatusInternalServerError, err))
+		}
+
+		if selector.Matches(labels.Set(policyLabels)) {
+			kept = append(kept, policy)
+		}
+	}
+
+	return kept, nil
 }
 
 func validateCandidate(
