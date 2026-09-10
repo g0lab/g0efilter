@@ -9,18 +9,60 @@ import (
 	"github.com/g0lab/g0efilter/agent/policy"
 )
 
-func TestWithRuntimeLeavesConfigAloneWhenThePolicyCarriesNoRuntimeBlock(t *testing.T) {
+// The block is declarative, so dropping it reverts to the environment. Keeping the
+// last overlay would leave audit mode on with nothing in the policy file saying so.
+func TestWithRuntimeRestoresTheEnvironmentWhenThePolicyDropsTheRuntimeBlock(t *testing.T) {
 	t.Parallel()
 
-	cfg := config{mode: "dns", auditMode: true, dnsHardening: false}
+	cfg := config{mode: "https", dnsHardening: true}
+	cfg.bootstrap = datapathOf(cfg)
 
-	got, err := withRuntime(cfg, &policy.Policy{})
+	overlaid, err := withRuntime(cfg, &policy.Policy{Runtime: &policy.Runtime{
+		Mode:         "dns",
+		Enforcement:  enforcementAudit,
+		DNSUpstreams: []string{"10.43.0.10:53"},
+	}})
 	if err != nil {
 		t.Fatalf("withRuntime() = %v, want nil", err)
 	}
 
-	if !reflect.DeepEqual(got, cfg) {
-		t.Errorf("config changed without a runtime block:\ngot  %+v\nwant %+v", got, cfg)
+	if overlaid.mode != "dns" || !overlaid.auditMode {
+		t.Fatalf("the runtime block was not applied: %+v", overlaid)
+	}
+
+	got, err := withRuntime(overlaid, &policy.Policy{})
+	if err != nil {
+		t.Fatalf("withRuntime() = %v, want nil", err)
+	}
+
+	if got.mode != "https" {
+		t.Errorf("mode = %q, want the environment's https", got.mode)
+	}
+
+	if got.auditMode {
+		t.Error("enforcement stayed in audit after the policy dropped the runtime block")
+	}
+
+	if !got.dnsHardening {
+		t.Error("dnsHardening = false, want the environment's true")
+	}
+
+	if got.dnsUpstreams != nil {
+		t.Errorf("dnsUpstreams = %v, want nil so the environment default applies", got.dnsUpstreams)
+	}
+}
+
+// A config carrying no snapshot still reverts predictably rather than keeping an overlay.
+func TestWithRuntimeRevertsToTheZeroDatapathWithoutASnapshot(t *testing.T) {
+	t.Parallel()
+
+	got, err := withRuntime(config{mode: "dns", auditMode: true}, &policy.Policy{})
+	if err != nil {
+		t.Fatalf("withRuntime() = %v, want nil", err)
+	}
+
+	if !reflect.DeepEqual(got, config{}) {
+		t.Errorf("config kept a stale overlay:\ngot  %+v\nwant %+v", got, config{})
 	}
 }
 

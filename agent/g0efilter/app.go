@@ -80,6 +80,7 @@ func Run(version, date, commit string) error {
 	slog.SetDefault(lg)
 
 	cfg = normalizeMode(cfg, lg)
+	cfg.bootstrap = datapathOf(cfg)
 	cfg = resolvePolicyPath(cfg, fallbackPolicyPath, lg)
 
 	logStartupInfo(lg, cfg, version, date, commit)
@@ -164,6 +165,7 @@ type config struct {
 	dnsHardening         bool
 	dnsRateQPS           int
 	dnsRateBurst         int
+	bootstrap            datapath // the environment's datapath settings, restored when a policy drops its runtime block
 	maxConns             int
 	connMaxLifetime      int
 	enableRemoteUnblock  bool
@@ -1150,6 +1152,7 @@ func checkPolicyTick(
 	if err != nil {
 		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
 		cfg.metrics.RecordReload("failure")
+		cfg.health.readFailed(time.Now())
 
 		return lastHash
 	}

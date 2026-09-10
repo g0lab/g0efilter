@@ -335,7 +335,9 @@ A pod counts as out of date when its sidecar is not ready, when it carries no
 injection annotation, or when its startup revision differs from the current spec.
 Settings delivered through the policy document, such as mode, enforcement and the
 DNS options, are excluded from that revision because a running sidecar reloads
-them in place. Everything else needs a rollout:
+them in place. The document's `runtime` block is declarative: a policy that omits
+it puts those settings back to the sidecar's environment values rather than
+leaving the last applied ones in force. Everything else needs a rollout:
 
 ```sh
 kubectl -n tenant-a rollout restart deployment/web
@@ -711,9 +713,9 @@ anyway for the proxies to bind.
 Readiness reports whether the mounted policy is the one being enforced. Because
 kubelet projects a ConfigMap asynchronously, brief drift after an edit is expected
 and readiness holds through it. Readiness fails only once the mounted policy has
-gone unapplied for 90 seconds, which means it was rejected or the agent is stuck.
-That bound keeps an ordinary policy edit from evicting every selected pod from its
-Service at once.
+gone unapplied for 90 seconds, which means it was rejected, unreadable, or the agent
+is stuck. That bound keeps an ordinary policy edit from evicting every selected pod
+from its Service at once.
 
 In `https` mode the workload talks to cluster DNS itself, because there is no DNS
 proxy. The sidecar reads the pod's `/etc/resolv.conf` and allows those nameservers

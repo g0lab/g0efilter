@@ -14,11 +14,59 @@ const enforcementAudit = "audit"
 
 var errRuntimeConfig = errors.New("invalid runtime configuration")
 
+// datapath is the set of settings the policy document's runtime block replaces as a unit.
+type datapath struct {
+	mode         string
+	dnsUpstreams []string
+	auditMode    bool
+	dnsHardening bool
+	dnsRateQPS   int
+	dnsRateBurst int
+}
+
+// datapathOf snapshots the environment's settings, so a later policy that drops the
+// runtime block reverts to them instead of keeping the last overlay in force.
+func datapathOf(cfg config) datapath {
+	return datapath{
+		mode:         cfg.mode,
+		dnsUpstreams: cloneUpstreams(cfg.dnsUpstreams),
+		auditMode:    cfg.auditMode,
+		dnsHardening: cfg.dnsHardening,
+		dnsRateQPS:   cfg.dnsRateQPS,
+		dnsRateBurst: cfg.dnsRateBurst,
+	}
+}
+
+func withDatapath(cfg config, next datapath) config {
+	cfg.mode = next.mode
+	cfg.dnsUpstreams = cloneUpstreams(next.dnsUpstreams)
+	cfg.auditMode = next.auditMode
+	cfg.dnsHardening = next.dnsHardening
+	cfg.dnsRateQPS = next.dnsRateQPS
+	cfg.dnsRateBurst = next.dnsRateBurst
+
+	return cfg
+}
+
+// cloneUpstreams keeps the nil/empty distinction: a non-nil empty slice selects resolver discovery.
+func cloneUpstreams(upstreams []string) []string {
+	if upstreams == nil {
+		return nil
+	}
+
+	out := make([]string, len(upstreams))
+	copy(out, upstreams)
+
+	return out
+}
+
 // withRuntime overlays the runtime block, replacing the environment as a unit rather than field by field.
 func withRuntime(cfg config, pol *policy.Policy) (config, error) {
 	settings := pol.Runtime
 	if settings == nil {
-		return cfg, nil
+		// The block is declarative, so dropping it reverts to the environment rather
+		// than leaving the settings a previous policy overlaid still in force.
+		return withDatapath(cfg, cfg.bootstrap), nil
 	}
 
 	mode, err := runtimeMode(settings.Mode)
@@ -41,14 +89,14 @@ func withRuntime(cfg config, pol *policy.Policy) (config, error) {
 		return cfg, err
 	}
 
-	cfg.mode = mode
-	cfg.auditMode = settings.Enforcement == enforcementAudit
-	cfg.dnsUpstreams = append([]string{}, settings.DNSUpstreams...)
-	cfg.dnsHardening = settings.DNSHardening == nil || *settings.DNSHardening
-	cfg.dnsRateQPS = settings.DNSRateQPS
-	cfg.dnsRateBurst = settings.DNSRateBurst
-
-	return cfg, nil
+	return withDatapath(cfg, datapath{
+		mode:         mode,
+		dnsUpstreams: append([]string{}, settings.DNSUpstreams...),
+		auditMode:    settings.Enforcement == enforcementAudit,
+		dnsHardening: settings.DNSHardening == nil || *settings.DNSHardening,
+		dnsRateQPS:   settings.DNSRateQPS,
+		dnsRateBurst: settings.DNSRateBurst,
+	}), nil
 }
 
 func runtimeMode(mode string) (string, error) {

@@ -291,3 +291,44 @@ func TestTheHealthcheckReachesTheRunningServer(t *testing.T) {
 	cancel()
 	tracked.wait(5 * time.Second)
 }
+
+// A policy that cannot be read at all is not the same as one that matches: the last
+// rules stay in force, so readiness has to fail rather than hold indefinitely.
+func TestHealthFailsWhenTheMountedPolicyStaysUnreadable(t *testing.T) {
+	t.Parallel()
+
+	health := httpsHealth(t)
+	start := time.Now()
+
+	health.readFailed(start)
+
+	got := health.snapshot(start.Add(reloadGrace - time.Second))
+	if !got.Ready {
+		t.Fatalf("a single failed read evicted the pod inside the grace period: %q", got.Reason)
+	}
+
+	got = health.snapshot(start.Add(reloadGrace + time.Second))
+	if got.Ready {
+		t.Fatal("readiness held while the mounted policy stayed unreadable")
+	}
+
+	if !strings.Contains(got.Reason, "could not be read") {
+		t.Errorf("reason = %q, want the unreadable policy named", got.Reason)
+	}
+}
+
+// A read that recovers must clear the clock, or a transient failure would evict the pod later.
+func TestHealthRecoversWhenThePolicyBecomesReadableAgain(t *testing.T) {
+	t.Parallel()
+
+	health := httpsHealth(t)
+	start := time.Now()
+
+	health.readFailed(start)
+	health.observe("hash-1", start.Add(time.Second))
+
+	got := health.snapshot(start.Add(2 * reloadGrace))
+	if !got.Ready {
+		t.Errorf("readiness stayed failed after the policy became readable again: %q", got.Reason)
+	}
+}

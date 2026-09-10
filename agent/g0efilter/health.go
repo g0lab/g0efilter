@@ -29,6 +29,7 @@ type runtimeHealth struct {
 	ports      []string
 	driftSince time.Time
 	rejected   bool
+	unreadable bool
 }
 
 type healthSnapshot struct {
@@ -49,6 +50,7 @@ func (h *runtimeHealth) applyOK(cfg config, hash string) {
 	h.applied = hash
 	h.driftSince = time.Time{}
 	h.rejected = false
+	h.unreadable = false
 
 	h.ports = []string{cfg.httpPort, cfg.httpsPort}
 	if isDNSMode(cfg.mode) {
@@ -68,6 +70,23 @@ func (h *runtimeHealth) applyFailed() {
 	h.rejected = true
 }
 
+// readFailed starts the drift clock when the mounted policy cannot be read at all:
+// the last applied rules stay in force with nothing left to compare them against.
+func (h *runtimeHealth) readFailed(now time.Time) {
+	if h == nil {
+		return
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.unreadable = true
+
+	if h.driftSince.IsZero() {
+		h.driftSince = now
+	}
+}
+
 // observe starts the drift clock the first tick the mounted policy differs from the applied one.
 func (h *runtimeHealth) observe(diskHash string, now time.Time) {
 	if h == nil || diskHash == "" {
@@ -76,6 +95,8 @@ func (h *runtimeHealth) observe(diskHash string, now time.Time) {
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	h.unreadable = false
 
 	if diskHash == h.applied {
 		h.driftSince = time.Time{}
@@ -102,7 +123,10 @@ func (h *runtimeHealth) snapshot(now time.Time) healthSnapshot {
 	snapshot.Ready = false
 	snapshot.Reason = "the mounted policy has not been applied within the reload grace period"
 
-	if h.rejected {
+	switch {
+	case h.unreadable:
+		snapshot.Reason = "the mounted policy could not be read within the reload grace period"
+	case h.rejected:
 		snapshot.Reason = "the mounted policy was rejected; the previous one is still enforced"
 	}
 
