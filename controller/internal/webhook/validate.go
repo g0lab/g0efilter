@@ -28,8 +28,8 @@ type Validator struct {
 
 // Handle denies any edit that would leave a selected sidecar unable to enforce the policy.
 // It reads the other policies as committed, so concurrent namespaced and cluster edits can
-// still commit an unenforceable pair; the reconciler is the backstop that marks it not Ready
-// and keeps the previous ConfigMap.
+// still commit an unenforceable pair. That pair is never enforced: the reconciler keeps the
+// previous ConfigMap and pod admission re-renders the merged result before injecting.
 func (v *Validator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	var clusters v1alpha1.ClusterEgressPolicyList
 

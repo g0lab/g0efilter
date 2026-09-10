@@ -309,9 +309,11 @@ policy not Ready instead of silently widening it.
 A validating webhook rejects those edits at admission, so a working spec is not
 replaced by one the sidecar cannot enforce. Changing a `ClusterEgressPolicy` is
 checked against every `EgressPolicy` it merges into, not only against itself.
-Admission reads the other policies as they stand, so a namespaced and a cluster
-edit committed at the same instant can still combine into an unenforceable pair;
-the reconciler then marks the policy not Ready and keeps the previous ConfigMap.
+Validation reads the other policies as they stand, so a namespaced and a cluster
+edit committed at the same instant can still combine into an unenforceable pair.
+Nothing enforces it: the reconciler marks the policy not Ready and keeps the
+previous ConfigMap, and pod admission re-renders the merged result, so no pod
+starts under the combination.
 
 #### Policy status
 

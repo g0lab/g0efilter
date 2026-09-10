@@ -368,6 +368,31 @@ func TestDeniesWhenAClusterPolicyHasNotReachedTheConfigMap(t *testing.T) {
 	}
 }
 
+// Admission validates the merged result live, so the pair a raced policy edit can
+// commit never reaches a pod: the sidecar would be unable to enforce it.
+func TestDeniesWhenAClusterBaselineIsUnenforceableInTheSelectedMode(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{Mode: "https"})
+	baseline := &v1alpha1.ClusterEgressPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "baseline"},
+		Spec: v1alpha1.ClusterEgressPolicySpec{Egress: []v1alpha1.EgressRule{{
+			Name:  "domain-port",
+			To:    []v1alpha1.EgressPeer{{DomainNames: []string{"api.example.com"}}},
+			Ports: []v1alpha1.EgressPort{{Protocol: "TCP", Port: 8443}},
+		}}},
+	}
+
+	response, _ := admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted under a policy its sidecar could not enforce")
+	}
+
+	if !strings.Contains(response.Result.Message, "dns-strict") {
+		t.Errorf("denial = %q", response.Result.Message)
+	}
+}
+
 func TestSidecarSpecOverridesTheDefaults(t *testing.T) {
 	t.Parallel()
 
