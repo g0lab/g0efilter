@@ -74,7 +74,7 @@ resources:
   - deployment.yaml
   - policy.yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
 ```
 
 Pin `ref` to a release tag. The component sets the same image tag.
@@ -90,8 +90,8 @@ Layer the optional components after `sidecar`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
-  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.9.6
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.9.7
 ```
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
@@ -148,8 +148,9 @@ Any init container before the sidecar has unfiltered egress.
 Override defaults under `g0efilter`. Unset values come from the library chart's
 `values.yaml`.
 
-When using `dns` or `dns-strict`, set `dns.upstreams` to the cluster DNS Service.
-The agent's `127.0.0.11:53` default is Docker-specific.
+In `dns` and `dns-strict` the proxy discovers cluster DNS from the pod's
+`/etc/resolv.conf`, so `dns.upstreams` is only needed to send external lookups
+elsewhere. Cluster-internal names keep using the pod resolver regardless.
 
 ```yaml
 g0efilter:
@@ -157,7 +158,7 @@ g0efilter:
   enforcement: audit
   logLevel: DEBUG
   image:
-    tag: v0.9.6
+    tag: v0.9.7
   policy:
     configMapName: my-policy
   dns:
@@ -204,7 +205,7 @@ helm install app oci://example.com/app \
 Outside this repository, point the script at a pinned component:
 
 ```sh
-export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6'
+export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7'
 ```
 
 This path needs no cooperation from the chart. It still requires the policy
@@ -305,6 +306,46 @@ on network peers; `dns-strict` can enforce ports on network and domain peers.
 Plain `dns` cannot enforce port-constrained rules, so the controller marks such a
 policy not Ready instead of silently widening it.
 
+A validating webhook rejects those edits at admission, so a working spec is not
+replaced by one the sidecar cannot enforce. Changing a `ClusterEgressPolicy` is
+checked against every `EgressPolicy` it merges into, not only against itself.
+Validation reads the other policies as they stand, so a namespaced and a cluster
+edit committed at the same instant can still combine into an unenforceable pair.
+Nothing enforces it: the reconciler marks the policy not Ready and keeps the
+previous ConfigMap, and pod admission re-renders the merged result, so no pod
+starts under the combination.
+
+#### Policy status
+
+`Ready` and `ConfigurationReady` both describe the rendered configuration. They go
+false only when the spec cannot be rendered. Pod rollout progress is reported
+separately, so pods still running an older sidecar never block admission of their
+replacements.
+
+| Field | Meaning |
+| --- | --- |
+| `status.selectedPods` | Running pods the `podSelector` matches. |
+| `status.outOfDatePods` | Of those, how many are not yet running the current startup settings. |
+| `PodsUpToDate` condition | False while `outOfDatePods` is above zero. |
+
+Both counts are always present, so a rollout can wait for `outOfDatePods` to
+report `0`.
+
+A pod counts as out of date when its sidecar is not ready, when it carries no
+injection annotation, or when its startup revision differs from the current spec.
+Settings delivered through the policy document, such as mode, enforcement and the
+DNS options, are excluded from that revision because a running sidecar reloads
+them in place. The document's `runtime` block is declarative: a policy that omits
+it puts those settings back to the sidecar's environment values rather than
+leaving the last applied ones in force. Everything else needs a rollout:
+
+```sh
+kubectl -n tenant-a rollout restart deployment/web
+```
+
+Upgrading the controller marks existing pods out of date once, because they were
+injected before the revision annotation existed.
+
 #### Sidecar options
 
 `spec.sidecar` tunes webhook injection. Fields are optional; Kustomize and the
@@ -333,7 +374,8 @@ denied verdict is blocked or only logged.
 | `notifications.urlsSecretRef` | `NOTIFICATION_URLS` | shoutrrr service URLs, from a Secret because they carry tokens. |
 | `notifications.backoffSeconds` | `NOTIFICATION_BACKOFF_SECONDS` | |
 | `notifications.ignoreDomains` | `NOTIFICATION_IGNORE_DOMAINS` | See [notifications](configuration.md#notifications). |
-| `dns.upstreams` | `DNS_UPSTREAMS` | `host:port` list. |
+| `dns.upstreams` | `DNS_UPSTREAMS` | `host:port` list. Discovered from the pod resolver when unset. |
+| - | `ALLOW_CLUSTER_RESOLVER` | Allows the pod's resolver on port 53 in `https` mode. On unless set to false. |
 | `dns.hardening` | `DNS_HARDENING` | On unless set to false. |
 | `dns.rateQps`, `dns.rateBurst` | `DNS_RATE_QPS`, `DNS_RATE_BURST` | One budget for the whole pod, not per client. |
 | `ports.http`, `ports.https`, `ports.dns` | `HTTP_PORT`, `HTTPS_PORT`, `DNS_PORT` | For a workload that already binds 65080, 65443 or 65053. |
@@ -479,8 +521,8 @@ Denials are logged. To also show the first few in `kubectl describe pod`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
-  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.9.6
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.9.7
 ```
 
 This grants the workload ServiceAccount `create` on Events in its namespace and
@@ -502,8 +544,8 @@ is missing, g0efilter logs one warning and keeps filtering.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
-  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.6
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.7
 ```
 
 Or `g0efilter.metrics.enabled: true` with the Helm chart. Both expose `/metrics` on
@@ -560,7 +602,7 @@ openssl rand -hex 32 > "$G0EFILTER_CREDENTIAL_DIR/api-key"
 read -rsp 'Admin password: ' G0EFILTER_ADMIN_PASSWORD
 printf '\n'
 printf '%s' "$G0EFILTER_ADMIN_PASSWORD" | \
-  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.6 hash-password \
+  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.7 hash-password \
   > "$G0EFILTER_CREDENTIAL_DIR/admin-password-hash"
 unset G0EFILTER_ADMIN_PASSWORD
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
@@ -605,8 +647,8 @@ The add-on replaces the ConfigMap mount with an emptyDir:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
-  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.9.6
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.9.7
 ```
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.
@@ -637,8 +679,7 @@ metadata:
 data:
   policy.yaml: |
     allowlist:
-      ips:
-        - '10.96.0.10'
+      ips: []
       domains:
         - 'api.example.com'
         - '*.cdn.example.com'
@@ -655,15 +696,41 @@ If the agent rejects a changed policy, it keeps enforcing the previous one. With
 Events enabled, the pod gets a `PolicyReloadFailed` Event. Metrics record
 `g0efilter_policy_reloads_total{result="failure"}`.
 
-In `https` mode, allow the cluster DNS Service. Otherwise the default-deny packet
-filter blocks the workload's resolver:
+#### Probes
+
+The sidecar runs the same `healthcheck` command as a startup probe and a readiness
+probe. Ordering alone does not prove filtering is ready: a restartable init
+container is considered started as soon as its process runs, which can be before
+the packet filter is programmed. The startup probe closes that gap, so the
+application container waits until the ruleset is installed and the proxies accept.
+
+The probe reaches the agent over an abstract Unix socket, which needs no writable
+filesystem and no port the application can see. The socket is named after the proxy
+ports, so host-network sidecars sharing the node's network namespace stay separate
+as long as `ports.http`, `ports.https` and `ports.dns` differ, which they must
+anyway for the proxies to bind.
+
+Readiness reports whether the mounted policy is the one being enforced. Because
+kubelet projects a ConfigMap asynchronously, brief drift after an edit is expected
+and readiness holds through it. Readiness fails only once the mounted policy has
+gone unapplied for 90 seconds, which means it was rejected, unreadable, or the agent
+is stuck. That bound keeps an ordinary policy edit from evicting every selected pod
+from its Service at once.
+
+In `https` mode the workload talks to cluster DNS itself, because there is no DNS
+proxy. The sidecar reads the pod's `/etc/resolv.conf` and allows those nameservers
+on UDP and TCP port 53, so no policy rule is needed. Set
+`ALLOW_CLUSTER_RESOLVER=false` to turn that off and allow the address yourself:
 
 ```sh
 kubectl -n kube-system get svc -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.clusterIP}'
 ```
 
-In `dns` and `dns-strict` modes, configure that address as `DNS_UPSTREAMS`
-instead. The DNS proxy's marked upstream connection does not need a policy rule.
+The automatic rule covers port 53 only. It is not permission to reach other
+Services, which still need their own rules.
+
+In `dns` and `dns-strict` modes nothing is needed: the proxy's upstream connection
+carries the bypass mark, so it is never matched against the policy.
 
 In `https` mode, domain rules match only ports 80 and 443. Allow other traffic by
 IP or CIDR. This includes traffic to in-cluster Services, which NetworkPolicy can
@@ -699,8 +766,10 @@ securityContext:
 
 ### Everything is blocked
 
-Check that `https` mode allows the kube-dns ClusterIP. In a DNS mode, check that
-`DNS_UPSTREAMS` points to that address.
+Cluster DNS is allowed automatically, so check the sidecar found a resolver. The
+agent logs `policy.cluster_resolver_allowed` with the addresses it read from
+`/etc/resolv.conf`. A pod using `dnsPolicy: Default` can inherit a loopback stub
+resolver, which is skipped, leaving nothing to allow.
 
 Check a pod's privileges directly:
 

@@ -35,6 +35,7 @@ const (
 	webhookServiceName = "g0efilter-webhook"
 	webhookConfigName  = "g0efilter-sidecar-injector"
 	webhookPath        = "/inject-sidecar"
+	validatePath       = "/validate-policy"
 )
 
 // Set by GoReleaser via ldflags (wired in init()).
@@ -150,7 +151,12 @@ func run(opts options) error {
 		return err
 	}
 
-	reconciler := &controller.EgressPolicyReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
+	reconciler := &controller.EgressPolicyReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("g0efilter-controller"),
+		Defaults: sidecarDefaults(opts),
+	}
 
 	err = reconciler.SetupWithManager(mgr)
 	if err != nil {
@@ -275,12 +281,23 @@ func startWebhook(mgr ctrl.Manager, opts options) error {
 	injector := &g0webhook.Injector{
 		Client:   mgr.GetClient(),
 		Decoder:  admission.NewDecoder(mgr.GetScheme()),
-		Defaults: g0webhook.Defaults{Image: opts.sidecarImage},
+		Defaults: sidecarDefaults(opts),
+	}
+
+	validator := &g0webhook.Validator{
+		Client:  mgr.GetAPIReader(),
+		Decoder: admission.NewDecoder(mgr.GetScheme()),
 	}
 
 	mgr.GetWebhookServer().Register(webhookPath, &admission.Webhook{Handler: injector})
+	mgr.GetWebhookServer().Register(validatePath, &admission.Webhook{Handler: validator})
 
 	return nil
+}
+
+// sidecarDefaults has one copy: if the reconciler and injector disagree, every pod reads as stale.
+func sidecarDefaults(opts options) g0webhook.Defaults {
+	return g0webhook.Defaults{Image: opts.sidecarImage}
 }
 
 func main() {

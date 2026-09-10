@@ -93,6 +93,7 @@ func TestInjectedSidecarMatchesTheKustomizeComponent(t *testing.T) {
 	assertSecurityContextMatches(t, got, want)
 	assertEnvMatches(t, got, want)
 	assertMountMatches(t, got, want)
+	assertProbesMatch(t, got, want)
 
 	if !equalResources(got.Resources, want.Resources) {
 		t.Errorf("resources differ:\nwebhook:   %v\nkustomize: %v", got.Resources, want.Resources)
@@ -100,6 +101,36 @@ func TestInjectedSidecarMatchesTheKustomizeComponent(t *testing.T) {
 
 	if got.RestartPolicy == nil || want.RestartPolicy == nil || *got.RestartPolicy != *want.RestartPolicy {
 		t.Errorf("restartPolicy differs: webhook=%v kustomize=%v", got.RestartPolicy, want.RestartPolicy)
+	}
+}
+
+// The startup probe is what proves filtering is installed before the application runs.
+func assertProbesMatch(t *testing.T, got, want corev1.Container) {
+	t.Helper()
+
+	assertProbeMatches(t, "startupProbe", got.StartupProbe, want.StartupProbe)
+	assertProbeMatches(t, "readinessProbe", got.ReadinessProbe, want.ReadinessProbe)
+}
+
+func assertProbeMatches(t *testing.T, name string, got, want *corev1.Probe) {
+	t.Helper()
+
+	if got == nil || want == nil {
+		t.Fatalf("%s is missing: webhook=%v kustomize=%v", name, got, want)
+	}
+
+	gotJSON, err := yaml.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	wantJSON, err := yaml.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if string(gotJSON) != string(wantJSON) {
+		t.Errorf("%s differs:\nwebhook:\n%s\nkustomize:\n%s", name, gotJSON, wantJSON)
 	}
 }
 

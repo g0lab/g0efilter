@@ -75,9 +75,15 @@ func (i *Injector) Handle(ctx context.Context, req admission.Request) admission.
 		return admission.Denied(err.Error())
 	}
 
+	revision, err := StartupRevision(policy.Spec.Sidecar, i.Defaults, configMapFor(policy))
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+
 	settings := resolve(policy.Spec.Sidecar, i.Defaults)
 
 	inject(pod, settings, configMapFor(policy), policy.Name)
+	pod.Annotations[StartupRevisionAnnotation] = revision
 
 	patched, err := json.Marshal(pod)
 	if err != nil {
@@ -101,7 +107,12 @@ func (i *Injector) policyReady(
 	}
 
 	for _, condition := range policy.Status.Conditions {
-		if condition.Type == "Ready" && condition.Status == metav1.ConditionTrue &&
+		// ConfigurationReady describes the rendered policy alone, so a rollout never blocks admission.
+		if condition.Type != "Ready" && condition.Type != "ConfigurationReady" {
+			continue
+		}
+
+		if condition.Status == metav1.ConditionTrue &&
 			condition.ObservedGeneration == policy.Generation {
 			return i.policyConfigCurrent(ctx, namespace, policy)
 		}
@@ -148,7 +159,12 @@ func (i *Injector) policyConfigCurrent(
 		return fmt.Errorf("%w: read ConfigMap %s/%s: %w", errPolicyNotReady, namespace, key.Name, err)
 	}
 
-	if configMap.Data["policy.yaml"] != desired.Document() {
+	document, err := desired.DocumentFor(policy.Spec.Sidecar)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errPolicyNotReady, err)
+	}
+
+	if configMap.Data["policy.yaml"] != document {
 		return fmt.Errorf("%w: ConfigMap %s/%s is stale", errPolicyNotReady, namespace, key.Name)
 	}
 

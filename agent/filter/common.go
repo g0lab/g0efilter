@@ -46,8 +46,10 @@ var errListenAddrEmpty = errors.New("listenAddr cannot be empty")
 
 // Options contains configuration for network filtering.
 type Options struct {
-	ListenAddr  string
-	DialTimeout int // ms
+	// DNSUpstreams overrides DNS_UPSTREAMS. A non-nil empty slice selects discovery.
+	DNSUpstreams []string
+	ListenAddr   string
+	DialTimeout  int // ms
 	// IdleTimeout is applied as a single deadline at connect time, so it is a
 	// maximum connection lifetime rather than a true idle timeout (ms; 0 = none).
 	IdleTimeout int

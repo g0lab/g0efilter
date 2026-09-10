@@ -7,12 +7,16 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/g0lab/g0efilter/controller/api/v1alpha1"
 	"github.com/g0lab/g0efilter/controller/internal/render"
+	"github.com/g0lab/g0efilter/controller/internal/webhook"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -24,10 +28,14 @@ const (
 	// PolicyKey is the ConfigMap key the sidecar reads.
 	PolicyKey = "policy.yaml"
 
-	conditionReady = "Ready"
+	conditionReady              = "Ready"
+	conditionConfigurationReady = "ConfigurationReady"
+	conditionPodsUpToDate       = "PodsUpToDate"
 
 	reasonRendered      = "Rendered"
 	reasonInvalidPolicy = "InvalidPolicy"
+	reasonPodsCurrent   = "PodsCurrent"
+	reasonPodsOutOfDate = "PodsOutOfDate"
 
 	managedByLabel = "app.kubernetes.io/managed-by"
 	policyLabel    = "g0efilter.g0lab.com/policy"
@@ -40,8 +48,10 @@ const (
 // EgressPolicyReconciler renders each EgressPolicy into its own ConfigMap, merging
 // in the rules of every ClusterEgressPolicy that selects the namespace.
 type EgressPolicyReconciler struct {
-	Client client.Client
-	Scheme *runtime.Scheme
+	Client   client.Client
+	Scheme   *runtime.Scheme
+	Recorder events.EventRecorder
+	Defaults webhook.Defaults
 }
 
 // +kubebuilder:rbac:groups=g0efilter.g0lab.com,resources=egresspolicies;clusteregresspolicies,verbs=get;list;watch
@@ -49,7 +59,10 @@ type EgressPolicyReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// The manager's recorder writes through events.k8s.io/v1; the core group is still
+// needed because leader election records its own Events there.
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // Reconcile renders one EgressPolicy.
 func (r *EgressPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -77,17 +90,22 @@ func (r *EgressPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	name := ConfigMapNameFor(policy.Name)
 
-	err = r.applyConfigMap(ctx, &policy, name, rendered.Document())
+	document, err := rendered.DocumentFor(policy.Spec.Sidecar)
+	if err != nil {
+		return ctrl.Result{}, r.markDegraded(ctx, &policy, err)
+	}
+
+	err = r.applyConfigMap(ctx, &policy, name, document)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	pods, err := r.countSelectedPods(ctx, &policy)
+	pods, stale, err := r.selectedPodState(ctx, &policy)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, r.markReady(ctx, &policy, name, pods)
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, r.markPodState(ctx, &policy, name, pods, stale)
 }
 
 // ConfigMapNameFor is the ConfigMap a policy renders into. Pods mount it by name,
@@ -224,10 +242,18 @@ func (r *EgressPolicyReconciler) applyConfigMap(
 	return nil
 }
 
-func (r *EgressPolicyReconciler) countSelectedPods(ctx context.Context, policy *v1alpha1.EgressPolicy) (int32, error) {
+func (r *EgressPolicyReconciler) selectedPodState(
+	ctx context.Context,
+	policy *v1alpha1.EgressPolicy,
+) (int32, int32, error) {
 	selector, err := metav1.LabelSelectorAsSelector(&policy.Spec.PodSelector)
 	if err != nil {
-		return 0, fmt.Errorf("pod selector: %w", err)
+		return 0, 0, fmt.Errorf("pod selector: %w", err)
+	}
+
+	desired, err := webhook.StartupRevision(policy.Spec.Sidecar, r.Defaults, ConfigMapNameFor(policy.Name))
+	if err != nil {
+		return 0, 0, fmt.Errorf("startup revision: %w", err)
 	}
 
 	var pods corev1.PodList
@@ -236,35 +262,96 @@ func (r *EgressPolicyReconciler) countSelectedPods(ctx context.Context, policy *
 		client.InNamespace(policy.Namespace),
 		client.MatchingLabelsSelector{Selector: selector})
 	if err != nil {
-		return 0, fmt.Errorf("list pods: %w", err)
+		return 0, 0, fmt.Errorf("list pods: %w", err)
 	}
 
-	var running int32
+	var running, stale int32
 
 	for _, pod := range pods.Items {
-		if pod.Status.Phase == corev1.PodRunning {
-			running++
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+
+		running++
+
+		if !podIsCurrent(pod, policy.Name, desired) {
+			stale++
 		}
 	}
 
-	return running, nil
+	return running, stale, nil
 }
 
-func (r *EgressPolicyReconciler) markReady(
+// podIsCurrent reports whether a pod runs the current startup settings and its sidecar is ready.
+func podIsCurrent(pod corev1.Pod, policyName, desired string) bool {
+	if pod.Annotations[webhook.InjectedAnnotation] != policyName ||
+		pod.Annotations[webhook.StartupRevisionAnnotation] != desired {
+		return false
+	}
+
+	for _, status := range pod.Status.InitContainerStatuses {
+		if status.Name == webhook.ContainerName {
+			return status.Ready
+		}
+	}
+
+	return false
+}
+
+func (r *EgressPolicyReconciler) markPodState(
 	ctx context.Context,
 	policy *v1alpha1.EgressPolicy,
-	configMapName string,
-	pods int32,
+	name string,
+	pods, stale int32,
 ) error {
 	before := policy.Status.DeepCopy()
 
 	policy.Status.ObservedGeneration = policy.Generation
-	policy.Status.ConfigMapName = configMapName
+	policy.Status.ConfigMapName = name
 	policy.Status.SelectedPods = pods
+	policy.Status.OutOfDatePods = stale
 
-	setCondition(policy, metav1.ConditionTrue, reasonRendered, "rendered into ConfigMap "+configMapName)
+	rendered := "rendered into ConfigMap " + name
 
-	return r.updateStatusIfChanged(ctx, policy, before)
+	// Ready tracks the rendered configuration alone, so stale pods never block admission of their replacements.
+	setCondition(policy, metav1.ConditionTrue, reasonRendered, rendered)
+	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
+		Type:               conditionConfigurationReady,
+		Status:             metav1.ConditionTrue,
+		Reason:             reasonRendered,
+		Message:            rendered,
+		ObservedGeneration: policy.Generation,
+	})
+
+	status, reason, message := podRolloutCondition(pods, stale)
+	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
+		Type:               conditionPodsUpToDate,
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: policy.Generation,
+	})
+
+	err := r.updateStatusIfChanged(ctx, policy, before)
+	if err != nil {
+		return err
+	}
+
+	if stale > 0 && before.OutOfDatePods != stale && r.Recorder != nil {
+		r.Recorder.Eventf(policy, nil, corev1.EventTypeWarning, reason, "ObservePods", "%s", message)
+	}
+
+	return nil
+}
+
+func podRolloutCondition(pods, stale int32) (metav1.ConditionStatus, string, string) {
+	if stale == 0 {
+		return metav1.ConditionTrue, reasonPodsCurrent,
+			"every selected running sidecar reports ready with the current startup settings"
+	}
+
+	return metav1.ConditionFalse, reasonPodsOutOfDate,
+		fmt.Sprintf("%d of %d selected running pods need a sidecar reload or rollout", stale, pods)
 }
 
 func (r *EgressPolicyReconciler) markDegraded(ctx context.Context, policy *v1alpha1.EgressPolicy, cause error) error {
@@ -275,6 +362,13 @@ func (r *EgressPolicyReconciler) markDegraded(ctx context.Context, policy *v1alp
 	// The previous ConfigMap is deliberately left in place: replacing a working
 	// policy with an empty one because the new spec is invalid would open egress.
 	setCondition(policy, metav1.ConditionFalse, reasonInvalidPolicy, cause.Error())
+	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
+		Type:               conditionConfigurationReady,
+		Status:             metav1.ConditionFalse,
+		Reason:             reasonInvalidPolicy,
+		Message:            cause.Error(),
+		ObservedGeneration: policy.Generation,
+	})
 
 	return r.updateStatusIfChanged(ctx, policy, before)
 }

@@ -83,7 +83,9 @@ The file is hashed every five seconds; unchanged content does not reload. Send
 docker kill --signal HUP g0efilter
 ```
 
-Environment variables can replace file-based lists. See
+Environment variables can replace file-based lists. The file is then not the
+enforced policy, so g0efilter stops watching it and reports
+`policy.watcher_disabled`. See
 [environment variables](configuration.md#environment-variables).
 
 ## Default-allow denylist

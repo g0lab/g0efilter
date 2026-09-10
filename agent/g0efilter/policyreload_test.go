@@ -58,7 +58,7 @@ func TestApplyPolicyChangeKeepsThePreviousPolicy(t *testing.T) {
 		policyErrors: reporter,
 	}
 
-	got := applyPolicyChange(context.Background(), cfg, discardLogger(), "old-hash", "new-hash", nil)
+	got := applyPolicyChange(context.Background(), cfg, discardLogger(), "old-hash", nil)
 
 	if got != "old-hash" {
 		t.Errorf("returned %q; a rejected policy must keep the previous hash so the reload retries", got)
@@ -82,7 +82,7 @@ func TestApplyPolicyChangeWithoutAReporter(t *testing.T) {
 		metrics:    metrics.New(),
 	}
 
-	got := applyPolicyChange(context.Background(), cfg, discardLogger(), "old-hash", "new-hash", nil)
+	got := applyPolicyChange(context.Background(), cfg, discardLogger(), "old-hash", nil)
 	if got != "old-hash" {
 		t.Errorf("returned %q, want old-hash", got)
 	}

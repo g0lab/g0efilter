@@ -39,7 +39,9 @@ func Serve53(ctx context.Context, allowlist []string, opts Options) error {
 }
 
 func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
-	upstreams := defaultUpstreamsFromEnv()
+	clusterUpstreams, suffixes := clusterResolvers()
+	upstreams := selectedUpstreams(opts)
+
 	opts.Denylist = NormalizePatterns(opts.Denylist)
 	opts.denyMatcher = newMatcher(opts.Denylist)
 
@@ -49,12 +51,14 @@ func createDNSHandler(allowlist []string, opts Options) *dnsHandler {
 	}
 
 	return &dnsHandler{
-		allowlist: newMatcher(allowlist),
-		ipAllow:   newIPAllowlist(opts.AllowIPs),
-		opts:      opts,
-		upstreams: upstreams,
-		timeout:   timeoutFromOptions(opts, 3*time.Second),
-		limiter:   limiter,
+		clusterUpstreams: clusterUpstreams,
+		clusterSuffixes:  suffixes,
+		allowlist:        newMatcher(allowlist),
+		ipAllow:          newIPAllowlist(opts.AllowIPs),
+		opts:             opts,
+		upstreams:        upstreams,
+		timeout:          timeoutFromOptions(opts, 3*time.Second),
+		limiter:          limiter,
 	}
 }
 
@@ -166,12 +170,14 @@ func stopDNSServers(ctx context.Context, servers []*dnsServer) {
 }
 
 type dnsHandler struct {
-	allowlist *hostMatcher
-	ipAllow   *ipAllowlist
-	opts      Options
-	upstreams []string
-	timeout   time.Duration
-	limiter   *dnsRateLimiter
+	clusterUpstreams []string
+	clusterSuffixes  []string
+	allowlist        *hostMatcher
+	ipAllow          *ipAllowlist
+	opts             Options
+	upstreams        []string
+	timeout          time.Duration
+	limiter          *dnsRateLimiter
 }
 
 // ipAllowlist matches resolved IPs against the policy IP/CIDR allowlist.
@@ -914,7 +920,7 @@ func (handler *dnsHandler) forward(request *dns.Msg) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), handler.timeout)
 	defer cancel()
 
-	for _, up := range handler.upstreams {
+	for _, up := range handler.upstreamsFor(request) {
 		// UDP attempt
 		in, _, err := udpClient.ExchangeContext(ctx, request, up)
 		if err != nil || in == nil {
@@ -952,6 +958,19 @@ func (handler *dnsHandler) markedDialer() *net.Dialer {
 }
 
 // defaultUpstreamsFromEnv reads DNS_UPSTREAMS or returns Docker's resolver.
+// selectedUpstreams prefers the policy document; a non-nil empty slice selects discovery.
+func selectedUpstreams(opts Options) []string {
+	if opts.DNSUpstreams == nil {
+		return defaultUpstreamsFromEnv()
+	}
+
+	if len(opts.DNSUpstreams) == 0 {
+		return discoveredUpstreams()
+	}
+
+	return opts.DNSUpstreams
+}
+
 func defaultUpstreamsFromEnv() []string {
 	if v := strings.TrimSpace(os.Getenv("DNS_UPSTREAMS")); v != "" {
 		parts := strings.Split(v, ",")
@@ -970,7 +989,7 @@ func defaultUpstreamsFromEnv() []string {
 		}
 	}
 
-	return []string{"127.0.0.11:53"}
+	return discoveredUpstreams()
 }
 
 // typeString returns a human-readable string for a DNS query type.

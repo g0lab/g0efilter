@@ -342,9 +342,14 @@ func writeAtomic(dir, name string, data []byte) error {
 // publish writes the CA into the configuration. Without it every admission fails,
 // which under failurePolicy Fail blocks pod creation outright.
 func publish(ctx context.Context, c client.Client, opts Options, ca []byte) error {
+	err := publishValidation(ctx, c, opts, ca)
+	if err != nil {
+		return err
+	}
+
 	var configuration admissionregv1.MutatingWebhookConfiguration
 
-	err := c.Get(ctx, client.ObjectKey{Name: opts.WebhookName}, &configuration)
+	err = c.Get(ctx, client.ObjectKey{Name: opts.WebhookName}, &configuration)
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -369,6 +374,40 @@ func publish(ctx context.Context, c client.Client, opts Options, ca []byte) erro
 	err = c.Update(ctx, &configuration)
 	if err != nil {
 		return fmt.Errorf("publish caBundle to %s: %w", opts.WebhookName, err)
+	}
+
+	return nil
+}
+
+// publishValidation is a no-op when only the mutating overlay is installed.
+func publishValidation(ctx context.Context, c client.Client, opts Options, ca []byte) error {
+	var configuration admissionregv1.ValidatingWebhookConfiguration
+
+	err := c.Get(ctx, client.ObjectKey{Name: opts.WebhookName}, &configuration)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("get validating webhook %s: %w", opts.WebhookName, err)
+	}
+
+	changed := false
+
+	for i := range configuration.Webhooks {
+		if !bytes.Equal(configuration.Webhooks[i].ClientConfig.CABundle, ca) {
+			configuration.Webhooks[i].ClientConfig.CABundle = ca
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+
+	err = c.Update(ctx, &configuration)
+	if err != nil {
+		return fmt.Errorf("publish validating caBundle: %w", err)
 	}
 
 	return nil

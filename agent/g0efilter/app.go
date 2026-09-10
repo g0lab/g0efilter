@@ -66,6 +66,7 @@ var (
 type policyUpdate struct {
 	hash string
 	pol  *policy.Policy
+	done chan bool
 }
 
 // Run starts the g0efilter application and blocks until shutdown.
@@ -79,6 +80,7 @@ func Run(version, date, commit string) error {
 	slog.SetDefault(lg)
 
 	cfg = normalizeMode(cfg, lg)
+	cfg.bootstrap = datapathOf(cfg)
 	cfg = resolvePolicyPath(cfg, fallbackPolicyPath, lg)
 
 	logStartupInfo(lg, cfg, version, date, commit)
@@ -101,6 +103,11 @@ func Run(version, date, commit string) error {
 	cfg = setupLearning(ctx, tracked, cfg, lg)
 
 	pol, initialHash, err := loadInitialPolicy(ctx, cfg, lg)
+	if err != nil {
+		return err
+	}
+
+	cfg, err = startHealth(ctx, tracked, cfg, pol, initialHash, lg)
 	if err != nil {
 		return err
 	}
@@ -140,30 +147,34 @@ func HandleVersionFlag(args []string, version, date, commit string) bool {
 }
 
 type config struct {
-	policyPath          string
-	httpPort            string
-	httpsPort           string
-	dnsPort             string
-	logLevel            string
-	logFile             string
-	hostname            string
-	mode                string
-	defaultAction       string // bootstrap default; policy file default_action wins
-	learningMode        bool
-	learner             *learner
-	auditMode           bool
-	dnsHardening        bool
-	dnsRateQPS          int
-	dnsRateBurst        int
-	maxConns            int
-	connMaxLifetime     int
-	enableRemoteUnblock bool
-	dashboardHost       string
-	dashboardAPIKey     string
-	unblockPollInterval time.Duration
-	notificationURLs    string
-	metrics             *metrics.Metrics
-	policyErrors        policyErrorReporter
+	policyPath           string
+	httpPort             string
+	httpsPort            string
+	dnsPort              string
+	dnsUpstreams         []string
+	health               *runtimeHealth
+	allowClusterResolver bool
+	logLevel             string
+	logFile              string
+	hostname             string
+	mode                 string
+	defaultAction        string // bootstrap default; policy file default_action wins
+	learningMode         bool
+	learner              *learner
+	auditMode            bool
+	dnsHardening         bool
+	dnsRateQPS           int
+	dnsRateBurst         int
+	bootstrap            datapath // the environment's datapath settings, restored when a policy drops its runtime block
+	maxConns             int
+	connMaxLifetime      int
+	enableRemoteUnblock  bool
+	dashboardHost        string
+	dashboardAPIKey      string
+	unblockPollInterval  time.Duration
+	notificationURLs     string
+	metrics              *metrics.Metrics
+	policyErrors         policyErrorReporter
 }
 
 // notifySignals separates shutdown from SIGHUP, which asks for a reload rather
@@ -201,27 +212,28 @@ type policyErrorReporter interface {
 
 func loadConfig() config {
 	return config{
-		policyPath:          getenvDefault("POLICY_PATH", "/app/policy.yaml"),
-		httpPort:            getenvDefault("HTTP_PORT", "65080"),
-		httpsPort:           getenvDefault("HTTPS_PORT", "65443"),
-		dnsPort:             getenvDefault("DNS_PORT", "65053"),
-		logLevel:            getenvDefault("LOG_LEVEL", "INFO"),
-		logFile:             getenvDefault("LOG_FILE", ""),
-		hostname:            getenvDefault("HOSTNAME", ""),
-		mode:                strings.ToLower(getenvDefault("FILTER_MODE", "https")),
-		defaultAction:       strings.ToLower(getenvDefault("DEFAULT_ACTION", policy.DefaultActionDeny)),
-		learningMode:        strings.EqualFold(getenvDefault("LEARNING_MODE", "false"), "true"),
-		auditMode:           strings.EqualFold(getenvDefault("ENFORCE", "block"), "audit"),
-		dnsHardening:        strings.EqualFold(getenvDefault("DNS_HARDENING", "true"), "true"),
-		dnsRateQPS:          parseIntDefault(getenvDefault("DNS_RATE_QPS", ""), 0),
-		dnsRateBurst:        parseIntDefault(getenvDefault("DNS_RATE_BURST", ""), 0),
-		maxConns:            parseIntDefault(getenvDefault("MAX_CONNECTIONS", ""), defaultMaxConns),
-		connMaxLifetime:     parseIntDefault(getenvDefault("CONN_MAX_LIFETIME_MS", ""), defaultIdleTimeout),
-		enableRemoteUnblock: strings.EqualFold(getenvDefault("ENABLE_REMOTE_UNBLOCK", "false"), "true"),
-		dashboardHost:       strings.TrimSpace(getenvDefault("DASHBOARD_HOST", "")),
-		dashboardAPIKey:     strings.TrimSpace(getenvDefault("DASHBOARD_API_KEY", "")),
-		unblockPollInterval: parseDurationDefault(getenvDefault("UNBLOCK_POLL_INTERVAL", "10s"), 10*time.Second),
-		notificationURLs:    strings.TrimSpace(getenvDefault("NOTIFICATION_URLS", "")),
+		policyPath:           getenvDefault("POLICY_PATH", "/app/policy.yaml"),
+		httpPort:             getenvDefault("HTTP_PORT", "65080"),
+		httpsPort:            getenvDefault("HTTPS_PORT", "65443"),
+		dnsPort:              getenvDefault("DNS_PORT", "65053"),
+		logLevel:             getenvDefault("LOG_LEVEL", "INFO"),
+		logFile:              getenvDefault("LOG_FILE", ""),
+		hostname:             getenvDefault("HOSTNAME", ""),
+		mode:                 strings.ToLower(getenvDefault("FILTER_MODE", "https")),
+		defaultAction:        strings.ToLower(getenvDefault("DEFAULT_ACTION", policy.DefaultActionDeny)),
+		learningMode:         strings.EqualFold(getenvDefault("LEARNING_MODE", "false"), "true"),
+		auditMode:            strings.EqualFold(getenvDefault("ENFORCE", "block"), "audit"),
+		dnsHardening:         strings.EqualFold(getenvDefault("DNS_HARDENING", "true"), "true"),
+		allowClusterResolver: strings.EqualFold(getenvDefault("ALLOW_CLUSTER_RESOLVER", "true"), "true"),
+		dnsRateQPS:           parseIntDefault(getenvDefault("DNS_RATE_QPS", ""), 0),
+		dnsRateBurst:         parseIntDefault(getenvDefault("DNS_RATE_BURST", ""), 0),
+		maxConns:             parseIntDefault(getenvDefault("MAX_CONNECTIONS", ""), defaultMaxConns),
+		connMaxLifetime:      parseIntDefault(getenvDefault("CONN_MAX_LIFETIME_MS", ""), defaultIdleTimeout),
+		enableRemoteUnblock:  strings.EqualFold(getenvDefault("ENABLE_REMOTE_UNBLOCK", "false"), "true"),
+		dashboardHost:        strings.TrimSpace(getenvDefault("DASHBOARD_HOST", "")),
+		dashboardAPIKey:      strings.TrimSpace(getenvDefault("DASHBOARD_API_KEY", "")),
+		unblockPollInterval:  parseDurationDefault(getenvDefault("UNBLOCK_POLL_INTERVAL", "10s"), 10*time.Second),
+		notificationURLs:     strings.TrimSpace(getenvDefault("NOTIFICATION_URLS", "")),
 	}
 }
 
@@ -316,6 +328,31 @@ func effectiveDefaultAllow(cfg config, pol *policy.Policy) bool {
 	return action == policy.DefaultActionAllow
 }
 
+// startHealth publishes the applied policy first, so a passing startup probe means filtering is up.
+func startHealth(
+	ctx context.Context,
+	tracked *group,
+	cfg config,
+	pol *policy.Policy,
+	initialHash string,
+	lg *slog.Logger,
+) (config, error) {
+	cfg, err := withRuntime(cfg, pol)
+	if err != nil {
+		return cfg, err
+	}
+
+	cfg.health = &runtimeHealth{}
+	cfg.health.applyOK(cfg, initialHash)
+
+	err = startHealthServer(ctx, tracked, cfg, lg)
+	if err != nil {
+		return cfg, err
+	}
+
+	return cfg, nil
+}
+
 func supervise(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -341,18 +378,7 @@ func supervise(
 				return
 			}
 
-			lg.Info(
-				"policy.reloaded",
-				"hash", upd.hash,
-				"domain_count", len(upd.pol.AllowDomains),
-				"ip_count", len(upd.pol.AllowIPs),
-				"deny_domain_count", len(upd.pol.DenyDomains),
-				"deny_ip_count", len(upd.pol.DenyIPs),
-			)
-
-			restartServices(ctx, cfg, upd.pol, lg, svc)
-			cfg.metrics.RecordReload("success")
-			lg.Info("policy.applied", "mode", cfg.mode, "filter_count", len(upd.pol.AllowDomains))
+			cfg = applyReload(ctx, cfg, upd, lg, svc)
 
 		case <-ctx.Done():
 			(*svc).stop(lg)
@@ -362,9 +388,90 @@ func supervise(
 	}
 }
 
+// applyReload returns the configuration now in force, which is the previous one on failure.
+func applyReload(
+	ctx context.Context,
+	cfg config,
+	upd policyUpdate,
+	lg *slog.Logger,
+	svc **services,
+) config {
+	lg.Info(
+		"policy.reload_started",
+		"hash", upd.hash,
+		"domain_count", len(upd.pol.AllowDomains),
+		"ip_count", len(upd.pol.AllowIPs),
+		"deny_domain_count", len(upd.pol.DenyDomains),
+		"deny_ip_count", len(upd.pol.DenyIPs),
+	)
+
+	next, err := checkedConfig(cfg, upd.pol, lg)
+	if err == nil {
+		cfg, err = swapServices(ctx, cfg, next, upd, lg, svc)
+	}
+
+	if err != nil {
+		reportReloadError(ctx, cfg, lg, err)
+	} else {
+		cfg.metrics.RecordReload("success")
+		lg.Info("policy.applied", "mode", cfg.mode, "hash", upd.hash, "filter_count", len(upd.pol.AllowDomains))
+	}
+
+	if upd.done != nil {
+		upd.done <- err == nil
+	}
+
+	return cfg
+}
+
+// checkedConfig rejects an unenforceable policy before the running listeners are touched.
+func checkedConfig(cfg config, pol *policy.Policy, lg *slog.Logger) (config, error) {
+	next, err := withRuntime(cfg, pol)
+	if err != nil {
+		return cfg, err
+	}
+
+	err = validatePorts(next, lg)
+	if err != nil {
+		return cfg, err
+	}
+
+	err = checkDomainConstraints(pol, next, effectiveDefaultAllow(next, pol))
+	if err != nil {
+		return cfg, err
+	}
+
+	return next, nil
+}
+
+// swapServices keeps the old ruleset installed across the transition; nft -f is atomic.
+func swapServices(
+	ctx context.Context,
+	cfg, next config,
+	upd policyUpdate,
+	lg *slog.Logger,
+	svc **services,
+) (config, error) {
+	old := *svc
+	old.stop(lg)
+
+	err := applyLoadedPolicy(ctx, next, upd.pol, lg)
+	if err != nil {
+		*svc = startServiceGroup(ctx, cfg, old.pol, lg)
+
+		return cfg, err
+	}
+
+	*svc = startServiceGroup(ctx, next, upd.pol, lg)
+	next.health.applyOK(next, upd.hash)
+
+	return next, nil
+}
+
 type services struct {
 	cancel  context.CancelFunc
 	tracked *group
+	pol     *policy.Policy
 }
 
 func startServiceGroup(ctx context.Context, cfg config, pol *policy.Policy, lg *slog.Logger) *services {
@@ -373,7 +480,7 @@ func startServiceGroup(ctx context.Context, cfg config, pol *policy.Policy, lg *
 
 	startServices(svcCtx, tracked, cfg, pol, lg)
 
-	return &services{cancel: cancel, tracked: tracked}
+	return &services{cancel: cancel, tracked: tracked, pol: pol}
 }
 
 func (s *services) stop(lg *slog.Logger) {
@@ -421,14 +528,7 @@ func loadInitialPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*polic
 		return nil, "", err
 	}
 
-	hash, err := fileSHA256Hex(cfg.policyPath)
-	if err != nil {
-		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
-
-		return pol, "", nil
-	}
-
-	return pol, hash, nil
+	return pol, pol.Hash, nil
 }
 
 func getGoVersion() string {
@@ -629,6 +729,25 @@ func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*poli
 		return nil, fmt.Errorf("failed to read policy: %w", err)
 	}
 
+	cfg, err = withRuntime(cfg, pol)
+	if err != nil {
+		return nil, err
+	}
+
+	err = validatePorts(cfg, lg)
+	if err != nil {
+		return nil, err
+	}
+
+	err = applyLoadedPolicy(ctx, cfg, pol, lg)
+	if err != nil {
+		return nil, err
+	}
+
+	return pol, nil
+}
+
+func applyLoadedPolicy(ctx context.Context, cfg config, pol *policy.Policy, lg *slog.Logger) error {
 	defaultAllow := effectiveDefaultAllow(cfg, pol)
 
 	lg.Info("policy.loaded",
@@ -648,15 +767,16 @@ func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*poli
 			"reason", "default_action is deny; denylist only applies with default_action: allow")
 	}
 
-	err = checkDomainConstraints(pol, cfg, defaultAllow)
+	err := checkDomainConstraints(pol, cfg, defaultAllow)
 	if err != nil {
 		lg.Error("policy.unsupported_domain_port_constraint", "mode", cfg.mode, "err", err)
 
-		return nil, err
+		return err
 	}
 
 	rules := nftables.PolicyRules{
-		AllowIPs:     pol.AllowIPs,
+		Mode:         cfg.mode,
+		AllowIPs:     withClusterResolvers(cfg, pol.AllowIPs, defaultAllow, filter.ClusterResolverIPs(), lg),
 		DenyIPs:      pol.DenyIPs,
 		DefaultAllow: defaultAllow,
 		Audit:        cfg.auditMode,
@@ -672,12 +792,40 @@ func loadAndApplyPolicy(ctx context.Context, cfg config, lg *slog.Logger) (*poli
 	if err != nil {
 		lg.Error("nftables.apply_failed", "err", err)
 
-		return nil, fmt.Errorf("apply nftables rules: %w", err)
+		return fmt.Errorf("apply nftables rules: %w", err)
 	}
 
 	lg.Info("nftables.applied")
 
-	return pol, nil
+	return nil
+}
+
+// withClusterResolvers allows the pod's own resolver on port 53; only https mode lacks a DNS proxy.
+func withClusterResolvers(
+	cfg config,
+	allowIPs []string,
+	defaultAllow bool,
+	resolvers []string,
+	lg *slog.Logger,
+) []string {
+	if cfg.mode != actions.ModeHTTPS || defaultAllow || !cfg.allowClusterResolver || len(resolvers) == 0 {
+		return allowIPs
+	}
+
+	out := append([]string(nil), allowIPs...)
+
+	for _, addr := range resolvers {
+		host := addr
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+
+		out = append(out, "udp/"+host+":53", "tcp/"+host+":53")
+	}
+
+	lg.Info("policy.cluster_resolver_allowed", "resolvers", resolvers)
+
+	return out
 }
 
 type retryPolicy struct {
@@ -783,6 +931,7 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 
 func startServices(ctx context.Context, tracked *group, cfg config, pol *policy.Policy, lg *slog.Logger) {
 	opts := filter.Options{
+		DNSUpstreams: cfg.dnsUpstreams,
 		DialTimeout:  defaultDialTimeout,
 		IdleTimeout:  cfg.connMaxLifetime,
 		MaxConns:     cfg.maxConns,
@@ -913,10 +1062,20 @@ func startRemoteUnblockPolling(ctx context.Context, tracked *group, cfg config, 
 	tracked.run(lg, "remote_unblock", func() { pollRemoteUnblocks(ctx, cfg, lg) })
 }
 
-// shouldWatchPolicy is false in learning mode: the ruleset is forced permissive and
-// the learner keeps appending to the policy file, so a reload only churns services.
-func shouldWatchPolicy(cfg config) bool {
-	return !cfg.learningMode
+// shouldWatchPolicy reports whether the policy file drives the running ruleset,
+// and why it does not when it is false.
+func shouldWatchPolicy(cfg config) (bool, string) {
+	// The learner keeps appending to the file, so reloading it only churns services.
+	if cfg.learningMode {
+		return false, "learning mode forces a permissive ruleset, so policy reloads have no effect"
+	}
+
+	// The file is not the active source, so its hash would report permanent drift.
+	if policy.EnvOverride() {
+		return false, "an environment policy overrides the policy file, so its content is not enforced"
+	}
+
+	return true, ""
 }
 
 func startPolicyWatcher(
@@ -928,9 +1087,9 @@ func startPolicyWatcher(
 	reloadCh chan policyUpdate,
 	hupCh <-chan os.Signal,
 ) {
-	if !shouldWatchPolicy(cfg) {
-		lg.Info("policy.watcher_disabled",
-			"reason", "learning mode forces a permissive ruleset, so policy reloads have no effect")
+	watch, reason := shouldWatchPolicy(cfg)
+	if !watch {
+		lg.Info("policy.watcher_disabled", "reason", reason)
 
 		return
 	}
@@ -993,6 +1152,7 @@ func checkPolicyTick(
 	if err != nil {
 		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
 		cfg.metrics.RecordReload("failure")
+		cfg.health.readFailed(time.Now())
 
 		return lastHash
 	}
@@ -1010,9 +1170,7 @@ func checkPolicyTick(
 				"Mount a directory instead of a single file: './policy/:/app/policy/' (see README)")
 	}
 
-	if lastHash == "" {
-		return newHash
-	}
+	cfg.health.observe(newHash, time.Now())
 
 	if newHash == lastHash {
 		return lastHash
@@ -1020,7 +1178,7 @@ func checkPolicyTick(
 
 	lg.Info("policy.change_detected", "old_hash", lastHash, "new_hash", newHash)
 
-	return applyPolicyChange(ctx, cfg, lg, lastHash, newHash, reloadCh)
+	return applyPolicyChange(ctx, cfg, lg, lastHash, reloadCh)
 }
 
 // forceReload applies the policy on disk whatever its hash, for SIGHUP.
@@ -1031,15 +1189,7 @@ func forceReload(
 	lastHash string,
 	reloadCh chan policyUpdate,
 ) string {
-	newHash, err := fileSHA256Hex(cfg.policyPath)
-	if err != nil {
-		lg.Warn("policy.hash_read_failed", "path", cfg.policyPath, "err", err)
-		cfg.metrics.RecordReload("failure")
-
-		return lastHash
-	}
-
-	return applyPolicyChange(ctx, cfg, lg, lastHash, newHash, reloadCh)
+	return applyPolicyChange(ctx, cfg, lg, lastHash, reloadCh)
 }
 
 // applyPolicyChange loads and applies the policy, keeping the previous one when the
@@ -1048,25 +1198,44 @@ func applyPolicyChange(
 	ctx context.Context,
 	cfg config,
 	lg *slog.Logger,
-	lastHash, newHash string,
+	lastHash string,
 	reloadCh chan policyUpdate,
 ) string {
-	pol, err := loadAndApplyPolicy(ctx, cfg, lg)
+	pol, err := policy.Read(cfg.policyPath)
 	if err != nil {
-		lg.Error("policy.reload_failed", "err", err)
-		cfg.metrics.RecordReload("failure")
-
-		// The pod keeps enforcing the previous policy, which is otherwise invisible.
-		if cfg.policyErrors != nil {
-			cfg.policyErrors.RecordPolicyError(ctx, err)
-		}
+		reportReloadError(ctx, cfg, lg, err)
 
 		return lastHash
 	}
 
-	sendLatest(ctx, reloadCh, policyUpdate{hash: newHash, pol: pol})
+	// Hash exactly the bytes parsed, including across a projected-volume swap.
+	done := make(chan bool, 1)
 
-	return newHash
+	select {
+	case reloadCh <- policyUpdate{hash: pol.Hash, pol: pol, done: done}:
+	case <-ctx.Done():
+		return lastHash
+	}
+
+	select {
+	case applied := <-done:
+		if applied {
+			return pol.Hash
+		}
+	case <-ctx.Done():
+	}
+
+	return lastHash
+}
+
+func reportReloadError(ctx context.Context, cfg config, lg *slog.Logger, err error) {
+	lg.Error("policy.reload_failed", "err", err)
+	cfg.metrics.RecordReload("failure")
+	cfg.health.applyFailed()
+
+	if cfg.policyErrors != nil {
+		cfg.policyErrors.RecordPolicyError(ctx, err)
+	}
 }
 
 // sendLatest sends the most recent policy update to reloadCh, dropping any

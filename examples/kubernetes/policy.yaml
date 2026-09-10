@@ -8,9 +8,6 @@ data:
   # live reload; editing this ConfigMap does not need a pod restart.
   policy.yaml: |
     allowlist:
-      ips:
-        # Cluster DNS. Without it name resolution fails and every request looks
-        # blocked - use the ClusterIP of kube-dns in your own cluster.
-        - '10.96.0.10'
+      ips: []
       domains:
         - 'example.com'

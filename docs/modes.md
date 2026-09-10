@@ -37,10 +37,18 @@ returned. This check applies only when the policy contains allowed IPs.
 DNS mode works with any protocol, but enforces rules only during lookup.
 Hardcoded IPs, cached answers and DNS-over-HTTPS can bypass it.
 
-The default upstream is Docker's `127.0.0.11:53`. On Kubernetes, set
-`DNS_UPSTREAMS` (or `dns.upstreams` in the Helm library chart and
-`spec.sidecar.dns.upstreams` in an `EgressPolicy`) to the cluster DNS Service,
-such as `10.96.0.10:53`.
+On Kubernetes the proxy discovers its upstream from the pod's `/etc/resolv.conf`,
+so cluster DNS needs no configuration. Loopback nameservers are skipped, because a
+pod that inherited a host stub resolver would otherwise forward into its own empty
+network namespace. Outside Kubernetes the default is Docker's `127.0.0.11:53`.
+
+Set `DNS_UPSTREAMS` (or `dns.upstreams` in the Helm library chart and
+`spec.sidecar.dns.upstreams` in an `EgressPolicy`) only to send external lookups
+somewhere other than the pod resolver. Cluster-internal and reverse names keep
+using the pod resolver either way, so in-cluster Service names keep resolving.
+
+Choosing a resolver is not permission to connect. A cluster name still has to pass
+the allowlist, and reaching a Service still needs a rule for its address.
 
 ## DNS-strict mode
 

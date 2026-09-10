@@ -18,7 +18,7 @@ const ContainerName = "g0efilter"
 const VolumeName = "g0efilter-policy"
 
 // DefaultImage must track the tag deploy/kustomize/sidecar and the Helm chart pin.
-const DefaultImage = "docker.io/g0lab/g0efilter:v0.9.6"
+const DefaultImage = "docker.io/g0lab/g0efilter:v0.9.7"
 
 const (
 	policyMountPath = "/app/policy"
@@ -149,8 +149,10 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 		Image:           settings.image,
 		ImagePullPolicy: settings.pullPolicy,
 		// Native sidecar: nftables is programmed before the app container starts.
-		RestartPolicy: restartAlways(),
-		Env:           env(settings, configMapName),
+		RestartPolicy:  restartAlways(),
+		StartupProbe:   startupProbe(),
+		ReadinessProbe: readinessProbe(),
+		Env:            env(settings, configMapName),
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             &nonRoot,
 			RunAsUser:                &user,
@@ -181,6 +183,26 @@ func container(settings sidecarSettings, configMapName string) corev1.Container 
 	}
 
 	return sidecar
+}
+
+// startupProbe polls every second because the application container waits on it.
+func startupProbe() *corev1.Probe {
+	return healthProbe(1, 1, 150)
+}
+
+func readinessProbe() *corev1.Probe {
+	return healthProbe(5, 3, 3)
+}
+
+func healthProbe(period, timeout, failures int32) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{Command: []string{"/app/g0efilter", "healthcheck"}},
+		},
+		PeriodSeconds:    period,
+		TimeoutSeconds:   timeout,
+		FailureThreshold: failures,
+	}
 }
 
 func seccompRuntimeDefault() *corev1.SeccompProfile {

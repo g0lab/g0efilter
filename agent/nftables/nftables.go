@@ -266,6 +266,7 @@ delete table ip6 g0efilter_bridge_nat_v6
 
 // PolicyRules describes the inputs for ruleset generation and application.
 type PolicyRules struct {
+	Mode         string // Empty retains the legacy environment default.
 	AllowIPs     []string
 	DenyIPs      []string // enforced only when DefaultAllow is true
 	DefaultAllow bool
@@ -283,6 +284,19 @@ func ApplyNftRulesWithContext(
 	return ApplyPolicyRulesWithContext(ctx, PolicyRules{AllowIPs: allowlist}, httpsPortStr, httpPortStr, dnsPortStr)
 }
 
+// resolveMode prefers the policy document's mode; an empty one keeps the environment default.
+func resolveMode(mode string) string {
+	if mode == "" {
+		mode = strings.ToLower(strings.TrimSpace(os.Getenv("FILTER_MODE")))
+	}
+
+	if mode == "" {
+		return actions.ModeHTTPS
+	}
+
+	return mode
+}
+
 // ApplyPolicyRulesWithContext generates and applies the nftables ruleset for the given policy stance.
 func ApplyPolicyRulesWithContext(
 	ctx context.Context,
@@ -291,10 +305,7 @@ func ApplyPolicyRulesWithContext(
 	httpPortStr,
 	dnsPortStr string,
 ) error {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("FILTER_MODE")))
-	if mode == "" {
-		mode = actions.ModeHTTPS
-	}
+	mode := resolveMode(rules.Mode)
 
 	if len(rules.AllowIPs) == 0 {
 		rules.AllowIPs = []string{loopbackIPv4}

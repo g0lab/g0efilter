@@ -1,5 +1,33 @@
 {{- if .Values.webhook.enabled }}
 ---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "g0efilter-controller.webhookConfigName" . }}
+  labels:
+    {{- include "g0efilter-controller.labels" . | nindent 4 }}
+  {{- if eq .Values.webhook.certificate.source "cert-manager" }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s" .Release.Namespace (include "g0efilter-controller.fullname" .) }}
+  {{- end }}
+webhooks:
+  - name: policy.g0efilter.g0lab.com
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    clientConfig:
+      service:
+        name: {{ include "g0efilter-controller.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-policy
+        port: 443
+    rules:
+      - operations: ['CREATE', 'UPDATE']
+        apiGroups: ['g0efilter.g0lab.com']
+        apiVersions: ['v1alpha1']
+        resources: ['egresspolicies', 'clusteregresspolicies']
+    failurePolicy: Fail
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+---
 apiVersion: v1
 kind: Service
 metadata:

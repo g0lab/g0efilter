@@ -7,6 +7,7 @@
 package render
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -54,6 +55,32 @@ var (
 type Policy struct {
 	Domains  []string
 	Networks []string
+}
+
+// DocumentFor keeps datapath settings and rules in one projected-file snapshot.
+func (p Policy) DocumentFor(spec v1alpha1.SidecarSpec) (string, error) {
+	runtime := struct {
+		Mode         string   `json:"mode"`
+		Enforcement  string   `json:"enforcement"`
+		DNSUpstreams []string `json:"dnsUpstreams"`
+		DNSHardening *bool    `json:"dnsHardening"`
+		DNSRateQPS   int32    `json:"dnsRateQps"`
+		DNSRateBurst int32    `json:"dnsRateBurst"`
+	}{Mode: spec.Mode, Enforcement: spec.Enforcement, DNSUpstreams: spec.DNS.Upstreams, DNSHardening: spec.DNS.Hardening}
+	if spec.DNS.RateQPS != nil {
+		runtime.DNSRateQPS = *spec.DNS.RateQPS
+	}
+
+	if spec.DNS.RateBurst != nil {
+		runtime.DNSRateBurst = *spec.DNS.RateBurst
+	}
+
+	data, err := json.Marshal(runtime)
+	if err != nil {
+		return "", fmt.Errorf("render runtime settings: %w", err)
+	}
+
+	return p.Document() + "runtime: " + string(data) + "\n", nil
 }
 
 // Empty reports whether the policy allows nothing.

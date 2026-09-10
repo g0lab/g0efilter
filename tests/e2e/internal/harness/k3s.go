@@ -396,6 +396,28 @@ func (c *K3sCluster) WaitForConfigMapContains(t *testing.T, namespace, name, key
 	t.Fatalf("ConfigMap %s/%s key %s never contained %q:\n%s", namespace, name, key, want, last)
 }
 
+// WaitForStatusField blocks until a jsonpath reads want, because status converges asynchronously.
+func (c *K3sCluster) WaitForStatusField(t *testing.T, namespace, kind, name, jsonpath, want string) {
+	t.Helper()
+
+	var last string
+
+	deadline := time.Now().Add(readinessTimeout)
+
+	for time.Now().Before(deadline) {
+		out, err := c.tryKubectl("get", "-n", namespace, kind, name, "-o", "jsonpath="+jsonpath)
+		if err == nil && strings.TrimSpace(out) == want {
+			return
+		}
+
+		last = out
+
+		time.Sleep(pollInterval)
+	}
+
+	t.Fatalf("%s %s/%s %s never reached %q, last %q", kind, namespace, name, jsonpath, want, last)
+}
+
 // WaitForAbsent blocks until an object is gone.
 func (c *K3sCluster) WaitForAbsent(t *testing.T, namespace, kind, name string) {
 	t.Helper()

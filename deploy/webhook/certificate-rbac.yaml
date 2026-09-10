@@ -34,7 +34,7 @@ metadata:
   name: g0efilter-controller-webhook-certificates
 rules:
   - apiGroups: ['admissionregistration.k8s.io']
-    resources: ['mutatingwebhookconfigurations']
+    resources: ['mutatingwebhookconfigurations', 'validatingwebhookconfigurations']
     resourceNames: ['g0efilter-sidecar-injector']
     verbs: ['get', 'update']
 ---

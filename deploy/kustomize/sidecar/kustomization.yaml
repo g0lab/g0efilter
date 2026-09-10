@@ -3,7 +3,7 @@
 # workload of an overlay that references it:
 #
 #   components:
-#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.6
+#     - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
 #
 # The sidecar is rendered into the manifest at build time, so filtering has no
 # runtime dependency: no webhook, no controller, no separate Service. Consumers
@@ -14,7 +14,7 @@ kind: Component
 
 images:
   - name: docker.io/g0lab/g0efilter
-    newTag: v0.9.6
+    newTag: v0.9.7
 
 patches:
   # Every workload whose pod template lives at spec.template.
@@ -32,6 +32,18 @@ patches:
               - name: g0efilter
                 image: docker.io/g0lab/g0efilter
                 restartPolicy: Always
+                startupProbe:
+                  exec:
+                    command: ['/app/g0efilter', 'healthcheck']
+                  periodSeconds: 1
+                  timeoutSeconds: 1
+                  failureThreshold: 150
+                readinessProbe:
+                  exec:
+                    command: ['/app/g0efilter', 'healthcheck']
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 3
                 env:
                   - name: FILTER_MODE
                     value: https
@@ -94,6 +106,18 @@ patches:
                   - name: g0efilter
                     image: docker.io/g0lab/g0efilter
                     restartPolicy: Always
+                    startupProbe:
+                      exec:
+                        command: ['/app/g0efilter', 'healthcheck']
+                      periodSeconds: 1
+                      timeoutSeconds: 1
+                      failureThreshold: 150
+                    readinessProbe:
+                      exec:
+                        command: ['/app/g0efilter', 'healthcheck']
+                      periodSeconds: 5
+                      timeoutSeconds: 3
+                      failureThreshold: 3
                     env:
                       - name: FILTER_MODE
                         value: https

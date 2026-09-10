@@ -239,3 +239,59 @@ func TestEnsureToleratesAMissingWebhookConfiguration(t *testing.T) {
 
 	readCert(t, opts.Dir)
 }
+
+func validatingConfiguration(name string) *admissionregv1.ValidatingWebhookConfiguration {
+	return &admissionregv1.ValidatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Webhooks: []admissionregv1.ValidatingWebhook{{
+			Name:         "policy.g0efilter.g0lab.com",
+			ClientConfig: admissionregv1.WebhookClientConfig{CABundle: nil},
+		}},
+	}
+}
+
+// The validating webhook fails closed, so without a caBundle no policy can be edited at all.
+func TestEnsurePublishesToTheValidatingWebhook(t *testing.T) {
+	t.Parallel()
+
+	opts := options(t)
+	c := newClient(t, webhookConfiguration(opts.WebhookName), validatingConfiguration(opts.WebhookName))
+
+	err := certs.Ensure(context.Background(), c, opts)
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+
+	var stored corev1.Secret
+
+	err = c.Get(context.Background(), client.ObjectKey{Namespace: opts.Namespace, Name: opts.SecretName}, &stored)
+	if err != nil {
+		t.Fatalf("the Secret was not created: %v", err)
+	}
+
+	var configuration admissionregv1.ValidatingWebhookConfiguration
+
+	err = c.Get(context.Background(), client.ObjectKey{Name: opts.WebhookName}, &configuration)
+	if err != nil {
+		t.Fatalf("get the validating webhook configuration: %v", err)
+	}
+
+	if !bytes.Equal(configuration.Webhooks[0].ClientConfig.CABundle, stored.Data["tls.crt"]) {
+		t.Error("the published caBundle is not the certificate that was issued")
+	}
+}
+
+// Only the mutating overlay may be installed, so a missing validating config must not block startup.
+func TestEnsureToleratesAMissingValidatingConfiguration(t *testing.T) {
+	t.Parallel()
+
+	opts := options(t)
+	c := newClient(t, webhookConfiguration(opts.WebhookName))
+
+	err := certs.Ensure(context.Background(), c, opts)
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+
+	readCert(t, opts.Dir)
+}

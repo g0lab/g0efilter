@@ -74,6 +74,26 @@ func TestPhase19KubernetesWorkload(t *testing.T) {
 	t.Run("AuditModeAllowsUnmatchedTraffic", func(t *testing.T) { auditModeAllowsUnmatchedTraffic(t, cluster, audited) })
 	t.Run("AuditModeLogsTheDecision", func(t *testing.T) { auditModeLogsTheDecision(t, cluster, audited) })
 	t.Run("AuditModeSwitchesToBlock", func(t *testing.T) { auditModeSwitchesToBlock(t, cluster, audited) })
+
+	runtimePod := clusterDNSNeedsNoPolicyRule(t, cluster)
+
+	// The validator reads the candidate's namespace labels, so this runs once that namespace exists.
+	t.Run("ValidatorRefusesAnUnenforceablePolicy", func(t *testing.T) {
+		theValidatorRefusesAnUnenforceablePolicy(t, cluster)
+	})
+
+	t.Run("ClusterResolverRuleIsScopedToDNS", func(t *testing.T) {
+		theClusterResolverRuleIsScopedToDNS(t, cluster, runtimePod)
+	})
+	t.Run("SidecarGatesTheApplicationOnItsStartupProbe", func(t *testing.T) {
+		theSidecarGatesTheApplicationOnItsStartupProbe(t, cluster, runtimePod)
+	})
+	t.Run("EnforcementReloadsWithoutARestart", func(t *testing.T) {
+		enforcementReloadsWithoutARestart(t, cluster, runtimePod)
+	})
+	t.Run("StalePodsStillAdmitTheirReplacements", func(t *testing.T) {
+		stalePodsStillAdmitTheirReplacements(t, cluster)
+	})
 }
 
 // docs/kubernetes.md tells operators a filtered namespace needs Pod Security
@@ -293,7 +313,7 @@ func reloadsOnPolicyChange(t *testing.T, cluster *harness.K3sCluster, pod string
 
 	// kubelet refreshes a mounted ConfigMap on its own schedule, so this is the slow
 	// part; the sidecar then reloads without restarting.
-	cluster.WaitForPodLog(t, filteredNamespace, pod, "g0efilter", "policy.reloaded")
+	cluster.WaitForPodLog(t, filteredNamespace, pod, "g0efilter", "policy.applied")
 
 	restarts := cluster.Get(t, filteredNamespace, "pod", pod,
 		"{.status.initContainerStatuses[?(@.name=='g0efilter')].restartCount}")

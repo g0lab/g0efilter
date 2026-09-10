@@ -1,10 +1,9 @@
 # Kubernetes with Kustomize
 
-This overlay requires Kubernetes 1.29 or later. Before applying it, replace
-`10.96.0.10` in `policy.yaml` with your cluster DNS Service address:
+This overlay requires Kubernetes 1.29 or later. Cluster DNS needs no entry in the
+policy: the sidecar reads the pod's resolver and allows it on port 53.
 
 ```sh
-kubectl -n kube-system get service -l k8s-app=kube-dns -o jsonpath='{.items[0].spec.clusterIP}'
 kubectl apply -k examples/kubernetes
 ```
 
