@@ -15,7 +15,7 @@ jobs:
           egress-policy: block
           allowed-domains: |
             *.npmjs.org
-            registry.npmjs.org
+            nodejs.org
 
       - uses: actions/checkout@v7
 ```
