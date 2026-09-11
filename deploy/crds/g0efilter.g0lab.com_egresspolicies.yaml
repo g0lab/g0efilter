@@ -794,6 +794,11 @@ spec:
                   ConfigMapName is the ConfigMap holding the rendered policy. Mount it in the
                   pods this policy selects.
                 type: string
+              observedClusterRevision:
+                description: |-
+                  ObservedClusterRevision identifies the rendered cluster baselines.
+                  Admission denies pods until it matches the namespace's current baselines.
+                type: string
               observedGeneration:
                 description: ObservedGeneration is the spec generation this status
                   was computed from.

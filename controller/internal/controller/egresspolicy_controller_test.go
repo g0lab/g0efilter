@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/g0lab/g0efilter/controller/api/v1alpha1"
+	"github.com/g0lab/g0efilter/controller/internal/render"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -217,6 +218,37 @@ func TestClusterPolicyRulesAreMergedIn(t *testing.T) {
 		if !strings.Contains(document, want) {
 			t.Errorf("rendered policy missing %q:\n%s", want, document)
 		}
+	}
+}
+
+// Admission compares this against the live baselines, so the two sides must agree.
+func TestTheRecordedClusterRevisionTracksTheSelectingBaselines(t *testing.T) {
+	t.Parallel()
+
+	baseline := clusterPolicy("dns", map[string]string{"tier": "prod"}, rule("dns", nil, []string{"10.96.0.10"}))
+	unrelated := clusterPolicy("dev-only", map[string]string{"tier": "dev"}, rule("dns", nil, []string{"10.96.0.11"}))
+
+	r, c := newReconciler(t,
+		namespace(map[string]string{"tier": "prod"}),
+		egressPolicy("web", rule("apis", []string{"api.example.com"}, nil)),
+		baseline, unrelated,
+	)
+
+	reconcile(t, r, "web")
+
+	_, want, err := render.ClusterBaselines(map[string]string{"tier": "prod"},
+		[]v1alpha1.ClusterEgressPolicy{*baseline, *unrelated})
+	if err != nil {
+		t.Fatalf("ClusterBaselines() = %v", err)
+	}
+
+	got := getPolicy(t, c, "web").Status.ObservedClusterRevision
+	if got != want {
+		t.Errorf("observedClusterRevision = %q, want %q", got, want)
+	}
+
+	if got == "" {
+		t.Error("a selecting baseline recorded an empty revision")
 	}
 }
 

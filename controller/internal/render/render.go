@@ -7,6 +7,7 @@
 package render
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -149,6 +150,44 @@ func ClusterRules(
 	namespaceLabels map[string]string,
 	policies []v1alpha1.ClusterEgressPolicy,
 ) ([]v1alpha1.EgressRule, error) {
+	rules, _, err := ClusterBaselines(namespaceLabels, policies)
+
+	return rules, err
+}
+
+// ClusterBaselines returns the selecting cluster policies' rules and a revision
+// identifying them by UID and generation, so a caller selects once for both.
+func ClusterBaselines(
+	namespaceLabels map[string]string,
+	policies []v1alpha1.ClusterEgressPolicy,
+) ([]v1alpha1.EgressRule, string, error) {
+	matched, err := selectingCluster(namespaceLabels, policies)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var rules []v1alpha1.EgressRule
+
+	parts := make([]string, 0, len(matched))
+
+	for _, policy := range matched {
+		rules = append(rules, policy.Spec.Egress...)
+		parts = append(parts, fmt.Sprintf("%s/%s:%d", policy.Name, policy.UID, policy.Generation))
+	}
+
+	// An empty selection still hashes, so a recorded revision is never the empty
+	// string a reconciler that predates the field leaves behind.
+	revision := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\n"))))
+
+	return rules, revision, nil
+}
+
+// selectingCluster returns the matching cluster policies in a stable order, so
+// neither the rendered document nor the revision churns.
+func selectingCluster(
+	namespaceLabels map[string]string,
+	policies []v1alpha1.ClusterEgressPolicy,
+) ([]v1alpha1.ClusterEgressPolicy, error) {
 	matched := make([]v1alpha1.ClusterEgressPolicy, 0, len(policies))
 
 	for _, policy := range policies {
@@ -164,12 +203,7 @@ func ClusterRules(
 
 	sort.Slice(matched, func(i, j int) bool { return matched[i].Name < matched[j].Name })
 
-	var rules []v1alpha1.EgressRule
-	for _, policy := range matched {
-		rules = append(rules, policy.Spec.Egress...)
-	}
-
-	return rules, nil
+	return matched, nil
 }
 
 func ruleLabel(rule v1alpha1.EgressRule, index int) string {

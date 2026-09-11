@@ -74,7 +74,7 @@ resources:
   - deployment.yaml
   - policy.yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8
 ```
 
 Pin `ref` to a release tag. The component sets the same image tag.
@@ -90,8 +90,8 @@ Layer the optional components after `sidecar`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
-  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8
+  - github.com/g0lab/g0efilter//deploy/kustomize/audit?ref=v0.9.8
 ```
 
 `audit` reports policy verdicts without blocking. `learning` builds a new policy
@@ -158,7 +158,7 @@ g0efilter:
   enforcement: audit
   logLevel: DEBUG
   image:
-    tag: v0.9.7
+    tag: v0.9.8
   policy:
     configMapName: my-policy
   dns:
@@ -205,7 +205,7 @@ helm install app oci://example.com/app \
 Outside this repository, point the script at a pinned component:
 
 ```sh
-export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7'
+export G0EFILTER_COMPONENT='github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8'
 ```
 
 This path needs no cooperation from the chart. It still requires the policy
@@ -326,6 +326,7 @@ replacements.
 | --- | --- |
 | `status.selectedPods` | Running pods the `podSelector` matches. |
 | `status.outOfDatePods` | Of those, how many are not yet running the current startup settings. |
+| `status.observedClusterRevision` | The `ClusterEgressPolicy` baselines merged into the rendered ConfigMap. |
 | `PodsUpToDate` condition | False while `outOfDatePods` is above zero. |
 
 Both counts are always present, so a rollout can wait for `outOfDatePods` to
@@ -521,8 +522,8 @@ Denials are logged. To also show the first few in `kubectl describe pod`:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
-  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8
+  - github.com/g0lab/g0efilter//deploy/kustomize/events?ref=v0.9.8
 ```
 
 This grants the workload ServiceAccount `create` on Events in its namespace and
@@ -544,8 +545,8 @@ is missing, g0efilter logs one warning and keeps filtering.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
-  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8
+  - github.com/g0lab/g0efilter//deploy/kustomize/metrics?ref=v0.9.8
 ```
 
 Or `g0efilter.metrics.enabled: true` with the Helm chart. Both expose `/metrics` on
@@ -602,7 +603,7 @@ openssl rand -hex 32 > "$G0EFILTER_CREDENTIAL_DIR/api-key"
 read -rsp 'Admin password: ' G0EFILTER_ADMIN_PASSWORD
 printf '\n'
 printf '%s' "$G0EFILTER_ADMIN_PASSWORD" | \
-  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.7 hash-password \
+  docker run --rm -i docker.io/g0lab/g0efilter-dashboard:v0.9.8 hash-password \
   > "$G0EFILTER_CREDENTIAL_DIR/admin-password-hash"
 unset G0EFILTER_ADMIN_PASSWORD
 kubectl -n g0efilter-system create secret generic g0efilter-dashboard \
@@ -647,8 +648,8 @@ The add-on replaces the ConfigMap mount with an emptyDir:
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.7
-  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.9.7
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.8
+  - github.com/g0lab/g0efilter//deploy/kustomize/learning?ref=v0.9.8
 ```
 
 Or `g0efilter.learning.enabled: true` with the Helm chart.

@@ -114,14 +114,16 @@ func (i *Injector) policyReady(
 
 		if condition.Status == metav1.ConditionTrue &&
 			condition.ObservedGeneration == policy.Generation {
-			return i.policyConfigCurrent(ctx, namespace, policy)
+			return i.policyBaselineCurrent(ctx, namespace, policy)
 		}
 	}
 
 	return fmt.Errorf("%w: %s generation %d is not Ready", errPolicyNotReady, policy.Name, policy.Generation)
 }
 
-func (i *Injector) policyConfigCurrent(
+// policyBaselineCurrent checks rendered baseline inputs without coupling admission
+// to the reconciler's document format during a rolling upgrade.
+func (i *Injector) policyBaselineCurrent(
 	ctx context.Context,
 	namespace string,
 	policy *v1alpha1.EgressPolicy,
@@ -140,32 +142,49 @@ func (i *Injector) policyConfigCurrent(
 		return fmt.Errorf("%w: list cluster policies: %w", errPolicyNotReady, err)
 	}
 
-	clusterRules, err := render.ClusterRules(ns.Labels, clusters.Items)
+	clusterRules, revision, err := render.ClusterBaselines(ns.Labels, clusters.Items)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errPolicyNotReady, err)
 	}
 
-	desired, err := render.RulesForMode(policy.Spec.Sidecar.Mode, policy.Spec.Egress, clusterRules)
+	// The merged result is validated live, so the pair a raced policy edit can
+	// commit never reaches a pod: the sidecar would be unable to enforce it.
+	_, err = render.RulesForMode(policy.Spec.Sidecar.Mode, policy.Spec.Egress, clusterRules)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errPolicyNotReady, err)
 	}
 
+	// A reconciler that predates the field records nothing, so an upgrade or a
+	// rollback leaves it empty; denying then denies every pod mid-rollout.
+	recorded := policy.Status.ObservedClusterRevision
+	if recorded != "" && recorded != revision {
+		return fmt.Errorf("%w: ConfigMap %s/%s is stale: it predates the cluster baselines selecting %s",
+			errPolicyNotReady, namespace, policy.Status.ConfigMapName, namespace)
+	}
+
+	return i.policyConfigMapExists(ctx, namespace, policy)
+}
+
+// policyConfigMapExists checks the pod has something to mount, and that it is the
+// controller's own ConfigMap rather than one left behind under the same name.
+func (i *Injector) policyConfigMapExists(
+	ctx context.Context,
+	namespace string,
+	policy *v1alpha1.EgressPolicy,
+) error {
 	var configMap corev1.ConfigMap
 
 	key := client.ObjectKey{Namespace: namespace, Name: policy.Status.ConfigMapName}
 
-	err = i.Client.Get(ctx, key, &configMap)
+	err := i.Client.Get(ctx, key, &configMap)
 	if err != nil {
 		return fmt.Errorf("%w: read ConfigMap %s/%s: %w", errPolicyNotReady, namespace, key.Name, err)
 	}
 
-	document, err := desired.DocumentFor(policy.Spec.Sidecar)
-	if err != nil {
-		return fmt.Errorf("%w: %w", errPolicyNotReady, err)
-	}
-
-	if configMap.Data["policy.yaml"] != document {
-		return fmt.Errorf("%w: ConfigMap %s/%s is stale", errPolicyNotReady, namespace, key.Name)
+	owner := metav1.GetControllerOf(&configMap)
+	if owner == nil || owner.Name != policy.Name || owner.UID != policy.UID {
+		return fmt.Errorf("%w: ConfigMap %s/%s is not owned by %s",
+			errPolicyNotReady, namespace, key.Name, policy.Name)
 	}
 
 	return nil
