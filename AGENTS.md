@@ -82,5 +82,7 @@ Use `-run` to select a suite when appropriate. See `tests/e2e/README.md` for det
 * Always update README, `docs/`, and `examples/` when changing user-facing behavior, configuration, or Action inputs.
 * Always add E2E coverage for significant changes to runtime, networking, security, or cross-component behavior.
 * Always keep sidecar configuration identical in `deploy/kustomize`, `deploy/helm` and the controller's injecting webhook; `tests/manifests/` and `controller/internal/webhook/parity_test.go` check this.
-* Never add comments for obvious behavior; comment only on non-obvious constraints, security decisions, or workarounds.
+* Never narrate code, add section banners, or repeat a function's name back at it; comment only on non-obvious constraints, security decisions, or workarounds.
+* Never write an implementation comment longer than two lines. Exported declarations, CRD fields, generated files and tool directives are exempt, and a block that opens `SECURITY:`, `CONCURRENCY:` or `COMPAT:` may run longer where the constraint needs it; `tests/repo/comments_test.go` checks the comments a change touches.
+* Always reread the comments you added before finishing and delete the ones the code already explains.
 * Never use Unicode unless required by the file, fixture, or domain; use ASCII.
