@@ -1,8 +1,6 @@
 <script lang="ts">
-  /* Verdict time series over fixed time buckets.
-     Pure SVG, responsive via measured width, crosshair + tooltip on hover.
-     Each series carries a status color and a label, so identity is never
-     color-alone. */
+  /* Verdict time series over fixed time buckets: pure SVG, responsive via measured
+     width, crosshair and tooltip on hover. Series carry a color and a label. */
   import type { Bucket } from '../types';
 
   let { buckets = [] }: { buckets: Bucket[] } = $props();

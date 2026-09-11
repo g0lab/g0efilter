@@ -8,12 +8,7 @@ chart-dirs:
 check-version-increment: true
 validate-maintainers: false
 
-# Both validators below need an extra toolchain for little gain, so `helm lint` plus
-# tests/manifests/ covers the charts instead:
-#   validate-chart-schema needs the yamale Python tool, only to assert Chart.yaml
-#   carries a description, home and sources; helm lint already requires the fields
-#   that matter.
-#   validate-yaml needs a yamllint config and would lint only the chart files, while
-#   the repository lints no YAML at all - that belongs repo-wide, not here.
+# Both validators need an extra toolchain for little gain: `helm lint` plus
+# tests/manifests/ cover Chart.yaml's metadata, and no YAML is linted repo-wide.
 validate-chart-schema: false
 validate-yaml: false

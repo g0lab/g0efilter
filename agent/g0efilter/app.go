@@ -690,11 +690,8 @@ func validatePorts(cfg config, lg *slog.Logger) error {
 	return nil
 }
 
-// checkDomainConstraints rejects protocol/port-constrained domain entries in any
-// configuration that cannot enforce them, rather than accepting a policy that is
-// quietly wider than it reads. Only dns-strict has a default-deny filter chain and
-// a resolved set to place the constrained elements in; under default-allow or
-// learning mode even dns-strict degrades to a permissive ruleset.
+// checkDomainConstraints rejects constrained domain entries where they cannot be
+// enforced, rather than accepting a policy quietly wider than it reads.
 func checkDomainConstraints(pol *policy.Policy, cfg config, defaultAllow bool) error {
 	constrained := make([]string, 0)
 
@@ -1157,11 +1154,8 @@ func checkPolicyTick(
 		return lastHash
 	}
 
-	// Detect stale single-file bind-mount: editors that use atomic save
-	// (write + rename) leave the container's bind-mount pointing at an
-	// unlinked inode (nlink == 0). The path still resolves inside the
-	// container but only returns the old content, so the hash never
-	// changes and no reload fires. Fix: mount the parent directory.
+	// Atomic-save editors leave a single-file bind-mount on an unlinked inode, so the
+	// path still resolves with old content and no reload fires. Mount the parent.
 	unlinkErr := isInodeUnlinked(cfg.policyPath)
 	if unlinkErr == nil {
 		lg.Warn("policy.stale_inode",
@@ -1269,10 +1263,8 @@ func sendLatest(ctx context.Context, reloadCh chan policyUpdate, upd policyUpdat
 	}
 }
 
-// isInodeUnlinked returns nil if the file at path has an nlink count of zero,
-// meaning its inode has been unlinked (e.g. by an atomic-save editor) while a
-// Docker single-file bind-mount still holds a reference to the old inode.
-// Returns a non-nil error if lstat fails or if nlink is non-zero.
+// isInodeUnlinked returns nil when path's inode has nlink zero, meaning an atomic-save
+// editor unlinked it while a single-file bind-mount still holds the old inode.
 func isInodeUnlinked(path string) error {
 	cleanPath := filepath.Clean(strings.TrimSpace(path))
 

@@ -106,10 +106,8 @@ func (v *Validator) affectedPolicies(
 	return selectedPolicies(ctx, policies.Items, candidate, namespaces)
 }
 
-// selectedPolicies narrows a baseline edit to the policies it can actually change.
-// Dropping a namespace only removes rules from it, so a policy there cannot become
-// unenforceable; validating it anyway would let one already-broken policy block every
-// later baseline edit, including edits for unrelated namespaces.
+// selectedPolicies narrows a baseline edit to the policies it can change. Dropping a
+// namespace only removes rules, so one broken policy must not block later edits.
 func selectedPolicies(
 	ctx context.Context,
 	policies []v1alpha1.EgressPolicy,

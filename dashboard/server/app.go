@@ -207,10 +207,8 @@ func hashPassword(r io.Reader) (string, error) {
 	return string(hash), nil
 }
 
-// handleResetPassword implements the reset-password subcommand: sets a new
-// random password for a user (default ADMIN_USERNAME, else "admin") in the
-// persistent DB and prints it once. Recovers a locked-out dashboard without
-// dashboard access. Requires persistent storage.
+// handleResetPassword implements the reset-password subcommand: it sets a new random
+// password in the persistent DB and prints it once, recovering a locked-out dashboard.
 func handleResetPassword(args []string) (bool, error) {
 	return handleResetPasswordWithWriter(args, os.Stdout)
 }
