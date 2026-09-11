@@ -1091,6 +1091,19 @@ func startPolicyWatcher(
 	if !watch {
 		lg.Info("policy.watcher_disabled", "reason", reason)
 
+		// SIGHUP stays registered, so it needs draining or an operator's reload
+		// request is swallowed without explanation.
+		tracked.run(lg, "policy_watcher", func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-hupCh:
+					lg.Warn("policy.reload_ignored", "signal", "SIGHUP", "reason", reason)
+				}
+			}
+		})
+
 		return
 	}
 
@@ -1235,37 +1248,6 @@ func reportReloadError(ctx context.Context, cfg config, lg *slog.Logger, err err
 
 	if cfg.policyErrors != nil {
 		cfg.policyErrors.RecordPolicyError(ctx, err)
-	}
-}
-
-// sendLatest sends the most recent policy update to reloadCh, dropping any
-// stale update already buffered ("drop oldest, push newest") so the consumer
-// always sees the latest version.
-func sendLatest(ctx context.Context, reloadCh chan policyUpdate, upd policyUpdate) {
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
-
-	// Fast path: channel is empty, send directly.
-	select {
-	case reloadCh <- upd:
-		return
-	default:
-	}
-
-	select {
-	case <-ctx.Done():
-		return
-	case <-reloadCh:
-	default:
-	}
-
-	select {
-	case <-ctx.Done():
-		return
-	case reloadCh <- upd:
 	}
 }
 

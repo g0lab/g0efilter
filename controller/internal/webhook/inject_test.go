@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -47,32 +48,17 @@ func newInjector(t *testing.T, objects ...client.Object) *g0webhook.Injector {
 	t.Helper()
 
 	scheme := testScheme(t)
-	withDependencies := []client.Object{
-		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}},
-	}
+	withDependencies := make([]client.Object, 0, 1+len(objects))
+	withDependencies = append(withDependencies,
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}})
 
 	for _, object := range objects {
 		withDependencies = append(withDependencies, object)
 
-		policy, ok := object.(*v1alpha1.EgressPolicy)
-		if !ok || policy.Status.ConfigMapName == "" {
-			continue
+		selected, ok := object.(*v1alpha1.EgressPolicy)
+		if ok && selected.Status.ConfigMapName != "" {
+			withDependencies = append(withDependencies, renderedConfigMap(selected))
 		}
-
-		document, err := render.RulesForMode(policy.Spec.Sidecar.Mode, policy.Spec.Egress)
-		if err != nil {
-			t.Fatalf("render test policy: %v", err)
-		}
-
-		rendered, docErr := document.DocumentFor(policy.Spec.Sidecar)
-		if docErr != nil {
-			t.Fatalf("render the policy document: %v", docErr)
-		}
-
-		withDependencies = append(withDependencies, &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: policy.Status.ConfigMapName, Namespace: policy.Namespace},
-			Data:       map[string]string{"policy.yaml": rendered},
-		})
 	}
 
 	return &g0webhook.Injector{
@@ -82,22 +68,57 @@ func newInjector(t *testing.T, objects ...client.Object) *g0webhook.Injector {
 	}
 }
 
+// renderedConfigMap stands in for what the reconciler wrote. Its document is
+// deliberately not what this build renders: admission must not compare them.
+func renderedConfigMap(policy *v1alpha1.EgressPolicy) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      policy.Status.ConfigMapName,
+			Namespace: policy.Namespace,
+			OwnerReferences: []metav1.OwnerReference{{
+				APIVersion: v1alpha1.GroupVersion.String(),
+				Kind:       "EgressPolicy",
+				Name:       policy.Name,
+				UID:        policy.UID,
+				Controller: new(true),
+			}},
+		},
+		Data: map[string]string{"policy.yaml": "domains: []\nnetworks: []\n"},
+	}
+}
+
 func policy(name string, selector map[string]string, sidecar v1alpha1.SidecarSpec) *v1alpha1.EgressPolicy {
+	noBaselines := emptyRevision()
+
 	return &v1alpha1.EgressPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: testNS, Generation: 1},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name, Namespace: testNS, Generation: 1, UID: types.UID(name + "-uid"),
+		},
 		Spec: v1alpha1.EgressPolicySpec{
 			PodSelector: metav1.LabelSelector{MatchLabels: selector, MatchExpressions: nil},
 			Egress:      nil,
 			Sidecar:     sidecar,
 		},
 		Status: v1alpha1.EgressPolicyStatus{
-			ObservedGeneration: 1,
-			ConfigMapName:      "g0efilter-" + name,
+			ObservedGeneration:      1,
+			ConfigMapName:           "g0efilter-" + name,
+			ObservedClusterRevision: noBaselines,
 			Conditions: []metav1.Condition{{
 				Type: "Ready", Status: metav1.ConditionTrue, ObservedGeneration: 1,
 			}},
 		},
 	}
+}
+
+// emptyRevision is what a current reconciler records where no cluster baseline
+// selects the namespace, as distinct from the empty string an older one leaves.
+func emptyRevision() string {
+	_, revision, err := render.ClusterBaselines(nil, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return revision
 }
 
 func pod(labels, annotations map[string]string) *corev1.Pod {
@@ -462,4 +483,172 @@ func hasFieldRef(entries []corev1.EnvVar, name, path string) bool {
 	}
 
 	return false
+}
+
+// Admission must tolerate different renderer versions during a controller rollout.
+func TestAdmitsWhenTheRenderedDocumentPredatesTheRunningWebhook(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+
+	response, patched := admit(t, newInjector(t, selected), pod(map[string]string{"app": "web"}, nil))
+	if !response.Allowed {
+		t.Fatalf("a pod was denied over a document a newer webhook renders differently: %s",
+			response.Result.Message)
+	}
+
+	if patched == nil {
+		t.Fatal("the pod was not patched")
+	}
+}
+
+func clusterBaseline(uid types.UID, generation int64, network string) *v1alpha1.ClusterEgressPolicy {
+	return &v1alpha1.ClusterEgressPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "baseline", UID: uid, Generation: generation},
+		Spec: v1alpha1.ClusterEgressPolicySpec{Egress: []v1alpha1.EgressRule{{
+			Name: "dns",
+			To:   []v1alpha1.EgressPeer{{Networks: []string{network}}},
+		}}},
+	}
+}
+
+func baselineRevision(t *testing.T, baselines ...v1alpha1.ClusterEgressPolicy) string {
+	t.Helper()
+
+	_, revision, err := render.ClusterBaselines(nil, baselines)
+	if err != nil {
+		t.Fatalf("ClusterBaselines() = %v", err)
+	}
+
+	return revision
+}
+
+func TestAdmitsOnceTheRenderedConfigMapCarriesTheClusterBaseline(t *testing.T) {
+	t.Parallel()
+
+	baseline := clusterBaseline("baseline-uid", 3, "10.96.0.10")
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = baselineRevision(t, *baseline)
+
+	response, _ := admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	if !response.Allowed {
+		t.Fatalf("a pod was denied under a rendered baseline: %s", response.Result.Message)
+	}
+
+	// A baseline edit bumps its generation, so the same ConfigMap is now stale.
+	baseline.Generation++
+
+	response, _ = admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted against a baseline edit that had not been rendered")
+	}
+}
+
+// A recreated baseline restarts at generation 1, so name and generation alone
+// cannot tell it from the one the ConfigMap was rendered from.
+func TestDeniesWhenAClusterBaselineWasRecreatedWithDifferentRules(t *testing.T) {
+	t.Parallel()
+
+	before := clusterBaseline("first-uid", 1, "10.96.0.10")
+	after := clusterBaseline("second-uid", 1, "10.96.0.99")
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = baselineRevision(t, *before)
+
+	response, _ := admit(t, newInjector(t, selected, after), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted against a recreated baseline's unrendered rules")
+	}
+}
+
+// A controller upgrade leaves the revision unrecorded until the new reconciler
+// runs. Where no baseline selects the namespace there is nothing it could have
+// missed, so the rollout must not reject the workloads being sidecared.
+func TestAdmitsWithoutARecordedRevisionWhenNoBaselineSelectsTheNamespace(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = ""
+
+	response, patched := admit(t, newInjector(t, selected), pod(map[string]string{"app": "web"}, nil))
+	if !response.Allowed {
+		t.Fatalf("a pod was denied during a controller rollout: %s", response.Result.Message)
+	}
+
+	if patched == nil {
+		t.Fatal("the pod was not patched")
+	}
+}
+
+// Deleting a baseline leaves the rendered ConfigMap carrying rules it no longer
+// allows, so a recorded revision is still compared against an empty selection.
+func TestDeniesWhenTheRenderedBaselineWasDeleted(t *testing.T) {
+	t.Parallel()
+
+	deleted := clusterBaseline("baseline-uid", 1, "10.96.0.10")
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = baselineRevision(t, *deleted)
+
+	response, _ := admit(t, newInjector(t, selected), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted against a deleted baseline's still-rendered rules")
+	}
+}
+
+func TestDeniesWithoutARecordedRevisionWhenABaselineSelectsTheNamespace(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = ""
+
+	baseline := clusterBaseline("baseline-uid", 1, "10.96.0.10")
+
+	response, _ := admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted before the reconciler rendered a selecting baseline")
+	}
+
+	if !strings.Contains(response.Result.Message, "has not recorded the cluster baselines") {
+		t.Errorf("denial = %q", response.Result.Message)
+	}
+}
+
+func TestDeniesWhenTheRenderedConfigMapIsMissing(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	injector := newInjector(t)
+
+	err := injector.Client.Create(context.Background(), selected)
+	if err != nil {
+		t.Fatalf("create the policy: %v", err)
+	}
+
+	response, _ := admit(t, injector, pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted with no ConfigMap to mount")
+	}
+}
+
+func TestDeniesWhenTheConfigMapIsNotOwnedByThePolicy(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	foreign := renderedConfigMap(selected)
+	foreign.OwnerReferences = nil
+
+	scheme := testScheme(t)
+	injector := &g0webhook.Injector{
+		Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: testNS}}, selected, foreign).Build(),
+		Decoder:  admission.NewDecoder(scheme),
+		Defaults: g0webhook.Defaults{Image: testImage},
+	}
+
+	response, _ := admit(t, injector, pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted against a ConfigMap the controller does not own")
+	}
 }

@@ -28,9 +28,11 @@ const (
 	// PolicyKey is the ConfigMap key the sidecar reads.
 	PolicyKey = "policy.yaml"
 
-	conditionReady              = "Ready"
-	conditionConfigurationReady = "ConfigurationReady"
-	conditionPodsUpToDate       = "PodsUpToDate"
+	conditionReady        = "Ready"
+	conditionPodsUpToDate = "PodsUpToDate"
+
+	// An earlier controller wrote this alongside Ready with the same value.
+	legacyConfigurationReady = "ConfigurationReady"
 
 	reasonRendered      = "Rendered"
 	reasonInvalidPolicy = "InvalidPolicy"
@@ -76,7 +78,7 @@ func (r *EgressPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, client.IgnoreNotFound(err) //nolint:wrapcheck // controller-runtime sentinel handling
 	}
 
-	clusterRules, err := r.clusterRulesFor(ctx, policy.Namespace)
+	clusterRules, clusterRevision, err := r.clusterRulesFor(ctx, policy.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -105,7 +107,8 @@ func (r *EgressPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{RequeueAfter: 15 * time.Second}, r.markPodState(ctx, &policy, name, pods, stale)
+	return ctrl.Result{RequeueAfter: 15 * time.Second},
+		r.markPodState(ctx, &policy, name, clusterRevision, pods, stale)
 }
 
 // ConfigMapNameFor is the ConfigMap a policy renders into. Pods mount it by name,
@@ -190,27 +193,30 @@ func (r *EgressPolicyReconciler) allPolicies(ctx context.Context, _ client.Objec
 
 // clusterRulesFor collects the rules of every ClusterEgressPolicy whose namespace
 // selector matches, in a stable order so the rendered document does not churn.
-func (r *EgressPolicyReconciler) clusterRulesFor(ctx context.Context, namespace string) ([]v1alpha1.EgressRule, error) {
+func (r *EgressPolicyReconciler) clusterRulesFor(
+	ctx context.Context,
+	namespace string,
+) ([]v1alpha1.EgressRule, string, error) {
 	var ns corev1.Namespace
 
 	err := r.Client.Get(ctx, client.ObjectKey{Name: namespace}, &ns)
 	if err != nil {
-		return nil, fmt.Errorf("get namespace %s: %w", namespace, err)
+		return nil, "", fmt.Errorf("get namespace %s: %w", namespace, err)
 	}
 
 	var list v1alpha1.ClusterEgressPolicyList
 
 	err = r.Client.List(ctx, &list)
 	if err != nil {
-		return nil, fmt.Errorf("list cluster policies: %w", err)
+		return nil, "", fmt.Errorf("list cluster policies: %w", err)
 	}
 
-	rules, err := render.ClusterRules(ns.Labels, list.Items)
+	rules, revision, err := render.ClusterBaselines(ns.Labels, list.Items)
 	if err != nil {
-		return nil, fmt.Errorf("select cluster policies: %w", err)
+		return nil, "", fmt.Errorf("select cluster policies: %w", err)
 	}
 
-	return rules, nil
+	return rules, revision, nil
 }
 
 func (r *EgressPolicyReconciler) applyConfigMap(
@@ -301,13 +307,14 @@ func podIsCurrent(pod corev1.Pod, policyName, desired string) bool {
 func (r *EgressPolicyReconciler) markPodState(
 	ctx context.Context,
 	policy *v1alpha1.EgressPolicy,
-	name string,
+	name, clusterRevision string,
 	pods, stale int32,
 ) error {
 	before := policy.Status.DeepCopy()
 
 	policy.Status.ObservedGeneration = policy.Generation
 	policy.Status.ConfigMapName = name
+	policy.Status.ObservedClusterRevision = clusterRevision
 	policy.Status.SelectedPods = pods
 	policy.Status.OutOfDatePods = stale
 
@@ -315,13 +322,7 @@ func (r *EgressPolicyReconciler) markPodState(
 
 	// Ready tracks the rendered configuration alone, so stale pods never block admission of their replacements.
 	setCondition(policy, metav1.ConditionTrue, reasonRendered, rendered)
-	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               conditionConfigurationReady,
-		Status:             metav1.ConditionTrue,
-		Reason:             reasonRendered,
-		Message:            rendered,
-		ObservedGeneration: policy.Generation,
-	})
+	meta.RemoveStatusCondition(&policy.Status.Conditions, legacyConfigurationReady)
 
 	status, reason, message := podRolloutCondition(pods, stale)
 	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
@@ -362,13 +363,7 @@ func (r *EgressPolicyReconciler) markDegraded(ctx context.Context, policy *v1alp
 	// The previous ConfigMap is deliberately left in place: replacing a working
 	// policy with an empty one because the new spec is invalid would open egress.
 	setCondition(policy, metav1.ConditionFalse, reasonInvalidPolicy, cause.Error())
-	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               conditionConfigurationReady,
-		Status:             metav1.ConditionFalse,
-		Reason:             reasonInvalidPolicy,
-		Message:            cause.Error(),
-		ObservedGeneration: policy.Generation,
-	})
+	meta.RemoveStatusCondition(&policy.Status.Conditions, legacyConfigurationReady)
 
 	return r.updateStatusIfChanged(ctx, policy, before)
 }

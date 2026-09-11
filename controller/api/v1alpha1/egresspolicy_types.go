@@ -346,6 +346,11 @@ type EgressPolicyStatus struct {
 	// +optional
 	ConfigMapName string `json:"configMapName,omitempty"`
 
+	// ObservedClusterRevision identifies the rendered cluster baselines.
+	// Admission denies pods until it matches the namespace's current baselines.
+	// +optional
+	ObservedClusterRevision string `json:"observedClusterRevision,omitempty"`
+
 	// SelectedPods counts the running pods matching PodSelector. It is reported for
 	// visibility only; a pod is filtered by the policy it mounts, not by this count.
 	// +optional

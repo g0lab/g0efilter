@@ -76,6 +76,10 @@ volumes:
   - ./policy/:/app/policy/
 ```
 
+A reload rebuilds the ruleset and restarts the filter services, so a connection
+landing in that brief window is refused rather than allowed through. The new
+policy is validated first: if it is rejected, the previous one keeps enforcing.
+
 The file is hashed every five seconds; unchanged content does not reload. Send
 `SIGHUP` to apply a changed file immediately:
 
@@ -85,7 +89,7 @@ docker kill --signal HUP g0efilter
 
 Environment variables can replace file-based lists. The file is then not the
 enforced policy, so g0efilter stops watching it and reports
-`policy.watcher_disabled`. See
+`policy.watcher_disabled`; a later `SIGHUP` reports `policy.reload_ignored`. See
 [environment variables](configuration.md#environment-variables).
 
 ## Default-allow denylist
