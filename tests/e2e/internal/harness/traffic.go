@@ -122,11 +122,8 @@ func (s *Stack) AssertAllowed(t *testing.T, url string) CurlResult {
 	return res
 }
 
-// curlUntilConnected retries until the request connects or the window expires.
-// A policy reload tears down and rebuilds the proxies and the ruleset, so a
-// request landing in that window fails without the traffic being blocked. The
-// assertion is unchanged - it still requires a real connection - but it will not
-// fail on a reload it raced.
+// curlUntilConnected retries until the request connects or the window expires, so the
+// assertion does not fail on a policy reload it raced.
 func (s *Stack) curlUntilConnected(t *testing.T, url, want string, extra ...string) CurlResult {
 	t.Helper()
 

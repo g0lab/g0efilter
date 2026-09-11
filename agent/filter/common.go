@@ -276,11 +276,8 @@ func allowedHost(host string, allowlist []string) bool {
 	return newMatcher(allowlist).allows(host)
 }
 
-// constraintsFor returns the protocol/port constraints that apply to host.
-// A host also covered by an unconstrained pattern gets none: the broader entry
-// wins, mirroring the kernel rule order where the whole-IP allow is matched
-// before the port-constrained set. Several constrained patterns can apply at
-// once (the same domain listed for tcp/443 and udp/53), so all are returned.
+// constraintsFor returns host's protocol/port constraints, or none when an
+// unconstrained pattern also covers it: the broader entry wins, as in the kernel.
 func constraintsFor(host string, rules []policy.DomainRule) []policy.DomainRule {
 	host = normalizeDomain(host)
 
@@ -531,11 +528,8 @@ func originalDstTCP(conn *net.TCPConn) (string, error) {
 	return out, nil
 }
 
-// isSelfConnection reports whether a connection was never redirected to the
-// proxy: its original destination is the proxy's own listen address. Forwarding
-// one would splice the proxy back to itself in the modes that pass
-// non-allowlisted traffic (audit/learning/default-allow), causing an infinite
-// loop. The container healthcheck, which dials the listener directly, hits this.
+// isSelfConnection reports a connection that was never redirected: its original
+// destination is the proxy's own listener, and forwarding it would loop forever.
 func isSelfConnection(conn net.Conn, tc *net.TCPConn) bool {
 	orig, err := originalDstTCP(tc)
 	if err != nil {

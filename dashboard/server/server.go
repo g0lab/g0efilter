@@ -283,9 +283,7 @@ func newServer(lg *slog.Logger, cfg Config) *Server {
 	}
 }
 
-// loginPublicFiles are static paths reachable without a session so the login
-// page can render. /assets/* (hashed JS/CSS bundles - public code, no data)
-// is added separately; index.html and the API stay behind auth.
+// loginPublicFiles are the static paths the login page needs without a session.
 //
 //nolint:gochecknoglobals // fixed allowlist
 var loginPublicFiles = []string{"/login.html", "/favicon.ico"}
@@ -471,11 +469,11 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// securityHeadersMiddleware sets standard HTTP security headers on every response.
-// The Svelte build emits external hashed script bundles. Svelte style directives
-// and transitions update element style attributes at runtime, so style-src must
-// permit inline styles; script-src remains restricted to same-origin files.
-// In production these headers may be overridden or supplemented by the reverse proxy (e.g. Traefik).
+// securityHeadersMiddleware sets standard HTTP security headers on every response,
+// which a reverse proxy may override or supplement in production.
+//
+// SECURITY: style-src must permit inline styles because Svelte style directives and
+// transitions write element style attributes at runtime; script-src stays same-origin.
 func (s *Server) securityHeadersMiddleware() gin.HandlerFunc {
 	const csp = "default-src 'self'; " +
 		"script-src 'self'; " +

@@ -12,9 +12,9 @@ import (
 )
 
 // errCORSWildcard rejects a credentialed wildcard CORS config at startup.
-// A wildcard cannot safely be combined with credentialed cross-origin requests.
-// Browsers reject `Access-Control-Allow-Origin: *` with credentials, and it
-// would also be an over-broad policy. Origins must be listed explicitly.
+//
+// SECURITY: browsers reject `Access-Control-Allow-Origin: *` with credentials, and it
+// would be over-broad anyway, so origins must be listed explicitly.
 var errCORSWildcard = errors.New(
 	`CORS_ALLOWED_ORIGINS must list explicit origins, not "*" (credentials are sent cross-origin)`)
 
@@ -27,12 +27,12 @@ func validateCORSOrigins(origins []string) error {
 	return nil
 }
 
-// corsMiddleware returns a CORS handler for the configured origins, or nil
-// when none are set (same-origin only - the correct default behind a proxy).
+// corsMiddleware returns a CORS handler for the configured origins, or nil when none
+// are set: same-origin only, the correct default behind a proxy.
 //
-// AllowCredentials is enabled so a browser app on an allowed origin can send
-// the session cookie; wildcard "*" is rejected at startup (validateCORSOrigins)
-// since it cannot be combined with credentials.
+// SECURITY: AllowCredentials is enabled so a browser app on an allowed origin can send
+// the session cookie, so wildcard "*" is rejected at startup by validateCORSOrigins -
+// it cannot be combined with credentials.
 func (s *Server) corsMiddleware() gin.HandlerFunc {
 	if len(s.corsOrigins) == 0 {
 		return nil

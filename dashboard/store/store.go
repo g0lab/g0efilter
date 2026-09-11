@@ -22,9 +22,7 @@ import (
 	_ "modernc.org/sqlite" // pure-Go sqlite driver (CGO_ENABLED=0 build)
 )
 
-// migrations are generated from the Ent schema by Atlas (scripts/gen-migration.sh)
-// and applied at runtime by Migrate. Only the .sql files are embedded; atlas.sum
-// is a dev-time integrity file.
+// migrations holds the Atlas-generated .sql that Migrate applies at runtime.
 //
 //go:embed migrations/*.sql
 var migrationsFS embed.FS

@@ -117,10 +117,8 @@ func DNSStrictConfig(t *testing.T) StackConfig {
 	return BaselineConfig(t, FilterModeDNSStrict)
 }
 
-// newPolicyDir creates a policy mount owned by the stack rather than by a test:
-// a shared stack outlives the test that started it, so t.TempDir would delete
-// the mount from underneath it. The agent runs as a different user than the test
-// process, so the directory must be world-writable for policy rewrites to work.
+// newPolicyDir creates a policy mount owned by the stack, not the test: a shared stack
+// outlives its starter, and the agent's user needs the directory world-writable.
 func newPolicyDir() (string, error) {
 	dir, err := os.MkdirTemp("", "g0efilter-policy-")
 	if err != nil {

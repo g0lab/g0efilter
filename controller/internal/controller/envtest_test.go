@@ -19,9 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-// startEnvtest runs a real kube-apiserver and etcd with the generated CRDs
-// installed. Unlike the fake client this enforces the CRD's OpenAPI schema, which is
-// the only way to know the generated CRDs accept and reject what the types intend.
+// startEnvtest runs a real kube-apiserver and etcd with the generated CRDs installed.
 //
 //nolint:ireturn // controller-runtime exposes only the client.Client interface
 func startEnvtest(t *testing.T) client.Client {

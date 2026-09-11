@@ -699,11 +699,8 @@ func (handler *dnsHandler) handleAllowedRequest(
 	_ = writer.WriteMsg(resp)
 }
 
-// resolveViaIPAllowlist handles a non-allowlisted domain that may point at an
-// allowlisted IP: it resolves upstream and, if any answer IP is in the IP
-// allowlist, replies with only those records. Returns false to fall through to
-// the normal sinkhole. It never widens the dns-strict resolved set: the static
-// IP allowlist already permits these destinations at the packet level.
+// resolveViaIPAllowlist answers a non-allowlisted domain with only its allowlisted
+// answer IPs, or false to sinkhole. It never widens the dns-strict resolved set.
 func (handler *dnsHandler) resolveViaIPAllowlist(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -729,10 +726,8 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 
 	kept := handler.filterToAllowlistedIPs(resp)
 	if len(kept) == 0 {
-		// No allowlisted IP for this record type. If the domain reaches an
-		// allowlisted IP via the other address family (e.g. an AAAA probe for an
-		// IPv4-only allowlisted host), the sinkhole here is expected: answer it
-		// without raising a false BLOCKED alert.
+		// No allowlisted IP for this record type. The domain may still be reachable
+		// via the other family, so answer the sinkhole without a BLOCKED alert.
 		if handler.siblingResolvesToAllowlistedIP(qname, qtype) {
 			handler.answerSinkholeSibling(lg, writer, request, qname, qtype, remoteAddr, remotePort, flowID)
 
@@ -757,10 +752,8 @@ func (handler *dnsHandler) resolveViaIPAllowlist(
 	return true
 }
 
-// siblingResolvesToAllowlistedIP reports whether qname resolves to an allowlisted
-// IP in the other address family (A<->AAAA). A per-family sinkhole stays silent
-// when the domain is still reachable, so a dual-stack client's unmatched query
-// does not raise a false BLOCKED alert.
+// siblingResolvesToAllowlistedIP reports whether qname reaches an allowlisted IP in
+// the other address family, so a per-family sinkhole raises no false BLOCKED alert.
 func (handler *dnsHandler) siblingResolvesToAllowlistedIP(qname string, qtype uint16) bool {
 	sibling := siblingQtype(qtype)
 	if sibling == 0 {
@@ -789,12 +782,8 @@ func siblingQtype(qtype uint16) uint16 {
 	}
 }
 
-// answerSinkholeSibling replies to an A/AAAA query whose own family has no
-// allowlisted IP but whose sibling family does. It returns the zero-address
-// sinkhole (0.0.0.0 / ::) rather than an empty NODATA answer: a positive answer
-// stops the stub resolver from walking its search list, which would otherwise
-// emit spurious BLOCKED alerts for suffixed names. The host is reachable via the
-// sibling family, so this logs ALLOWED without an alert.
+// answerSinkholeSibling returns the zero-address sinkhole, not an empty NODATA answer:
+// a positive answer stops the resolver walking its search list and alerting spuriously.
 func (handler *dnsHandler) answerSinkholeSibling(
 	lg *slog.Logger,
 	writer dns.ResponseWriter,
@@ -818,11 +807,8 @@ func (handler *dnsHandler) answerSinkholeSibling(
 	_ = writer.WriteMsg(message)
 }
 
-// filterToAllowlistedIPs keeps only the A/AAAA answer records whose address is in
-// the IP allowlist, so a filtered reply cannot leak non-allowlisted IPs. The CNAME
-// chain is preserved alongside them, since resolvers may ignore terminal address
-// records whose owner name is an unresolved alias. Returns nil when no address is
-// allowlisted, so the caller falls through to the sinkhole.
+// filterToAllowlistedIPs keeps only allowlisted A/AAAA records, preserving the CNAME
+// chain resolvers need. Returns nil when none are, so the caller sinkholes.
 func (handler *dnsHandler) filterToAllowlistedIPs(resp *dns.Msg) []dns.RR {
 	var addrs, cnames []dns.RR
 

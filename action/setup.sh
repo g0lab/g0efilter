@@ -58,10 +58,8 @@ mkdir -p "$WORKDIR/policy"
 POLICY_FILE="$WORKDIR/policy/policy.yaml"
 MANIFEST_FILE="$WORKDIR/policy-manifest.json"
 
-# GitHub's documented runner communication domains
-# (https://docs.github.com/actions/reference/runners/self-hosted-runners).
-# Deliberately no ghcr.io / *.pkg.github.com: pulling packages or containers is
-# a workflow concern, not runner baseline - add via allowed-domains if needed.
+# GitHub's documented runner communication domains. No ghcr.io or *.pkg.github.com:
+# pulling packages is a workflow concern, not runner baseline - use allowed-domains.
 BASE_DOMAINS=(
   # Essential runner operation
   "github.com"
@@ -196,10 +194,8 @@ if [ -n "${NOTIFICATION_IGNORE:-}" ]; then
   DOCKER_ARGS+=(-e NOTIFICATION_IGNORE_DOMAINS="$(printf '%s' "$NOTIFICATION_IGNORE" | tr '\n' ',')")
 fi
 
-# Host :53 is systemd-resolved; the NAT redirect still captures DNS to the
-# proxy's alt port. Forward to the host's real resolvers - the default
-# 127.0.0.11 (Docker DNS) is absent on the host net, and a dead upstream with
-# every :53 redirected takes out the whole runner's DNS.
+# Host :53 is systemd-resolved, so forward to the host's real resolvers: with every
+# :53 redirected, Docker's 127.0.0.11 is absent and a dead upstream kills runner DNS.
 if [ "$MODE" = "dns" ] || [ "$MODE" = "dns-strict" ]; then
   # Match v4 and v6 resolvers; bracket v6 for host:port form.
   UPSTREAMS=$(awk '/^nameserver[ \t]+[0-9a-fA-F:.]+/ {ip=$2; if (ip ~ /:/) ip="[" ip "]"; printf "%s%s:53", sep, ip; sep=","}' "$RESOLV_SRC" 2>/dev/null)

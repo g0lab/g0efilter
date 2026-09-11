@@ -86,14 +86,20 @@ command, modes, and suite selection.
 Explain why, not what the code already says, and keep implementation comments
 to two lines. Exported declarations, CRD field documentation, generated files
 and tool directives are exempt: they are API documentation and are expected to
-run longer. A block that opens `SECURITY:`, `CONCURRENCY:` or `COMPAT:` may run
-longer too, where the constraint is what needs the room. Tutorials and
-background belong in `docs/`.
+run longer. A block carrying a `SECURITY:`, `CONCURRENCY:` or `COMPAT:`
+paragraph may run longer too, where the constraint is what needs the room.
+Tutorials and background belong in `docs/`.
 
-`tests/repo/comments_test.go` only checks the comment blocks a change adds or
-edits against the merge base, so unrelated work never has to fix the backlog.
-A length check stops paragraphs; review still has to catch ten unnecessary
-one-line comments.
+`tests/repo/comments_test.go` enforces this for Go, using the AST so it can
+tell a doc comment from an implementation one. It checks only the blocks a
+change adds or edits against the merge base, so unrelated work never has to fix
+the backlog, and it fails rather than skips if git cannot say what changed.
+Shell, YAML and template comments follow the same preference but are not
+enforced: a hand-written scanner mistook `#` inside multiline strings for
+comments.
+
+A length check only stops paragraphs; review still has to catch ten
+unnecessary one-line comments.
 
 ## Generated files
 

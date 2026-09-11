@@ -27,8 +27,8 @@ func commentExceptions() []string {
 	return []string{"SECURITY:", "CONCURRENCY:", "COMPAT:"}
 }
 
-// Only comment blocks this branch added or edited are checked, so the rule holds the
-// line for new work without making unrelated changes fix the backlog.
+// Go only: a hand-written scanner for shell, YAML and templates mistook `#` inside
+// multiline strings for comments, so those languages are left to review.
 func TestNewImplementationCommentsAreShort(t *testing.T) {
 	t.Parallel()
 
@@ -38,7 +38,7 @@ func TestNewImplementationCommentsAreShort(t *testing.T) {
 	}
 
 	for name, lines := range changed {
-		if filepath.Ext(name) != ".go" && !hasSourceComments(name) {
+		if filepath.Ext(name) != ".go" {
 			continue
 		}
 
@@ -47,30 +47,7 @@ func TestNewImplementationCommentsAreShort(t *testing.T) {
 			continue
 		}
 
-		if filepath.Ext(name) != ".go" {
-			checkStandaloneComments(t, name, string(content), lines)
-
-			continue
-		}
-
 		checkGoComments(t, name, content, lines)
-	}
-}
-
-func checkStandaloneComments(t *testing.T, name, content string, changed map[int]bool) {
-	t.Helper()
-
-	for _, span := range standaloneComments(content, name) {
-		if span.length <= maxCommentLines || !spanChanged(span, changed) {
-			continue
-		}
-
-		if excepted(commentText(content, span)) {
-			continue
-		}
-
-		t.Errorf("%s:%d: comment has %d lines; maximum is %d (%s)",
-			name, span.line, span.length, maxCommentLines, exceptionHint())
 	}
 }
 
@@ -145,7 +122,7 @@ func exportedDoc(node ast.Node) (*ast.CommentGroup, bool) {
 	case *ast.TypeSpec:
 		return declaration.Doc, declaration.Name.IsExported()
 	case *ast.ValueSpec:
-		return declaration.Doc, specExported(declaration)
+		return declaration.Doc, namesExported(declaration.Names)
 	case *ast.Field:
 		return declaration.Doc, namesExported(declaration.Names)
 	}
@@ -174,20 +151,17 @@ func specExported(spec ast.Spec) bool {
 	return false
 }
 
+// excepted matches a tag on any line, not just the first: a Go doc comment has to
+// open with the declaration's name, so the tag marks the paragraph that earns the room.
 func excepted(text string) bool {
 	for line := range strings.SplitSeq(text, "\n") {
-		trimmed := strings.TrimLeft(strings.TrimSpace(line), "/#*<!- ")
-		if trimmed == "" {
-			continue
-		}
+		trimmed := strings.TrimLeft(strings.TrimSpace(line), "/*{ ")
 
 		for _, tag := range commentExceptions() {
 			if strings.HasPrefix(trimmed, tag) {
 				return true
 			}
 		}
-
-		return false
 	}
 
 	return false
@@ -195,14 +169,6 @@ func excepted(text string) bool {
 
 func exceptionHint() string {
 	return "shorten it, move it to docs/, or open it with " + strings.Join(commentExceptions(), " / ")
-}
-
-func commentText(content string, span commentSpan) string {
-	lines := strings.Split(content, "\n")
-
-	end := min(span.line-1+span.length, len(lines))
-
-	return strings.Join(lines[span.line-1:end], "\n")
 }
 
 func spanChanged(span commentSpan, changed map[int]bool) bool {
@@ -215,26 +181,31 @@ func spanChanged(span commentSpan, changed map[int]bool) bool {
 	return false
 }
 
-// changedLines maps each path to the lines this branch added or edited, so the check
-// never reports a comment the change did not touch.
+// changedLines maps each path to the lines this branch touched. It fails rather than
+// skips when git cannot say, so a broken checkout does not disable the gate.
 func changedLines(t *testing.T) map[string]map[int]bool {
 	t.Helper()
 
+	_, err := exec.LookPath("git")
+	if err != nil {
+		t.Skipf("git is not installed: %v", err)
+	}
+
 	base, ok := mergeBase(t)
 	if !ok {
-		return nil
+		t.Fatal("no merge base with origin/main or main; cannot tell which comments changed")
 	}
 
 	diff, ok := git(t, "diff", "-U0", "--no-color", base)
 	if !ok {
-		return nil
+		t.Fatalf("git diff against %s failed; cannot tell which comments changed", base)
 	}
 
 	changed := diffLines(diff)
 
 	untracked, ok := git(t, "ls-files", "--others", "--exclude-standard")
 	if !ok {
-		return changed
+		t.Fatal("git ls-files failed; cannot tell which comments changed")
 	}
 
 	for name := range strings.SplitSeq(strings.TrimSpace(untracked), "\n") {
@@ -246,7 +217,8 @@ func changedLines(t *testing.T) map[string]map[int]bool {
 	return changed
 }
 
-// diffLines reads the new-side line numbers out of a -U0 unified diff.
+// diffLines reads the new-side line numbers out of a -U0 unified diff. A deletion-only
+// hunk marks the lines around it, so trimming a comment still counts as touching it.
 func diffLines(diff string) map[string]map[int]bool {
 	changed := map[string]map[int]bool{}
 	path := ""
@@ -266,6 +238,13 @@ func diffLines(diff string) map[string]map[int]bool {
 
 		if changed[path] == nil {
 			changed[path] = map[int]bool{}
+		}
+
+		if count == 0 {
+			changed[path][max(start, 1)] = true
+			changed[path][start+1] = true
+
+			continue
 		}
 
 		for offset := range count {
@@ -347,7 +326,8 @@ func git(t *testing.T, args ...string) (string, bool) {
 	out, err := exec.CommandContext(ctx, bin,
 		append([]string{"-C", filepath.Join("..", "..")}, args...)...).Output()
 	if err != nil {
-		if _, ok := errors.AsType[*exec.ExitError](err); !ok {
+		_, isExit := errors.AsType[*exec.ExitError](err)
+		if !isExit {
 			t.Fatalf("git %s: %v", strings.Join(args, " "), err)
 		}
 
@@ -360,91 +340,6 @@ func git(t *testing.T, args ...string) (string, bool) {
 type commentSpan struct {
 	line   int
 	length int
-}
-
-func hasSourceComments(name string) bool {
-	switch filepath.Ext(name) {
-	case ".sh", ".bash", ".yaml", ".yml", ".js", ".mjs", ".ts", ".css", ".svelte", ".html", ".tpl", ".jsonc", ".md":
-		return true
-	default:
-		base := filepath.Base(name)
-
-		return strings.HasPrefix(base, "Containerfile") || strings.HasPrefix(base, "Dockerfile")
-	}
-}
-
-// Non-Go sources are checked for standalone comments; Markdown prose is not code.
-func standaloneComments(content, name string) []commentSpan {
-	var spans []commentSpan
-
-	prefix := lineCommentPrefix(name)
-	blockEnd := ""
-	previous := -2
-
-	for index, raw := range strings.Split(content, "\n") {
-		line := strings.TrimSpace(raw)
-
-		if blockEnd != "" {
-			spans[len(spans)-1].length++
-
-			if strings.Contains(line, blockEnd) {
-				blockEnd = ""
-			}
-
-			continue
-		}
-
-		blockEnd = commentBlockEnd(line)
-		if blockEnd != "" {
-			spans = append(spans, commentSpan{line: index + 1, length: 1})
-			if strings.Contains(line, blockEnd) {
-				blockEnd = ""
-			}
-
-			continue
-		}
-
-		if !strings.HasPrefix(line, prefix) || strings.HasPrefix(line, "#!") {
-			continue
-		}
-
-		if previous == index-1 {
-			spans[len(spans)-1].length++
-		} else {
-			spans = append(spans, commentSpan{line: index + 1, length: 1})
-		}
-
-		previous = index
-	}
-
-	return spans
-}
-
-func lineCommentPrefix(name string) string {
-	switch filepath.Ext(name) {
-	case ".sh", ".bash", ".yaml", ".yml":
-		return "#"
-	case ".md", ".html":
-		return "\x00"
-	default:
-		base := filepath.Base(name)
-		if strings.HasPrefix(base, "Containerfile") || strings.HasPrefix(base, "Dockerfile") {
-			return "#"
-		}
-
-		return "//"
-	}
-}
-
-func commentBlockEnd(line string) string {
-	switch {
-	case strings.HasPrefix(line, "<!--"):
-		return "-->"
-	case strings.HasPrefix(line, "/*"), strings.HasPrefix(line, "{{/*"), strings.HasPrefix(line, "{{- /*"):
-		return "*/"
-	default:
-		return ""
-	}
 }
 
 // Tool directives are metadata; they do not count toward the prose limit.
@@ -510,10 +405,24 @@ func Exported() {}
 // of implementation detail.
 func unexported() {}
 
-// SECURITY: the tag earns the length, so this
-// block is allowed to keep
-// all three lines.
+// tagged does a thing.
+//
+// SECURITY: the tag earns the length, because
+// this constraint is not inferable
+// from the code below it.
 func tagged() {}
+
+type documented struct {
+	// Field is documented across
+	// three lines, as a CRD field is.
+	// Kubernetes renders this.
+	Field string
+
+	// unexportedField narrates across
+	// three lines of
+	// implementation detail.
+	unexportedField string
+}
 `
 
 	positions := token.NewFileSet()
@@ -535,8 +444,28 @@ func tagged() {}
 		flagged = append(flagged, positions.Position(group.Pos()).Line)
 	}
 
-	if want := []int{8}; !reflect.DeepEqual(flagged, want) {
+	if want := []int{8, 26}; !reflect.DeepEqual(flagged, want) {
 		t.Errorf("flagged lines = %v, want %v", flagged, want)
+	}
+}
+
+func TestExceptionTagIsFoundOnAnyLine(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]bool{
+		"// name does a thing.\n//\n// SECURITY: and this is why it is long.": true,
+		"/* CONCURRENCY: the lock order matters here. */":                     true,
+		"// name does a thing.\n// It is simply verbose about it.":            false,
+		"// the word security appears but not as a tag":                       false,
+	}
+	for text, want := range cases {
+		t.Run(text, func(t *testing.T) {
+			t.Parallel()
+
+			if got := excepted(text); got != want {
+				t.Errorf("excepted(%q) = %v, want %v", text, got, want)
+			}
+		})
 	}
 }
 
@@ -547,6 +476,7 @@ func TestHunkRange(t *testing.T) {
 		"@@ -1,0 +2,3 @@":          {2, 3},
 		"@@ -4 +7 @@":              {7, 1},
 		"@@ -1,2 +1,2 @@ func x()": {1, 2},
+		"@@ -30,1 +29,0 @@":        {29, 0},
 	}
 	for header, want := range cases {
 		t.Run(header, func(t *testing.T) {
@@ -560,30 +490,19 @@ func TestHunkRange(t *testing.T) {
 	}
 }
 
-func TestStandaloneCommentCounting(t *testing.T) {
+// A deletion-only hunk has no new-side lines, so the surrounding ones stand in: cutting
+// a four-line comment to three still has to be caught.
+func TestDeletionOnlyHunksMarkTheirSurroundings(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		name string
-		code string
-		want []commentSpan
-	}{
-		{name: "script.sh", code: "#!/bin/sh\n# one\n# two\n# three\necho ok\n", want: []commentSpan{{2, 3}}},
-		{name: "readme.md", code: "# Heading\nprose\n<!-- one\ntwo\nthree -->", want: []commentSpan{{3, 3}}},
-		{
-			name: "app.ts",
-			code: "// one\n// two\nconst url = 'https://host';\n/* a\nb\nc */",
-			want: []commentSpan{{1, 2}, {4, 3}},
-		},
-		{name: "chart.tpl", code: "{{/* one\ntwo\nthree */}}", want: []commentSpan{{1, 3}}},
-	}
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+	diff := "+++ b/agent/x.go\n@@ -30,1 +29,0 @@\n-// a deleted comment line\n"
 
-			if got := standaloneComments(test.code, test.name); !reflect.DeepEqual(got, test.want) {
-				t.Errorf("comment spans = %v, want %v", got, test.want)
-			}
-		})
+	changed := diffLines(diff)
+	if !changed["agent/x.go"][29] || !changed["agent/x.go"][30] {
+		t.Errorf("deletion at 29 marked %v", changed["agent/x.go"])
+	}
+
+	if !spanChanged(commentSpan{line: 27, length: 3}, changed["agent/x.go"]) {
+		t.Error("a comment left behind by a deletion was treated as untouched")
 	}
 }
