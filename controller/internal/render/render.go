@@ -182,6 +182,11 @@ func ClusterBaselines(
 	return rules, revision, nil
 }
 
+// NoBaselines is the revision of a selection no ClusterEgressPolicy matched.
+func NoBaselines() string {
+	return fmt.Sprintf("%x", sha256.Sum256(nil))
+}
+
 // selectingCluster returns the matching cluster policies in a stable order, so
 // neither the rendered document nor the revision churns.
 func selectingCluster(

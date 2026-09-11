@@ -28,9 +28,11 @@ const (
 	// PolicyKey is the ConfigMap key the sidecar reads.
 	PolicyKey = "policy.yaml"
 
-	conditionReady              = "Ready"
-	conditionConfigurationReady = "ConfigurationReady"
-	conditionPodsUpToDate       = "PodsUpToDate"
+	conditionReady        = "Ready"
+	conditionPodsUpToDate = "PodsUpToDate"
+
+	// An earlier controller wrote this alongside Ready with the same value.
+	legacyConfigurationReady = "ConfigurationReady"
 
 	reasonRendered      = "Rendered"
 	reasonInvalidPolicy = "InvalidPolicy"
@@ -320,13 +322,7 @@ func (r *EgressPolicyReconciler) markPodState(
 
 	// Ready tracks the rendered configuration alone, so stale pods never block admission of their replacements.
 	setCondition(policy, metav1.ConditionTrue, reasonRendered, rendered)
-	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               conditionConfigurationReady,
-		Status:             metav1.ConditionTrue,
-		Reason:             reasonRendered,
-		Message:            rendered,
-		ObservedGeneration: policy.Generation,
-	})
+	meta.RemoveStatusCondition(&policy.Status.Conditions, legacyConfigurationReady)
 
 	status, reason, message := podRolloutCondition(pods, stale)
 	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
@@ -367,13 +363,7 @@ func (r *EgressPolicyReconciler) markDegraded(ctx context.Context, policy *v1alp
 	// The previous ConfigMap is deliberately left in place: replacing a working
 	// policy with an empty one because the new spec is invalid would open egress.
 	setCondition(policy, metav1.ConditionFalse, reasonInvalidPolicy, cause.Error())
-	meta.SetStatusCondition(&policy.Status.Conditions, metav1.Condition{
-		Type:               conditionConfigurationReady,
-		Status:             metav1.ConditionFalse,
-		Reason:             reasonInvalidPolicy,
-		Message:            cause.Error(),
-		ObservedGeneration: policy.Generation,
-	})
+	meta.RemoveStatusCondition(&policy.Status.Conditions, legacyConfigurationReady)
 
 	return r.updateStatusIfChanged(ctx, policy, before)
 }

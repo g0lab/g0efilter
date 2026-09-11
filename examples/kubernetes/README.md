@@ -18,3 +18,7 @@ See the [Kubernetes guide](../../docs/kubernetes.md) for Helm and admission
 options. Admission installations can enable the controller chart's NetworkPolicy
 after supplying the cluster's API-server source CIDRs; it is intentionally not
 guessed by the portable Kustomize overlay.
+
+When using admission injection, create the `EgressPolicy` before its workloads.
+Where a `ClusterEgressPolicy` selects the namespace, new selected pods are also
+rejected until the controller records that baseline's current revision.

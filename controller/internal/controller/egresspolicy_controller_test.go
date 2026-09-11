@@ -159,25 +159,24 @@ func TestReconcileRendersAConfigMap(t *testing.T) {
 		t.Errorf("status = %+v", policy.Status)
 	}
 
-	assertCondition(t, policy, conditionReady, metav1.ConditionTrue, reasonRendered)
+	assertReadyCondition(t, policy, metav1.ConditionTrue, reasonRendered)
 }
 
-func assertCondition(
+func assertReadyCondition(
 	t *testing.T,
 	policy *v1alpha1.EgressPolicy,
-	conditionType string,
 	status metav1.ConditionStatus,
 	reason string,
 ) {
 	t.Helper()
 
-	got := meta.FindStatusCondition(policy.Status.Conditions, conditionType)
+	got := meta.FindStatusCondition(policy.Status.Conditions, conditionReady)
 	if got == nil {
-		t.Fatalf("policy has no %s condition: %+v", conditionType, policy.Status.Conditions)
+		t.Fatalf("policy has no %s condition: %+v", conditionReady, policy.Status.Conditions)
 	}
 
 	if got.Status != status || got.Reason != reason {
-		t.Errorf("%s condition = %s/%s, want %s/%s", conditionType, got.Status, got.Reason, status, reason)
+		t.Errorf("%s condition = %s/%s, want %s/%s", conditionReady, got.Status, got.Reason, status, reason)
 	}
 }
 
@@ -317,7 +316,7 @@ func TestInvalidSpecLeavesThePreviousConfigMapIntact(t *testing.T) {
 	}
 
 	updated := getPolicy(t, c, "web")
-	assertCondition(t, updated, conditionReady, metav1.ConditionFalse, reasonInvalidPolicy)
+	assertReadyCondition(t, updated, metav1.ConditionFalse, reasonInvalidPolicy)
 }
 
 // Reconciling repeatedly must converge, or every resync would rewrite the ConfigMap

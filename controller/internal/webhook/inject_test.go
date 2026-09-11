@@ -562,23 +562,56 @@ func TestDeniesWhenAClusterBaselineWasRecreatedWithDifferentRules(t *testing.T) 
 	}
 }
 
-// A reconciler that predates observedClusterRevision records none, and a rollback
-// drops it again. Denying then denies every pod for the length of the rollout.
-func TestAdmitsWhileTheReconcilerHasNotRecordedARevision(t *testing.T) {
+// A controller upgrade leaves the revision unrecorded until the new reconciler
+// runs. Where no baseline selects the namespace there is nothing it could have
+// missed, so the rollout must not reject the workloads being sidecared.
+func TestAdmitsWithoutARecordedRevisionWhenNoBaselineSelectsTheNamespace(t *testing.T) {
 	t.Parallel()
-
-	baseline := clusterBaseline("baseline-uid", 1, "10.96.0.10")
 
 	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
 	selected.Status.ObservedClusterRevision = ""
 
-	response, patched := admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	response, patched := admit(t, newInjector(t, selected), pod(map[string]string{"app": "web"}, nil))
 	if !response.Allowed {
 		t.Fatalf("a pod was denied during a controller rollout: %s", response.Result.Message)
 	}
 
 	if patched == nil {
 		t.Fatal("the pod was not patched")
+	}
+}
+
+// Deleting a baseline leaves the rendered ConfigMap carrying rules it no longer
+// allows, so a recorded revision is still compared against an empty selection.
+func TestDeniesWhenTheRenderedBaselineWasDeleted(t *testing.T) {
+	t.Parallel()
+
+	deleted := clusterBaseline("baseline-uid", 1, "10.96.0.10")
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = baselineRevision(t, *deleted)
+
+	response, _ := admit(t, newInjector(t, selected), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted against a deleted baseline's still-rendered rules")
+	}
+}
+
+func TestDeniesWithoutARecordedRevisionWhenABaselineSelectsTheNamespace(t *testing.T) {
+	t.Parallel()
+
+	selected := policy("web", map[string]string{"app": "web"}, v1alpha1.SidecarSpec{})
+	selected.Status.ObservedClusterRevision = ""
+
+	baseline := clusterBaseline("baseline-uid", 1, "10.96.0.10")
+
+	response, _ := admit(t, newInjector(t, selected, baseline), pod(map[string]string{"app": "web"}, nil))
+	if response.Allowed {
+		t.Fatal("a pod was admitted before the reconciler rendered a selecting baseline")
+	}
+
+	if !strings.Contains(response.Result.Message, "has not recorded the cluster baselines") {
+		t.Errorf("denial = %q", response.Result.Message)
 	}
 }
 

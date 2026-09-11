@@ -148,6 +148,11 @@ Pods also need to match an `EgressPolicy`; the namespace label alone does not
 trigger injection. See the [policy example](docs/kubernetes.md#writing-a-policy),
 and start with `enforcement: audit` to see what it would deny.
 
+Admission waits for the controller to render the current policy. Where a
+`ClusterEgressPolicy` selects the namespace it also waits for the rendered
+baseline revision to match, so new selected pods are rejected until a baseline
+change is reconciled. Running pods are never affected.
+
 Certificate Secret access is namespace-scoped and omitted when cert-manager owns
 the certificate. The controller chart can also restrict webhook ingress to explicit
 API-server CIDRs; see [webhook network isolation](docs/kubernetes.md#webhook-network-isolation).

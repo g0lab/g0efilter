@@ -261,8 +261,7 @@ func assertReadyStatus(ctx context.Context, t *testing.T, c client.Client) {
 		t.Errorf("status.configMapName = %q", stored.Status.ConfigMapName)
 	}
 
-	assertCondition(t, &stored, conditionReady, metav1.ConditionTrue, reasonRendered)
-	assertCondition(t, &stored, conditionConfigurationReady, metav1.ConditionTrue, reasonRendered)
+	assertReadyCondition(t, &stored, metav1.ConditionTrue, reasonRendered)
 }
 
 // Short names are how operators reach the API; a clash would only show up here.
@@ -323,6 +322,5 @@ func TestARacedClusterBaselineIsCaughtByTheReconciler(t *testing.T) {
 	}
 
 	stored := getPolicy(t, c, "web")
-	assertCondition(t, stored, conditionReady, metav1.ConditionFalse, reasonInvalidPolicy)
-	assertCondition(t, stored, conditionConfigurationReady, metav1.ConditionFalse, reasonInvalidPolicy)
+	assertReadyCondition(t, stored, metav1.ConditionFalse, reasonInvalidPolicy)
 }
