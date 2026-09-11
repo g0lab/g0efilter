@@ -293,9 +293,12 @@ Any pod in `tenant-a` labelled `app: web` gets the sidecar and policy volume, wi
 the sidecar first in `initContainers`.
 
 The controller renders one ConfigMap per `EgressPolicy`. Admission waits until the
-current policy generation is Ready. If an update is rejected, existing pods keep
-the previous ConfigMap and admission rejects new selected pods until the policy is
-fixed.
+current policy generation is Ready and, where a `ClusterEgressPolicy` selects the
+namespace, until the recorded baseline revision matches that selection. If an
+update is rejected, existing pods keep the previous ConfigMap and admission
+rejects new selected pods until the policy is fixed. Running pods keep enforcing
+their mounted ConfigMap throughout, because the control plane is not in the data
+path.
 
 `ClusterEgressPolicy` adds baseline rules. Its `namespaceSelector` chooses
 namespaces, and the controller merges its rules into each `EgressPolicy` there.
@@ -317,10 +320,10 @@ starts under the combination.
 
 #### Policy status
 
-`Ready` and `ConfigurationReady` both describe the rendered configuration. They go
-false only when the spec cannot be rendered. Pod rollout progress is reported
-separately, so pods still running an older sidecar never block admission of their
-replacements.
+`Ready` describes the rendered configuration alone. It goes false only when the
+spec cannot be rendered. Pod rollout progress is reported separately by
+`PodsUpToDate`, so pods still running an older sidecar never block admission of
+their replacements.
 
 | Field | Meaning |
 | --- | --- |
@@ -445,12 +448,11 @@ Add what you find to `egress`, and once the audit lines stop, switch over:
 ```sh
 kubectl -n tenant-a patch egresspolicy/web --type=merge \
   -p '{"spec":{"sidecar":{"enforcement":"block"}}}'
-kubectl -n tenant-a rollout restart deployment/web
 ```
 
-The restart is required. Policy *rules* reload live from the ConfigMap, but
-`enforcement` is part of the pod spec the webhook wrote at admission, so it only
-changes when the pod is recreated.
+No restart is needed. `enforcement` travels in the policy document, so running
+sidecars pick it up on their next reload; watch for `policy.applied` in the
+sidecar log. Kubelet's ConfigMap refresh is the delay, not the sidecar.
 
 ### Webhook certificates
 
@@ -692,6 +694,9 @@ See [policy.md](policy.md) for the full schema.
 Kubelet may take a minute or two to refresh the mount. The sidecar checks every
 five seconds, but it cannot reload content before kubelet writes it. `SIGHUP` has
 the same limit.
+
+Applying it rebuilds the ruleset and restarts the filter services, so a
+connection landing in that brief window is refused rather than allowed through.
 
 If the agent rejects a changed policy, it keeps enforcing the previous one. With
 Events enabled, the pod gets a `PolicyReloadFailed` Event. Metrics record

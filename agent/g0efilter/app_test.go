@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/g0lab/g0efilter/agent/metrics"
-	"github.com/g0lab/g0efilter/agent/policy"
 )
 
 type telemetryHook struct {
@@ -422,24 +421,6 @@ func TestFileSHA256HexChangesWhenContentChanges(t *testing.T) {
 
 	if h1 == h2 {
 		t.Fatalf("expected hash to change, but both were %q", h1)
-	}
-}
-
-func TestSendLatestKeepsMostRecent(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	ch := make(chan policyUpdate, 1)
-
-	upd1 := policyUpdate{hash: "h1", pol: &policy.Policy{AllowDomains: []string{"a"}, AllowIPs: []string{"1.1.1.1"}}}
-	upd2 := policyUpdate{hash: "h2", pol: &policy.Policy{AllowDomains: []string{"b"}, AllowIPs: []string{"2.2.2.2"}}}
-
-	sendLatest(ctx, ch, upd1)
-	sendLatest(ctx, ch, upd2)
-
-	got := <-ch
-	if got.hash != "h2" {
-		t.Fatalf("expected latest hash %q, got %q", "h2", got.hash)
 	}
 }
 

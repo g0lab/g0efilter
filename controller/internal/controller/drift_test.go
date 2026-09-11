@@ -123,11 +123,9 @@ func TestStalePodsDoNotMakeTheRenderedConfigurationUnready(t *testing.T) {
 
 	reconcile(t, r, "web")
 
-	for _, conditionType := range []string{conditionReady, conditionConfigurationReady} {
-		got := conditionOf(t, c, conditionType)
-		if got.Status != metav1.ConditionTrue {
-			t.Errorf("%s = %s (%s), want True while only the pods are stale", conditionType, got.Status, got.Reason)
-		}
+	got := conditionOf(t, c, conditionReady)
+	if got.Status != metav1.ConditionTrue {
+		t.Errorf("%s = %s (%s), want True while only the pods are stale", conditionReady, got.Status, got.Reason)
 	}
 }
 
@@ -141,11 +139,36 @@ func TestAnInvalidSpecMarksTheConfigurationUnready(t *testing.T) {
 
 	reconcile(t, r, "web")
 
-	for _, conditionType := range []string{conditionReady, conditionConfigurationReady} {
-		got := conditionOf(t, c, conditionType)
-		if got.Status != metav1.ConditionFalse || got.Reason != reasonInvalidPolicy {
-			t.Errorf("%s = %s (%s), want False/%s", conditionType, got.Status, got.Reason, reasonInvalidPolicy)
-		}
+	got := conditionOf(t, c, conditionReady)
+	if got.Status != metav1.ConditionFalse || got.Reason != reasonInvalidPolicy {
+		t.Errorf("%s = %s (%s), want False/%s", conditionReady, got.Status, got.Reason, reasonInvalidPolicy)
+	}
+}
+
+// An earlier controller also wrote ConfigurationReady, which nothing updates once
+// it is gone; leaving it would report True on a policy that is no longer Ready.
+func TestAStaleConfigurationReadyConditionIsCleared(t *testing.T) {
+	t.Parallel()
+
+	policy := selectedPolicy()
+	policy.Status.Conditions = []metav1.Condition{{
+		Type:               legacyConfigurationReady,
+		Status:             metav1.ConditionTrue,
+		Reason:             reasonRendered,
+		LastTransitionTime: metav1.Now(),
+	}}
+
+	r, c := newReconciler(t, namespace(nil), policy)
+
+	reconcile(t, r, "web")
+
+	stored := getPolicy(t, c, "web")
+	if got := meta.FindStatusCondition(stored.Status.Conditions, legacyConfigurationReady); got != nil {
+		t.Errorf("%s = %s, want it removed", legacyConfigurationReady, got.Status)
+	}
+
+	if got := conditionOf(t, c, conditionReady); got.Status != metav1.ConditionTrue {
+		t.Errorf("%s = %s, want True", conditionReady, got.Status)
 	}
 }
 
@@ -160,7 +183,7 @@ func TestConditionsCarryTheObservedGeneration(t *testing.T) {
 
 	reconcile(t, r, "web")
 
-	for _, conditionType := range []string{conditionReady, conditionConfigurationReady, conditionPodsUpToDate} {
+	for _, conditionType := range []string{conditionReady, conditionPodsUpToDate} {
 		if got := conditionOf(t, c, conditionType); got.ObservedGeneration != 7 {
 			t.Errorf("%s observedGeneration = %d, want 7", conditionType, got.ObservedGeneration)
 		}

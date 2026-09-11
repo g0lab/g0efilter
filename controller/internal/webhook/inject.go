@@ -107,8 +107,8 @@ func (i *Injector) policyReady(
 	}
 
 	for _, condition := range policy.Status.Conditions {
-		// ConfigurationReady describes the rendered policy alone, so a rollout never blocks admission.
-		if condition.Type != "Ready" && condition.Type != "ConfigurationReady" {
+		// Ready describes the rendered policy alone, so a rollout never blocks admission.
+		if condition.Type != "Ready" {
 			continue
 		}
 
@@ -154,10 +154,21 @@ func (i *Injector) policyBaselineCurrent(
 		return fmt.Errorf("%w: %w", errPolicyNotReady, err)
 	}
 
-	// A reconciler that predates the field records nothing, so an upgrade or a
-	// rollback leaves it empty; denying then denies every pod mid-rollout.
 	recorded := policy.Status.ObservedClusterRevision
-	if recorded != "" && recorded != revision {
+
+	// Where no baseline selects the namespace the document is the policy spec
+	// alone, which Ready already covers, so an unrecorded revision cannot mean
+	// the ConfigMap is missing baseline rules.
+	if recorded == "" && revision == render.NoBaselines() {
+		return i.policyConfigMapExists(ctx, namespace, policy)
+	}
+
+	if recorded == "" {
+		return fmt.Errorf("%w: %s has not recorded the cluster baselines selecting %s",
+			errPolicyNotReady, policy.Name, namespace)
+	}
+
+	if recorded != revision {
 		return fmt.Errorf("%w: ConfigMap %s/%s is stale: it predates the cluster baselines selecting %s",
 			errPolicyNotReady, namespace, policy.Status.ConfigMapName, namespace)
 	}

@@ -153,9 +153,9 @@ func stalePodsStillAdmitTheirReplacements(t *testing.T, cluster *harness.K3sClus
 	cluster.WaitForStatusField(t, runtimeNamespace, "egresspolicy", "web", "{.status.outOfDatePods}", "1")
 
 	configured := cluster.Get(t, runtimeNamespace, "egresspolicy", "web",
-		`{.status.conditions[?(@.type=="ConfigurationReady")].status}`)
+		`{.status.conditions[?(@.type=="Ready")].status}`)
 	if configured != "True" {
-		t.Fatalf("ConfigurationReady = %q while pods are stale; replacements could not be admitted", configured)
+		t.Fatalf("Ready = %q while pods are stale; replacements could not be admitted", configured)
 	}
 
 	upToDate := cluster.Get(t, runtimeNamespace, "egresspolicy", "web",
