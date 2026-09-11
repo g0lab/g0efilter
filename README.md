@@ -223,6 +223,7 @@ See the [examples](examples/) for a complete setup. See
 - [Dashboard API endpoints](docs/endpoints.md)
 - [GitHub Actions](docs/github-actions.md)
 - [Remote unblock](docs/remote-unblock.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Verify container signatures
 

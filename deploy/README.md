@@ -19,8 +19,8 @@ library-chart values:
 | `kustomize/learning` | Runs in learning mode against a writable emptyDir, to build a policy by observation. |
 | `kustomize/metrics` | Serves Prometheus metrics on port 9095 with scrape annotations. |
 
-`tests/manifests/` checks parity. See
-[docs/kubernetes.md](../docs/kubernetes.md) for usage.
+`tests/manifests/` and `controller/internal/webhook/parity_test.go` check parity.
+See [docs/kubernetes.md](../docs/kubernetes.md) for usage.
 
 The Helm repository at `https://g0lab.github.io/g0efilter` and OCI namespace
 `oci://ghcr.io/g0lab/helm` publish the library, controller, and dashboard charts.

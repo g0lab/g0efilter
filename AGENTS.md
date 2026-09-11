@@ -6,7 +6,7 @@ g0efilter is a Go egress-filtering sidecar with a dashboard, Kubernetes packagin
 
 * `agent/`, `dashboard/`, and `shared/` are separate Go modules joined by the committed root `go.work`.
 * `controller/` is a separate Go module to keep `controller-runtime` out of the other production dependency trees.
-* `dashboard/ui/` contains the frontend. Its generated `dist/` is embedded by Go but is not committed.
+* `dashboard/ui/` contains the frontend. Its generated `dist/` contents are embedded by Go but are not committed.
 * `deploy/` contains the Kustomize, Helm, and Helm post-renderer implementations. They must inject the same sidecar configuration.
 * `tests/` is a Go module for manifest and repository-wide tests; nested `tests/e2e/` remains isolated.
 
@@ -27,12 +27,16 @@ scripts/test-fuzz.sh     # every Go fuzz target, FUZZTIME per target
 generated-file drift check. It installs envtest assets with the module's pinned
 `setup-envtest` tool.
 
+The dashboard embeds the UI build. After a clean checkout or frontend change,
+run `scripts/test-ui.sh` before `scripts/test-go.sh` to exercise the built UI in
+the Go tests.
+
 `VERSION` pins the release referenced by every manifest, doc and the injected
 sidecar image. It holds plain SemVer; tags carry a `v`. Change it only with
 `scripts/set-version.sh [X.Y.Z]`, which defaults to the next patch and also bumps
 the Helm chart version.
 
-Use `scripts/dev.sh` for local dashboard development; add `--traffic` for synthetic traffic. The `.devcontainer/` contains the supported full toolchain.
+Use `scripts/dev.sh` for local dashboard development; add `--traffic` for synthetic traffic. The `.devcontainer/` contains the supported primary toolchain.
 
 ## Generated Files
 

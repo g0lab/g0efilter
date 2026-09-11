@@ -7,6 +7,11 @@ Thanks for helping improve g0efilter.
 Discuss large features or filtering changes in an issue first. Small fixes,
 documentation, and tests can go straight to a pull request.
 
+The supported dev container provides Go, Node/pnpm, `golangci-lint`, and Docker.
+For a local setup, follow the versions pinned by `go.work` and
+`dashboard/ui/package.json`. Docker with the Compose plugin is required only for
+end-to-end tests.
+
 ## AI usage
 
 AI tools are welcome, but you must understand, review, and test their changes.
@@ -30,24 +35,28 @@ The agent, dashboard, shared library, controller, and test suites have separate
 Go modules. The committed `go.work` joins them for local development, while the
 canonical scripts test each module independently.
 
-Run the script for each area you changed:
+Run the script for each area you changed. The UI build is embedded by the
+dashboard, so run `scripts/test-ui.sh` before the Go suite after a clean checkout
+or a frontend change.
 
 ```sh
-scripts/test-go.sh
-scripts/test-action.sh
-scripts/test-ui.sh
+scripts/test-go.sh       # Go generation, tests, vet, lint, and manifest checks
+scripts/test-action.sh   # GitHub Action scripts and tests
+scripts/test-ui.sh       # UI type-check, lint, unit tests, and builds
 ```
 
 `scripts/test-go.sh` runs the controller's envtest suite and installs its test
-assets with the module's pinned `setup-envtest` tool. To run only that suite:
+assets with the module's pinned `setup-envtest` tool. It requires
+`golangci-lint`; workflow and chart linting also use `actionlint` and `ct` when
+installed and report a skip otherwise. To run only the controller suite:
 
 ```sh
 KUBEBUILDER_ASSETS="$(GOWORK=off go -C controller tool setup-envtest use -p path)" \
   GOWORK=off go -C controller test ./...
 ```
 
-Parser and policy changes should also get a fuzz run. `scripts/test-go.sh` already
-exercises each target's seed corpus; this mutates:
+Parser, policy, and rendering changes should also get a fuzz run.
+`scripts/test-go.sh` exercises each target's seed corpus; this mutates them:
 
 ```sh
 FUZZTIME=1m scripts/test-fuzz.sh
@@ -57,7 +66,8 @@ A crash is written to `testdata/fuzz/<Target>/` next to the target. Turn it into
 named unit test or inline fuzz seed; generated corpus files are ignored. CI runs a
 longer campaign nightly in `.github/workflows/fuzz.yaml`.
 
-Run the end-to-end tests for filtering changes. They need Docker:
+Run the relevant end-to-end modes for runtime, networking, security, or
+cross-component changes. They need Docker:
 
 ```sh
 cd tests/e2e
@@ -67,13 +77,20 @@ E2E_FILTER_MODE=dns-strict go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./.
 ```
 
 Images build automatically when missing; use `E2E_BUILD=force` after changing
-agent or dashboard code. See `tests/e2e/README.md` for modes and suite selection.
+agent or dashboard code. Controller, webhook, or Kubernetes packaging changes
+should also run the opt-in Kubernetes phases. See `tests/e2e/README.md` for the
+command, modes, and suite selection.
+
+## Generated files
 
 After changing `dashboard/store/ent/schema/`, run
 `scripts/gen-migration.sh <name>` and commit the generated client and migration.
 
 After changing `controller/api/`, run `scripts/gen-controller.sh` and commit the
 generated deepcopy methods, CRDs, controller RBAC, and Helm CRD templates.
+
+After frontend changes, run `pnpm build` in `dashboard/ui/`. The generated
+`dashboard/ui/dist/` contents are ignored and must not be committed.
 
 ## Security
 

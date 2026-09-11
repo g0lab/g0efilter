@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provisions the dev container with the full g0efilter toolchain:
+# Provisions the dev container with the primary g0efilter toolchain:
 # Go + golangci-lint + Ent codegen (backend) and pnpm (dashboard UI).
 # Migrations are generated from the Ent schema by Atlas-as-a-library
 # (scripts/gen-migration.sh) - no atlas binary required.
