@@ -81,6 +81,20 @@ agent or dashboard code. Controller, webhook, or Kubernetes packaging changes
 should also run the opt-in Kubernetes phases. See `tests/e2e/README.md` for the
 command, modes, and suite selection.
 
+## Comments
+
+Explain why, not what the code already says, and keep implementation comments
+to two lines. Exported declarations, CRD field documentation, generated files
+and tool directives are exempt: they are API documentation and are expected to
+run longer. A block that opens `SECURITY:`, `CONCURRENCY:` or `COMPAT:` may run
+longer too, where the constraint is what needs the room. Tutorials and
+background belong in `docs/`.
+
+`tests/repo/comments_test.go` only checks the comment blocks a change adds or
+edits against the merge base, so unrelated work never has to fix the backlog.
+A length check stops paragraphs; review still has to catch ten unnecessary
+one-line comments.
+
 ## Generated files
 
 After changing `dashboard/store/ent/schema/`, run
