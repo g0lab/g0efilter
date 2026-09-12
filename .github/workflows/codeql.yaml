@@ -48,7 +48,7 @@ jobs:
 
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@f12138dfd32d8b4aa1b60a32530c1a84ac83ffea # v0.9.6
+        uses: g0lab/g0efilter@3372730f093030b560f40efc92a8f59630716539 # v0.9.7
         with:
           egress-policy: audit
 
