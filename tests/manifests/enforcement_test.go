@@ -83,7 +83,6 @@ func TestSidecarComponentSharesNoProcessNamespace(t *testing.T) {
 
 func TestHelmEnforcementMatchesTheAuditComponent(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 
@@ -107,7 +106,6 @@ func TestHelmEnforcementMatchesTheAuditComponent(t *testing.T) {
 // packaging paths would drift apart on a default install.
 func TestHelmOptionalSidecarEnvIsAbsentByDefault(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 
@@ -132,7 +130,6 @@ func TestHelmOptionalSidecarEnvIsAbsentByDefault(t *testing.T) {
 // A null numeric value renders nothing; 0 is a real value and has to survive.
 func TestHelmRendersZeroValuedNumbers(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 
@@ -156,7 +153,6 @@ func TestHelmRendersZeroValuedNumbers(t *testing.T) {
 
 func TestHelmRendersTheFullSidecarOptionSurface(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 
@@ -209,7 +205,6 @@ func TestHelmRendersTheFullSidecarOptionSurface(t *testing.T) {
 
 func TestHelmRejectsMetricsProxyPortConflict(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 	chart = localHelmChart(t, chart)

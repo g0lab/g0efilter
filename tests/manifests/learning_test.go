@@ -114,7 +114,6 @@ func TestSidecarComponentAloneEnforces(t *testing.T) {
 
 func TestHelmLearningModeMatchesTheComponent(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 

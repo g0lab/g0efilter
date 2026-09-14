@@ -105,7 +105,6 @@ func TestSidecarComponentAloneExposesNoPort(t *testing.T) {
 
 func TestHelmMetricsMatchTheComponent(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 

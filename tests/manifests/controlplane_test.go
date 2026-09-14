@@ -17,7 +17,6 @@ func controllerTemplate(t *testing.T, args ...string) map[string]map[string]any 
 
 func controllerDocs(t *testing.T, args ...string) []map[string]any {
 	t.Helper()
-	serialHelm(t)
 
 	base := make([]string, 0, 5+len(args))
 	base = append(base, "template", "g0efilter", repoPath("deploy", "helm", controllerChart),
@@ -266,7 +265,6 @@ func TestControllerChartRBACMatchesTheGeneratedRole(t *testing.T) {
 // the two of them onto one key.
 func chartCRDsByName(t *testing.T) map[string]map[string]any {
 	t.Helper()
-	serialHelm(t)
 
 	byName := map[string]map[string]any{}
 
@@ -394,7 +392,6 @@ func TestControllerTopologySelectorTracksFullnameOverride(t *testing.T) {
 
 func TestDashboardChartRendersAndPersists(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	rendered := byKind(t, decodeDocs(t, run(t, "helm", "template", "dash",
 		repoPath("deploy", "helm", "g0efilter-dashboard"), "--namespace", "g0efilter-system")))
@@ -427,7 +424,6 @@ func TestDashboardChartRendersAndPersists(t *testing.T) {
 
 func TestDashboardCredentialChangeUpdatesPodTemplate(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	render := func(key string) map[string]map[string]any {
 		return byKind(t, decodeDocs(t, run(t, "helm", "template", "dash",
@@ -447,7 +443,6 @@ func TestDashboardCredentialChangeUpdatesPodTemplate(t *testing.T) {
 
 func TestDashboardNamesIncludeTheRelease(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	rendered := byKind(t, decodeDocs(t, run(t, "helm", "template", "dash",
 		repoPath("deploy", "helm", "g0efilter-dashboard"))))
@@ -460,7 +455,6 @@ func TestDashboardNamesIncludeTheRelease(t *testing.T) {
 
 func TestDashboardChartRejectsExistingAndInlineSecrets(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("deploy", "helm", "g0efilter-dashboard")
 
@@ -473,7 +467,6 @@ func TestDashboardChartRejectsExistingAndInlineSecrets(t *testing.T) {
 
 func TestDashboardChartRejectsMultipleJWTKeySources(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("deploy", "helm", "g0efilter-dashboard")
 
@@ -488,7 +481,6 @@ func TestDashboardChartRejectsMultipleJWTKeySources(t *testing.T) {
 
 func TestDashboardJWTRequiresTheDeclaredExternalKey(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("deploy", "helm", "g0efilter-dashboard")
 
@@ -508,7 +500,6 @@ func TestDashboardJWTRequiresTheDeclaredExternalKey(t *testing.T) {
 // Credentials given in values must never end up as literals in the pod spec.
 func TestDashboardChartKeepsCredentialsInASecret(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	rendered := byKind(t, decodeDocs(t, run(t, "helm", "template", "dash",
 		repoPath("deploy", "helm", "g0efilter-dashboard"), "--namespace", "g0efilter-system",

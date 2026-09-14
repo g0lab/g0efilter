@@ -105,7 +105,6 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `G0EFILTER_DASHBOARD_IMAGE` | `g0efilter-dashboard:test` | Dashboard image under test |
 | `E2E_MAX_MEMORY_MIB` | `256` | Memory ceiling |
 | `E2E_MAX_MEMORY_GROWTH_MIB` | `64` | Memory growth allowance |
-| `E2E_MAX_IDLE_CPU_PERCENT` | `25` | Idle CPU ceiling |
 | `LOAD_TOTAL` | `500` | Blocked requests in the load phase |
 | `LOAD_TOTAL_HTTP` | `LOAD_TOTAL / 2` | Blocked HTTP requests |
 | `LOAD_CONCURRENCY` | `50` | Load concurrency |
@@ -118,7 +117,6 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `LOAD_BLOCKED_URL` | `https://google.com` | URL used for blocked HTTPS traffic |
 | `LOAD_BLOCKED_URL_HTTP` | `http://google.com` | URL used for blocked HTTP traffic |
 | `E2E_LOAD_MAX_MEMORY_MIB` | `384` | Memory ceiling after the load phase |
-| `E2E_CPU_SAMPLE_WINDOW` | `6s` | Sampling window for the idle-CPU check |
 
 For the browser smoke test:
 

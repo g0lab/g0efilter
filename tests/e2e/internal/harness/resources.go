@@ -24,41 +24,6 @@ func (s *Stack) MemoryBytes(t *testing.T) int64 {
 	return parseCgroupValue(t, res.Output, "memory")
 }
 
-// cpuUsageNanos reads cumulative CPU time from the agent's cgroup.
-func (s *Stack) cpuUsageNanos(t *testing.T) int64 {
-	t.Helper()
-
-	res := s.ExecAgent(t, "sh", "-c",
-		"if [ -r /sys/fs/cgroup/cpu.stat ]; then "+
-			"awk '/^usage_usec/ { print $2 * 1000; found=1 } END { exit !found }' /sys/fs/cgroup/cpu.stat; "+
-			"elif [ -r /sys/fs/cgroup/cpuacct/cpuacct.usage ]; then cat /sys/fs/cgroup/cpuacct/cpuacct.usage; "+
-			"else exit 2; fi")
-	if res.ExitCode != 0 {
-		t.Fatalf("could not read agent CPU from cgroup: exit=%d output=%q", res.ExitCode, res.Output)
-	}
-
-	return parseCgroupValue(t, res.Output, "cpu")
-}
-
-// IdleCPUPercent samples CPU use over a window, as a percentage of one core.
-func (s *Stack) IdleCPUPercent(t *testing.T, window time.Duration) float64 {
-	t.Helper()
-
-	startCPU := s.cpuUsageNanos(t)
-	startWall := time.Now()
-
-	time.Sleep(window)
-
-	endCPU := s.cpuUsageNanos(t)
-	elapsed := time.Since(startWall)
-
-	if elapsed <= 0 {
-		t.Fatal("non-positive sampling window")
-	}
-
-	return float64(endCPU-startCPU) / float64(elapsed.Nanoseconds()) * 100
-}
-
 // AgentHealth reports whether the agent is still running and how many times it
 // has restarted. A crash loop leaves traffic assertions passing, so load and
 // resource phases check it explicitly.
