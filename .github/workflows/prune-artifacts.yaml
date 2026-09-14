@@ -1,0 +1,44 @@
+---
+name: Prune old artifacts
+
+on:
+  schedule:
+    # Every day at 2 AM UTC, after the nightly build workflows have settled.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      max-age-days:
+        description: Delete unexpired artifacts older than this many days
+        type: string
+        default: "1"
+      dry-run:
+        description: Log the candidates without deleting
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prune-artifacts
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # jq ships on ubuntu-latest, so there is nothing to install.
+      - name: Prune artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_MAX_AGE_DAYS: ${{ inputs.max-age-days || '1' }}
+          DRY_RUN: ${{ inputs.dry-run || 'false' }}
+        run: ./scripts/prune-artifacts.sh
