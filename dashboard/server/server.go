@@ -469,11 +469,8 @@ func clientIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// securityHeadersMiddleware sets standard HTTP security headers on every response,
-// which a reverse proxy may override or supplement in production.
-//
-// SECURITY: style-src must permit inline styles because Svelte style directives and
-// transitions write element style attributes at runtime; script-src stays same-origin.
+// SECURITY: Svelte needs inline element styles at runtime, but scripts remain same-origin.
+// These defaults apply to every response and may be strengthened by a reverse proxy.
 func (s *Server) securityHeadersMiddleware() gin.HandlerFunc {
 	const csp = "default-src 'self'; " +
 		"script-src 'self'; " +

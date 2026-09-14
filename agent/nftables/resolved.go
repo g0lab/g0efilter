@@ -42,11 +42,8 @@ func clampTTL(ttl time.Duration) time.Duration {
 	return ttl
 }
 
-// resolvedElementArgs builds the nft argv for adding one IP to a resolved set with a
-// timeout. A non-zero rule targets the "addr . proto . port" set instead.
-//
-// SECURITY: IPs come from untrusted DNS answers, so they are re-validated and their
-// family checked against the target set before touching the kernel.
+// SECURITY: IPs originate in untrusted DNS, so validate the address and target-set family
+// before passing either to nft. A non-zero rule targets the "addr . proto . port" set.
 func resolvedElementArgs(
 	verb, tablePrefix, ip string,
 	ttl time.Duration,
