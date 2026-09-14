@@ -17,9 +17,10 @@ import (
 	"time"
 )
 
-// maxCommentLines caps an implementation comment. Exported declarations, generated
-// files, tool directives, and tagged blocks are exempt.
-const maxCommentLines = 2
+const (
+	maxCommentLines            = 2
+	maxExceptionalCommentLines = 8
+)
 
 // commentExceptions mark a block whose length is the point: a constraint a reader
 // cannot infer from the code.
@@ -44,6 +45,10 @@ func TestNewImplementationCommentsAreShort(t *testing.T) {
 
 		content, err := os.ReadFile(filepath.Join("..", "..", name)) //nolint:gosec // repository path
 		if err != nil {
+			if !os.IsNotExist(err) {
+				t.Errorf("read %s: %v", name, err)
+			}
+
 			continue
 		}
 
@@ -67,7 +72,7 @@ func checkGoComments(t *testing.T, name string, content []byte, changed map[int]
 		return
 	}
 
-	documentation := exportedDocComments(file)
+	documentation := exportedDocComments(file, name)
 
 	for _, group := range file.Comments {
 		if documentation[group] {
@@ -75,7 +80,9 @@ func checkGoComments(t *testing.T, name string, content []byte, changed map[int]
 		}
 
 		lines := proseCommentLines(group)
-		if lines <= maxCommentLines {
+
+		limit := commentLineLimit(group.Text())
+		if lines <= limit {
 			continue
 		}
 
@@ -84,19 +91,24 @@ func checkGoComments(t *testing.T, name string, content []byte, changed map[int]
 			length: positions.Position(group.End()).Line - positions.Position(group.Pos()).Line + 1,
 		}
 
-		if !spanChanged(span, changed) || excepted(group.Text()) {
+		if !spanChanged(span, changed) {
 			continue
 		}
 
 		t.Errorf("%s: comment has %d lines; maximum is %d (%s)",
-			positions.Position(group.Pos()), lines, maxCommentLines, exceptionHint())
+			positions.Position(group.Pos()), lines, limit, exceptionHint(limit))
 	}
 }
 
 // exportedDocComments collects the doc comments that document the package or an
-// exported declaration, including struct fields, which carry the CRD documentation.
-func exportedDocComments(file *ast.File) map[*ast.CommentGroup]bool {
+// exported declaration. Test declarations are implementation, not public API.
+func exportedDocComments(file *ast.File, name string) map[*ast.CommentGroup]bool {
 	exempt := map[*ast.CommentGroup]bool{file.Doc: true}
+	if strings.HasSuffix(name, "_test.go") {
+		delete(exempt, nil)
+
+		return exempt
+	}
 
 	ast.Inspect(file, func(node ast.Node) bool {
 		documentation, exported := exportedDoc(node)
@@ -151,23 +163,38 @@ func specExported(spec ast.Spec) bool {
 	return false
 }
 
-// excepted matches a tag on any line, not just the first: a Go doc comment has to
-// open with the declaration's name, so the tag marks the paragraph that earns the room.
-func excepted(text string) bool {
+func opensException(text string) bool {
 	for line := range strings.SplitSeq(text, "\n") {
 		trimmed := strings.TrimLeft(strings.TrimSpace(line), "/*{ ")
+		if trimmed == "" {
+			continue
+		}
 
 		for _, tag := range commentExceptions() {
 			if strings.HasPrefix(trimmed, tag) {
 				return true
 			}
 		}
+
+		return false
 	}
 
 	return false
 }
 
-func exceptionHint() string {
+func commentLineLimit(text string) int {
+	if opensException(text) {
+		return maxExceptionalCommentLines
+	}
+
+	return maxCommentLines
+}
+
+func exceptionHint(limit int) string {
+	if limit == maxExceptionalCommentLines {
+		return "move extended rationale to docs/"
+	}
+
 	return "shorten it, move it to docs/, or open it with " + strings.Join(commentExceptions(), " / ")
 }
 
@@ -405,9 +432,9 @@ func Exported() {}
 // of implementation detail.
 func unexported() {}
 
-// tagged does a thing.
+// SECURITY: tagged does a thing.
 //
-// SECURITY: the tag earns the length, because
+// The tag earns the length, because
 // this constraint is not inferable
 // from the code below it.
 func tagged() {}
@@ -432,12 +459,12 @@ type documented struct {
 		t.Fatal(err)
 	}
 
-	documentation := exportedDocComments(file)
+	documentation := exportedDocComments(file, "fixture.go")
 
 	var flagged []int
 
 	for _, group := range file.Comments {
-		if documentation[group] || proseCommentLines(group) <= maxCommentLines || excepted(group.Text()) {
+		if documentation[group] || proseCommentLines(group) <= commentLineLimit(group.Text()) {
 			continue
 		}
 
@@ -449,23 +476,50 @@ type documented struct {
 	}
 }
 
-func TestExceptionTagIsFoundOnAnyLine(t *testing.T) {
+func TestExceptionTagMustOpenComment(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]bool{
-		"// name does a thing.\n//\n// SECURITY: and this is why it is long.": true,
-		"/* CONCURRENCY: the lock order matters here. */":                     true,
-		"// name does a thing.\n// It is simply verbose about it.":            false,
-		"// the word security appears but not as a tag":                       false,
+		"// SECURITY: this constraint needs room.\n// More rationale.": true,
+		"\n// CONCURRENCY: blank lines do not hide the opening tag.":   true,
+		"// name does a thing.\n// SECURITY: this tag is too late.":    false,
+		"// the word security appears but not as a tag":                false,
 	}
 	for text, want := range cases {
 		t.Run(text, func(t *testing.T) {
 			t.Parallel()
 
-			if got := excepted(text); got != want {
-				t.Errorf("excepted(%q) = %v, want %v", text, got, want)
+			if got := opensException(text); got != want {
+				t.Errorf("opensException(%q) = %v, want %v", text, got, want)
 			}
 		})
+	}
+}
+
+func TestExceptionLineLimit(t *testing.T) {
+	t.Parallel()
+
+	if got := commentLineLimit("// SECURITY: rationale"); got != maxExceptionalCommentLines {
+		t.Errorf("exception limit = %d, want %d", got, maxExceptionalCommentLines)
+	}
+
+	if got := commentLineLimit("// ordinary rationale"); got != maxCommentLines {
+		t.Errorf("ordinary limit = %d, want %d", got, maxCommentLines)
+	}
+}
+
+func TestTestFileDocumentationCountsAsImplementation(t *testing.T) {
+	t.Parallel()
+
+	code := "package fixture\n\n// TestThing has three\n// lines of unnecessary\n// narration.\nfunc TestThing() {}\n"
+
+	file, err := parser.ParseFile(token.NewFileSet(), "fixture_test.go", code, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if exportedDocComments(file, "fixture_test.go")[file.Comments[0]] {
+		t.Error("test function comment was treated as exported API documentation")
 	}
 }
 

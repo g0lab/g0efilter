@@ -150,11 +150,8 @@ func (s *Server) denyUnauthenticated(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 }
 
-// csrfMiddleware rejects cross-site state-changing requests using fetch metadata,
-// falling back to an Origin/Host check.
-//
-// SECURITY: requests without browser headers pass, because SameSite=Strict already
-// stops browsers attaching the cookie cross-site and non-browser clients carry none.
+// SECURITY: Fetch metadata rejects cross-site mutations, with an Origin/Host fallback.
+// Headerless clients pass because SameSite=Strict protects browsers from attaching the cookie.
 func (s *Server) csrfMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		r := c.Request
@@ -310,11 +307,8 @@ func validateAuthConfig(cfg Config) error {
 	}
 }
 
-// ensureAdminUser seeds or updates the admin login. Recover a lost password with the
-// reset-password subcommand.
-//
-// SECURITY: in session mode with no ADMIN_PASSWORD_HASH and no existing user it
-// generates a strong random password and prints it once, rather than failing startup.
+// SECURITY: When session mode lacks a password hash and existing user, generate a strong
+// password and print it once. The reset-password subcommand recovers lost credentials.
 func ensureAdminUser(
 	ctx context.Context, cfg Config, users UserStore, lg *slog.Logger, bootstrapOut io.Writer,
 ) error {
