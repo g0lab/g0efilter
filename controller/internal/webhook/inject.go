@@ -156,9 +156,8 @@ func (i *Injector) policyBaselineCurrent(
 
 	recorded := policy.Status.ObservedClusterRevision
 
-	// Where no baseline selects the namespace the document is the policy spec
-	// alone, which Ready already covers, so an unrecorded revision cannot mean
-	// the ConfigMap is missing baseline rules.
+	// With no baseline selecting the namespace the document is the policy spec
+	// alone, already covered by Ready, so an unrecorded revision is not a gap.
 	if recorded == "" && revision == render.NoBaselines() {
 		return i.policyConfigMapExists(ctx, namespace, policy)
 	}

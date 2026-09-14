@@ -562,9 +562,8 @@ func TestDeniesWhenAClusterBaselineWasRecreatedWithDifferentRules(t *testing.T) 
 	}
 }
 
-// A controller upgrade leaves the revision unrecorded until the new reconciler
-// runs. Where no baseline selects the namespace there is nothing it could have
-// missed, so the rollout must not reject the workloads being sidecared.
+// An upgrade leaves the revision unrecorded until the new reconciler runs; with
+// no baseline selecting the namespace, that must not reject sidecared workloads.
 func TestAdmitsWithoutARecordedRevisionWhenNoBaselineSelectsTheNamespace(t *testing.T) {
 	t.Parallel()
 
