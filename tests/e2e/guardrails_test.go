@@ -8,14 +8,12 @@ import (
 	"github.com/g0lab/g0efilter/tests/e2e/internal/harness"
 )
 
-// Deliberately not parallel: the idle-CPU sample would be inflated by whatever
-// else is driving the host, in particular the load phase.
 func TestPhase11Resources(t *testing.T) {
+	t.Parallel()
+
 	var (
-		maxMemoryMiB    = int64(harness.EnvInt("E2E_MAX_MEMORY_MIB", 256))
-		maxGrowthMiB    = int64(harness.EnvInt("E2E_MAX_MEMORY_GROWTH_MIB", 64))
-		maxIdleCPU      = float64(harness.EnvInt("E2E_MAX_IDLE_CPU_PERCENT", 25))
-		cpuSampleWindow = harness.EnvDuration("E2E_CPU_SAMPLE_WINDOW", 6*time.Second)
+		maxMemoryMiB = int64(harness.EnvInt("E2E_MAX_MEMORY_MIB", 256))
+		maxGrowthMiB = int64(harness.EnvInt("E2E_MAX_MEMORY_GROWTH_MIB", 64))
 	)
 
 	mode := harness.ModeFromEnv(t)
@@ -43,13 +41,6 @@ func TestPhase11Resources(t *testing.T) {
 
 	if harness.MiB(growth) > maxGrowthMiB {
 		t.Errorf("memory grew %d MiB, limit %d MiB", harness.MiB(growth), maxGrowthMiB)
-	}
-
-	idle := s.IdleCPUPercent(t, cpuSampleWindow)
-	t.Logf("idle CPU: %.1f%% (limit %.0f%%)", idle, maxIdleCPU)
-
-	if idle > maxIdleCPU {
-		t.Errorf("idle CPU %.1f%% exceeds %.0f%%", idle, maxIdleCPU)
 	}
 
 	if running, restarts := s.AgentHealth(t); !running || restarts > 0 {

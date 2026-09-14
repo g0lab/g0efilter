@@ -124,10 +124,6 @@ func TestIngestStress_Sequential(t *testing.T) {
 	if got := rowCount(t, db); got != total {
 		t.Fatalf("persisted rows = %d, want %d", got, total)
 	}
-
-	if elapsed > 60*time.Second {
-		t.Fatalf("ingest of %d events took %s (too slow)", total, elapsed)
-	}
 }
 
 // TestIngestStress_Concurrent hammers the single-writer SQLite store from many

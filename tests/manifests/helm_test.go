@@ -3,6 +3,7 @@ package manifests_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,84 +12,128 @@ import (
 	"testing"
 )
 
-var helmTestMu sync.Mutex //nolint:gochecknoglobals // Helm rewrites local chart dependencies
+var (
+	// CONCURRENCY: preparing a chart rewrites a directory, so two tests preparing the
+	// same chart at once corrupt it. Memoizing per source chart makes each preparation
+	// happen once; the mutex then only keeps unrelated preparations off Helm's shared
+	// cache. Rendering a prepared chart is read-only and stays parallel.
+	helmChartCache sync.Map   //nolint:gochecknoglobals // package-scoped chart preparation
+	helmPrepareMu  sync.Mutex //nolint:gochecknoglobals // Helm rewrites local chart dependencies
 
-func serialHelm(t *testing.T) {
-	t.Helper()
-	helmTestMu.Lock()
-	t.Cleanup(helmTestMu.Unlock)
-}
+	helmChartRoot string //nolint:gochecknoglobals // removed by TestMain
+)
 
-func updateHelmDependency(t *testing.T, chart string) string {
-	t.Helper()
-	helmTestMu.Lock()
-	defer helmTestMu.Unlock()
+func TestMain(m *testing.M) {
+	root, err := os.MkdirTemp("", "g0efilter-charts")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "create chart cache: %v\n", err)
+		os.Exit(1)
+	}
 
-	return localHelmChart(t, chart)
+	helmChartRoot = root
+
+	code := m.Run()
+
+	_ = os.RemoveAll(root)
+
+	os.Exit(code)
 }
 
 func repoPath(parts ...string) string {
 	return filepath.Join(append([]string{"..", ".."}, parts...)...)
 }
 
-// localHelmChart copies an OCI-backed consumer to a temporary directory and points
-// it at the local library chart. Tests must exercise the current source before its
-// release chart exists in the registry.
+// localHelmChart returns a chart resolving its g0efilter dependency from this
+// checkout: tests must exercise the source before its release chart exists.
 func localHelmChart(t *testing.T, chart string) string {
 	t.Helper()
+	requireBinary(t, "helm")
 
+	prepare, _ := helmChartCache.LoadOrStore(chart, sync.OnceValues(func() (string, error) {
+		helmPrepareMu.Lock()
+		defer helmPrepareMu.Unlock()
+
+		return prepareLocalChart(chart)
+	}))
+
+	path, err := prepare.(func() (string, error))()
+	if err != nil {
+		t.Fatalf("prepare %s: %v", chart, err)
+	}
+
+	return path
+}
+
+func prepareLocalChart(chart string) (string, error) {
 	chartFile := filepath.Join(chart, "Chart.yaml")
 
 	content, err := os.ReadFile(chartFile) //nolint:gosec // a repository test fixture
 	if err != nil {
-		t.Fatalf("read %s: %v", chartFile, err)
+		return "", fmt.Errorf("read %s: %w", chartFile, err)
 	}
 
 	const publishedRepository = "repository: oci://ghcr.io/g0lab/helm"
 	if !strings.Contains(string(content), publishedRepository) {
-		run(t, "helm", "dependency", "update", chart)
-
-		return chart
+		return chart, helmCommand("dependency", "update", chart)
 	}
 
-	temporaryChart := filepath.Join(t.TempDir(), "chart")
+	temporaryChart, err := os.MkdirTemp(helmChartRoot, "chart")
+	if err != nil {
+		return "", fmt.Errorf("create chart directory: %w", err)
+	}
 
 	absoluteChart, err := filepath.Abs(chart)
 	if err != nil {
-		t.Fatalf("resolve %s: %v", chart, err)
+		return "", fmt.Errorf("resolve %s: %w", chart, err)
 	}
 
 	err = os.CopyFS(temporaryChart, os.DirFS(absoluteChart))
 	if err != nil {
-		t.Fatalf("copy %s: %v", chart, err)
+		return "", fmt.Errorf("copy %s: %w", chart, err)
 	}
 
 	err = os.RemoveAll(filepath.Join(temporaryChart, "charts"))
 	if err != nil {
-		t.Fatalf("remove packaged dependencies: %v", err)
+		return "", fmt.Errorf("remove packaged dependencies: %w", err)
 	}
 
 	err = os.Remove(filepath.Join(temporaryChart, "Chart.lock"))
 	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("remove dependency lock: %v", err)
+		return "", fmt.Errorf("remove dependency lock: %w", err)
 	}
 
 	libraryChart, err := filepath.Abs(repoPath("deploy", "helm", "g0efilter"))
 	if err != nil {
-		t.Fatalf("resolve local library chart: %v", err)
+		return "", fmt.Errorf("resolve local library chart: %w", err)
 	}
 
 	content = []byte(strings.Replace(string(content), publishedRepository,
 		"repository: file://"+filepath.ToSlash(libraryChart), 1))
 
-	err = os.WriteFile(filepath.Join(temporaryChart, "Chart.yaml"), content, 0o600) //nolint:gosec // t.TempDir target
+	err = os.WriteFile(filepath.Join(temporaryChart, "Chart.yaml"), content, 0o600)
 	if err != nil {
-		t.Fatalf("write temporary Chart.yaml: %v", err)
+		return "", fmt.Errorf("write temporary Chart.yaml: %w", err)
 	}
 
-	run(t, "helm", "dependency", "update", temporaryChart)
+	return temporaryChart, helmCommand("dependency", "update", temporaryChart)
+}
 
-	return temporaryChart
+func helmCommand(args ...string) error {
+	bin, err := exec.LookPath("helm")
+	if err != nil {
+		return fmt.Errorf("locate helm: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), toolTimeout)
+	defer cancel()
+
+	//nolint:gosec // helm resolved through LookPath, with literal arguments
+	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("helm %v: %w\n%s", args, err, out)
+	}
+
+	return nil
 }
 
 func helmTemplate(t *testing.T, chart string) []byte {
@@ -101,7 +146,6 @@ func helmTemplate(t *testing.T, chart string) []byte {
 
 func TestHelmLibraryChartInjectsTheSidecar(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	docs := byKind(t, decodeDocs(t, helmTemplate(t, repoPath("examples", "helm", "demo"))))
 
@@ -122,7 +166,6 @@ func TestHelmLibraryChartInjectsTheSidecar(t *testing.T) {
 // the same workload would be filtered differently depending on the packaging.
 func TestHelmAndKustomizeAgreeOnTheSidecar(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	fromHelm := byKind(t, decodeDocs(t, helmTemplate(t, repoPath("examples", "helm", "demo"))))
 	fromKustomize := byKind(t, decodeDocs(t, renderKustomize(t, filepath.Join("testdata", "all-kinds"))))
@@ -175,7 +218,6 @@ func TestHelmChartsLint(t *testing.T) {
 	} {
 		t.Run(chart, func(t *testing.T) {
 			t.Parallel()
-			serialHelm(t)
 
 			localChart := localHelmChart(t, chart)
 			run(t, "helm", "lint", localChart)
@@ -251,7 +293,7 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 
 	chart := repoPath("examples", "helm", "demo")
 
-	chart = updateHelmDependency(t, chart)
+	chart = localHelmChart(t, chart)
 
 	tests := []struct {
 		name    string
@@ -269,7 +311,6 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			serialHelm(t)
 
 			out := runHelmExpectingFailure(t, "template", "release", chart, "--set", tc.set)
 			if !strings.Contains(out, tc.wantErr) {
@@ -281,7 +322,6 @@ func TestHelmValuesSchemaRejectsBadValues(t *testing.T) {
 
 func TestHelmAcceptsFractionalDurations(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 	chart = localHelmChart(t, chart)
@@ -295,7 +335,6 @@ func TestHelmAcceptsFractionalDurations(t *testing.T) {
 // coalescing, so a consumer that sets nothing still gets a working sidecar.
 func TestHelmDefaultsComeFromTheLibraryChart(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := filepath.Join("testdata", "minimal-consumer")
 
@@ -325,7 +364,6 @@ func TestHelmDefaultsComeFromTheLibraryChart(t *testing.T) {
 
 func TestHelmPolicyCommandUsesTheConfiguredConfigMap(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 

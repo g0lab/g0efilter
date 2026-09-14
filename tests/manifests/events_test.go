@@ -139,7 +139,6 @@ func TestSidecarComponentAloneGrantsNoAPIAccess(t *testing.T) {
 
 func TestHelmEventsRBACIsOptIn(t *testing.T) {
 	t.Parallel()
-	serialHelm(t)
 
 	chart := repoPath("examples", "helm", "demo")
 	chart = localHelmChart(t, chart)
