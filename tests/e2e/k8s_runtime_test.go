@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/g0lab/g0efilter/tests/e2e/internal/harness"
 )
@@ -140,6 +141,24 @@ func enforcementReloadsWithoutARestart(t *testing.T, cluster *harness.K3sCluster
 
 	if name := cluster.PodName(t, runtimeNamespace, "app=web"); name != pod {
 		t.Errorf("the pod was replaced to apply a reloadable setting: %s then %s", pod, name)
+	}
+
+	// Tightening has to reach a running pod too, or an operator leaving audit is unfiltered.
+	cluster.Kubectl(t, "patch", "-n", runtimeNamespace, "egresspolicy/web", "--type=merge",
+		"-p", `{"spec":{"sidecar":{"enforcement":"block"}}}`)
+
+	cluster.WaitForConfigMapContains(t, runtimeNamespace, "g0efilter-web", "policy.yaml", `"enforcement":"block"`)
+
+	harness.Eventually(t, 90*time.Second, 2*time.Second, func() (bool, string) {
+		out, allowed := cluster.Exec(t, runtimeNamespace, pod, "app",
+			"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+
+		return !allowed, "the audited destination is still allowed: " + out
+	})
+
+	if restarts := cluster.Get(t, runtimeNamespace, "pod", pod,
+		"{.status.initContainerStatuses[?(@.name=='g0efilter')].restartCount}"); restarts != before {
+		t.Errorf("the sidecar restarted to apply block: %s then %s", before, restarts)
 	}
 }
 
