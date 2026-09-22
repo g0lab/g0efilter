@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	entgo.io/ent v0.14.6
 	github.com/g0lab/g0efilter/shared v0.0.0
-	github.com/gin-contrib/cors v1.7.8
+	github.com/gin-contrib/cors v1.7.9
 	github.com/gin-gonic/gin v1.12.0
 	github.com/jwx-go/jwkfetch/v4 v4.0.4
 	github.com/lestrrat-go/httprc/v3 v3.0.6
