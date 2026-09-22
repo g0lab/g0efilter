@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@8588b8602d319638f3f7cda217c5b4c2f12abcca # v0.9.8
+        uses: g0lab/g0efilter@55823a90269e8e00308ee78b27cef2e3dd9137a8 # v0.9.9
         with:
           egress-policy: block
           allowed-domains: |
@@ -63,7 +63,7 @@ jobs:
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
       - name: Renovate
-        uses: renovatebot/github-action@dcfba84a42d1b5d5e49bf131b1bf53511851a123 # v46.3.1
+        uses: renovatebot/github-action@9fea9f0fbf80401026d11d03911d62b1f70fef1f # v46.3.3
         with:
           token: ${{ steps.app-token.outputs.token }}
           configurationFile: .github/renovate.json
