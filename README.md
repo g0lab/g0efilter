@@ -129,7 +129,7 @@ changing the workload manifests.
 
 ```yaml
 components:
-  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.9.9
+  - github.com/g0lab/g0efilter//deploy/kustomize/sidecar?ref=v0.10.0
 ```
 
 The component patches Deployment, StatefulSet, DaemonSet, ReplicaSet, Job and CronJob.
