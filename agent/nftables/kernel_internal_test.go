@@ -4,9 +4,12 @@ package nftables
 import (
 	"cmp"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"os"
@@ -117,27 +120,39 @@ func admittedRanges(t *testing.T, elements []any) []string {
 		spans = append(spans, span{first: first, last: last, tail: fmt.Append(nil, fields[1:]...)})
 	}
 
-	slices.SortFunc(spans, func(a, b span) int {
-		return cmp.Or(slices.Compare(a.tail, b.tail), a.first.Compare(b.first))
-	})
+	ranges := make([]string, 0, len(spans))
 
-	var ranges []string
-
-	for i := 0; i < len(spans); i++ {
-		merged := spans[i]
-
-		for i+1 < len(spans) && slices.Equal(spans[i+1].tail, merged.tail) &&
-			spans[i+1].first.Compare(merged.last.Next()) <= 0 {
-			i++
-			if spans[i].last.Compare(merged.last) > 0 {
-				merged.last = spans[i].last
-			}
-		}
-
+	for _, merged := range unionSpans(spans) {
 		ranges = append(ranges, fmt.Sprintf("%s|%s-%s", merged.tail, merged.first, merged.last))
 	}
 
 	return ranges
+}
+
+// unionSpans merges overlapping and adjacent spans that share a tail. It is kept
+// apart from the compiler's own merge so the parity tests check it independently.
+func unionSpans(spans []span) []span {
+	slices.SortFunc(spans, func(a, b span) int {
+		return cmp.Or(slices.Compare(a.tail, b.tail), a.first.Compare(b.first))
+	})
+
+	var merged []span
+
+	for _, next := range spans {
+		last := len(merged) - 1
+		if last >= 0 && slices.Equal(merged[last].tail, next.tail) &&
+			(!merged[last].last.Next().IsValid() || next.first.Compare(merged[last].last.Next()) <= 0) {
+			if next.last.Compare(merged[last].last) > 0 {
+				merged[last].last = next.last
+			}
+
+			continue
+		}
+
+		merged = append(merged, next)
+	}
+
+	return merged
 }
 
 func elementRange(t *testing.T, field any) (netip.Addr, netip.Addr) {
@@ -192,6 +207,182 @@ func TestKernelRulesetMatchesNftCLI(t *testing.T) {
 			t.Errorf("%s: kernel state differs from nft -f\n--- nft -f\n%s\n--- netlink\n%s", name, want, got)
 		}
 	}
+}
+
+// Random policies reach what the fixed variants cannot: overlapping, adjacent,
+// duplicate and host-bit entries, which nft -f only accepts once merged into ranges.
+func TestKernelRandomRulesetsMatchNftCLI(t *testing.T) {
+	requireKernel(t)
+
+	seed := uint64(time.Now().UnixNano())
+	rounds := 50
+
+	fixedSeed, err := strconv.ParseUint(os.Getenv("G0EFILTER_PARITY_SEED"), 10, 64)
+	if err == nil {
+		seed = fixedSeed
+	}
+
+	fixedRounds, err := strconv.Atoi(os.Getenv("G0EFILTER_PARITY_ROUNDS"))
+	if err == nil {
+		rounds = fixedRounds
+	}
+
+	rng := rand.New(rand.NewPCG(seed, 0)) //nolint:gosec // reproducible test inputs
+
+	for round := range rounds {
+		cfg := randomRulesetConfig(rng)
+
+		nftCLI(t, "", "flush", "ruleset")
+		nftCLI(t, atomicReplacePreamble+GenerateRuleset(mergedForNft(t, cfg)), "-f", "-")
+		want := kernelState(t)
+
+		nftCLI(t, "", "flush", "ruleset")
+		applyForTest(t, cfg)
+
+		if got := kernelState(t); got != want {
+			t.Fatalf("round %d, G0EFILTER_PARITY_SEED=%d: kernel state differs from nft -f\nconfig %+v"+
+				"\n--- nft -f\n%s\n--- netlink\n%s", round, seed, cfg, want, got)
+		}
+	}
+}
+
+func randomRulesetConfig(rng *rand.Rand) RulesetConfig {
+	ports := map[int]bool{}
+	for len(ports) < 3 {
+		ports[1024+rng.IntN(64512)] = true
+	}
+
+	distinct := slices.Collect(maps.Keys(ports))
+
+	cfg := RulesetConfig{
+		AllowV4:      randomEntries(rng, randomV4),
+		AllowV6:      randomEntries(rng, randomV6),
+		DenyV4:       randomEntries(rng, randomV4),
+		DenyV6:       randomEntries(rng, randomV6),
+		HTTPSPort:    distinct[0],
+		HTTPPort:     distinct[1],
+		DNSPort:      distinct[2],
+		Mode:         []string{"https", "dns", "dns-strict"}[rng.IntN(3)],
+		DefaultAllow: rng.IntN(2) == 0,
+		Audit:        rng.IntN(4) == 0,
+	}
+
+	if rng.IntN(3) == 0 {
+		names := []string{"docker0", "br-*", "cni0", "veth*"}
+		cfg.BridgeInterfaces = names[:1+rng.IntN(len(names))]
+	}
+
+	// Mirrors classifyAllow, which rejects constraints the mode cannot enforce.
+	if !cfg.DefaultAllow && cfg.Mode != "dns" {
+		cfg.AllowPortV4 = randomEntries(rng, func(rng *rand.Rand) string { return randomV4(rng) + randomPort(rng) })
+		cfg.AllowPortV6 = randomEntries(rng, func(rng *rand.Rand) string { return randomV6(rng) + randomPort(rng) })
+	}
+
+	return cfg
+}
+
+func randomEntries(rng *rand.Rand, entry func(*rand.Rand) string) []string {
+	if rng.IntN(4) == 0 {
+		return nil
+	}
+
+	entries := make([]string, 1+rng.IntN(30))
+	for i := range entries {
+		entries[i] = entry(rng)
+	}
+
+	return entries
+}
+
+// randomV4 draws from a narrow pool so overlaps and adjacency are common, and keeps
+// host bits in prefixes because policy validation allows them.
+func randomV4(rng *rand.Rand) string {
+	if rng.IntN(8) == 0 {
+		edges := []string{"0.0.0.0", "255.255.255.255", "0.0.0.0/1", "128.0.0.0/1", "255.255.255.0/24", "0.0.0.0/0"}
+
+		return edges[rng.IntN(len(edges))]
+	}
+
+	var raw [4]byte
+
+	binary.BigEndian.PutUint32(raw[:], 0x0a000000|rng.Uint32N(1024))
+
+	addr := netip.AddrFrom4(raw)
+	if rng.IntN(2) == 0 {
+		return addr.String()
+	}
+
+	return netip.PrefixFrom(addr, 16+rng.IntN(17)).String()
+}
+
+func randomV6(rng *rand.Rand) string {
+	if rng.IntN(8) == 0 {
+		edges := []string{"::", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "::/1", "8000::/1", "ff00::/8", "::/0"}
+
+		return edges[rng.IntN(len(edges))]
+	}
+
+	raw := [16]byte{0: 0xfd}
+
+	binary.BigEndian.PutUint32(raw[12:], rng.Uint32N(1024))
+
+	addr := netip.AddrFrom16(raw)
+	if rng.IntN(2) == 0 {
+		return addr.String()
+	}
+
+	return netip.PrefixFrom(addr, 104+rng.IntN(25)).String()
+}
+
+func randomPort(rng *rand.Rand) string {
+	return fmt.Sprintf(" . %s . %d", []string{"tcp", "udp"}[rng.IntN(2)], []int{1, 22, 53, 443, 65535}[rng.IntN(5)])
+}
+
+// mergedForNft rewrites every set as the disjoint ranges nft -f accepts.
+func mergedForNft(t *testing.T, cfg RulesetConfig) RulesetConfig {
+	t.Helper()
+
+	for _, entries := range []*[]string{
+		&cfg.AllowV4, &cfg.AllowV6, &cfg.AllowPortV4, &cfg.AllowPortV6, &cfg.DenyV4, &cfg.DenyV6,
+	} {
+		*entries = nftRanges(t, *entries)
+	}
+
+	return cfg
+}
+
+func nftRanges(t *testing.T, entries []string) []string {
+	t.Helper()
+
+	spans := make([]span, 0, len(entries))
+
+	for _, entry := range entries {
+		addr, tail, _ := strings.Cut(entry, " . ")
+
+		first, last, err := addrRange(addr)
+		if err != nil {
+			t.Fatalf("entry %q: %v", entry, err)
+		}
+
+		spans = append(spans, span{first: first, last: last, tail: []byte(tail)})
+	}
+
+	ranges := make([]string, 0, len(spans))
+
+	for _, merged := range unionSpans(spans) {
+		element := merged.first.String()
+		if merged.first != merged.last {
+			element += "-" + merged.last.String()
+		}
+
+		if len(merged.tail) > 0 {
+			element += " . " + string(merged.tail)
+		}
+
+		ranges = append(ranges, element)
+	}
+
+	return ranges
 }
 
 // trafficNet routes the documentation prefixes to a dummy interface, where an
