@@ -258,17 +258,7 @@ allowlist:
 	t.Run("every service reaches a server the policy does not allow-list", func(t *testing.T) {
 		s.WaitForAgentEvent(t, mark, harness.EventMatcher{Event: "notification.sent"}, 30*time.Second)
 
-		harness.Eventually(t, 30*time.Second, time.Second, func() (bool, string) {
-			got := s.NotificationsReceived(t)
-
-			// gotify identifies itself by the token it puts in the query.
-			gotify := strings.Contains(got, "query=token="+harness.NotifySinkGotifyToken)
-			delivered := strings.Count(got, "Blocked ")
-
-			return gotify && delivered >= 2,
-				"sink recorded gotify=" + strconv.FormatBool(gotify) +
-					" deliveries=" + strconv.Itoa(delivered) + ", got: " + got
-		})
+		waitForAlertDeliveries(t, s, "example.com")
 	})
 
 	t.Run("no service reports a delivery failure", func(t *testing.T) {
@@ -281,6 +271,24 @@ allowlist:
 			Event:  "dns.blocked",
 			Fields: map[string]string{"qname": "notify-sink"},
 		}, 3*time.Second)
+	})
+}
+
+// waitForAlertDeliveries requires both services in harness.NotifySinkURLs to
+// deliver an alert naming target.
+func waitForAlertDeliveries(t *testing.T, s *harness.Stack, target string) {
+	t.Helper()
+
+	harness.Eventually(t, 30*time.Second, time.Second, func() (bool, string) {
+		got := s.NotificationsReceived(t)
+
+		// gotify identifies itself by the token it puts in the query.
+		gotify := strings.Contains(got, "query=token="+harness.NotifySinkGotifyToken)
+		delivered := strings.Count(got, "Blocked ")
+
+		return gotify && delivered >= 2 && strings.Contains(got, target),
+			"sink recorded gotify=" + strconv.FormatBool(gotify) +
+				" deliveries=" + strconv.Itoa(delivered) + ", got: " + got
 	})
 }
 

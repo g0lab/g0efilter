@@ -103,6 +103,58 @@ func TestPhase15FileCapabilities(t *testing.T) {
 	}
 }
 
+// TestPhase23ProductionImage runs the shipped image, which has no shell or nft, so it
+// asserts only through traffic, logs, the notification sink and the binary itself.
+func TestPhase23ProductionImage(t *testing.T) {
+	t.Parallel()
+
+	mode := harness.ModeFromEnv(t)
+
+	cfg := harness.NotifyConfig(t, mode)
+	cfg.AgentImage = harness.ProductionImage()
+
+	s := harness.StartStack(t, cfg)
+
+	if image, _ := s.AgentContainerState(t); image != cfg.AgentImage {
+		t.Fatalf("agent runs %q, want the production image %q", image, cfg.AgentImage)
+	}
+
+	mark := s.AgentLogMark(t)
+
+	s.AssertAllowed(t, "https://github.com")
+	s.AssertBlocked(t, "https://google.com")
+
+	t.Run("a block alerts every notification service", func(t *testing.T) {
+		waitForAlertDeliveries(t, s, "google.com")
+
+		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{Event: "notification.target_failed"}, time.Second)
+	})
+
+	t.Run("a live policy reload takes effect", func(t *testing.T) {
+		s.WritePolicyAndWait(t, `---
+allowlist:
+  domains:
+    - 'google.com'
+`)
+
+		s.AssertAllowed(t, "https://google.com")
+		s.AssertBlocked(t, "https://github.com")
+	})
+
+	t.Run("the image's healthcheck passes", func(t *testing.T) {
+		res := s.ExecAgent(t, "/app/g0efilter", "healthcheck")
+		if res.ExitCode != 0 {
+			t.Errorf("healthcheck exit=%d output=%q", res.ExitCode, res.Output)
+		}
+
+		harness.Eventually(t, time.Minute, time.Second, func() (bool, string) {
+			_, health := s.AgentContainerState(t)
+
+			return health == "healthy", "Docker reports health=" + health
+		})
+	})
+}
+
 var (
 	bcryptHash        = regexp.MustCompile(`^\$2[aby]\$[0-9]{2}\$`)
 	generatedPassword = regexp.MustCompile(`^[A-Za-z0-9_-]{27,}$`)
