@@ -6,7 +6,7 @@ require (
 	github.com/florianl/go-nflog/v2 v2.3.0
 	github.com/g0lab/g0efilter/shared v0.0.0
 	github.com/google/nftables v0.3.0
-	github.com/mdlayher/netlink v1.9.1-0.20260312172110-2a932c0fc1ae
+	github.com/mdlayher/netlink v1.11.2
 	github.com/miekg/dns v1.1.73
 	github.com/nicholas-fedor/shoutrrr v0.21.1
 	github.com/rs/zerolog v1.35.1
@@ -20,7 +20,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mdlayher/socket v0.5.1 // indirect
+	github.com/mdlayher/socket v0.6.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
