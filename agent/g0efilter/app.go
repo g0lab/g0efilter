@@ -444,7 +444,7 @@ func checkedConfig(cfg config, pol *policy.Policy, lg *slog.Logger) (config, err
 	return next, nil
 }
 
-// swapServices keeps the old ruleset installed across the transition; nft -f is atomic.
+// swapServices keeps the old ruleset installed across the transition; the apply is atomic.
 func swapServices(
 	ctx context.Context,
 	cfg, next config,
@@ -556,14 +556,11 @@ func logStartupInfo(lg *slog.Logger, cfg config, version, date, commit string) {
 		shortCommit = commit[:7]
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	kernel := "unavailable"
 
-	nftVersion, err := nftables.Version(ctx)
-	if err != nil {
-		nftVersion = "unavailable"
-
-		lg.Debug("startup.nftables_version_error", "error", err.Error())
+	var uname unix.Utsname
+	if unix.Uname(&uname) == nil {
+		kernel = unix.ByteSliceToString(uname.Release[:])
 	}
 
 	kv := []any{
@@ -571,7 +568,7 @@ func logStartupInfo(lg *slog.Logger, cfg config, version, date, commit string) {
 		"version", version,
 		"commit", shortCommit,
 		"go_version", getGoVersion(),
-		"nft_version", nftVersion,
+		"kernel", kernel,
 		"build_date", date,
 		"mode", cfg.mode,
 		"default_action", cfg.defaultAction,

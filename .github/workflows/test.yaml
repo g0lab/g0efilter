@@ -87,9 +87,11 @@ jobs:
             g0efilter.cache-to=type=gha,scope=e2e-agent,mode=max
             g0efilter-dashboard.cache-from=type=gha,scope=e2e-dashboard
             g0efilter-dashboard.cache-to=type=gha,scope=e2e-dashboard,mode=max
+            g0efilter-production.cache-from=type=gha,scope=e2e-production
+            g0efilter-production.cache-to=type=gha,scope=e2e-production,mode=max
 
       - name: Save images
-        run: docker save g0efilter:test g0efilter-dashboard:test | gzip -1 > e2e-images.tar.gz
+        run: docker save g0efilter:test g0efilter:production g0efilter-dashboard:test | gzip -1 > e2e-images.tar.gz
 
       - name: Upload images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

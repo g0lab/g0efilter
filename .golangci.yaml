@@ -97,6 +97,7 @@ linters:
         - empty
         - stdlib
         - github.com/google/gopacket.Packet
+        - github.com/nicholas-fedor/shoutrrr/pkg/types.Service
     misspell:
       locale: US
     perfsprint:

@@ -17,21 +17,20 @@ RUN GOWORK=off go -C agent build -trimpath \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -o /build/g0efilter .
 
+# Adds sh, cat and nft so tests can inspect the agent; the image phase covers the
+# shipped scratch image built from agent/Containerfile.
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
-RUN apk add --no-cache nftables ca-certificates \
-    && update-ca-certificates
+RUN apk add --no-cache nftables
 
 WORKDIR /app
 
 COPY --from=builder /build/g0efilter /app/g0efilter
 
-# Must match the production Dockerfile: the caps e2e phase asserts this behaviour.
 RUN apk add --no-cache --virtual .setcap libcap \
     && setcap cap_net_admin=eip /app/g0efilter \
     && setcap cap_net_admin=ep "$(command -v nft)" \
     && getcap /app/g0efilter | grep -q cap_net_admin \
-    && getcap "$(command -v nft)" | grep -q cap_net_admin \
     && apk del .setcap
 
 USER 65534:65534

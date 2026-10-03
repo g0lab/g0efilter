@@ -61,6 +61,20 @@ the allowlist/denylist variables, `DEFAULT_ACTION`, and `LEARNING_MODE`.
 [shoutrrr](https://shoutrrr.nickfedor.com/) service URLs. Every service receives
 each alert. A failure in one service does not stop the others.
 
+To keep the image small, only these shoutrrr services are built in:
+`discord`, `generic` (webhooks), `gotify`, `ntfy`, `pushover`, `slack`, `smtp`,
+`teams` and `telegram`. Use `generic` to reach anything else that accepts a
+webhook.
+
+A bad notification URL never stops the agent. Each URL with another scheme, or
+one that fails to parse, is logged as `notification.target_invalid` and skipped;
+the remaining services still alert. If no URL is usable, alerts are disabled and
+`notification.config_invalid` is logged.
+
+Earlier releases linked every shoutrrr service. When upgrading, check the agent
+log for `notification.target_invalid` and move each skipped URL to a built-in
+service or `generic`.
+
 ```sh
 NOTIFICATION_URLS="ntfy://ntfy.sh/my-topic telegram://BOT_TOKEN@telegram?chats=CHAT_ID"
 ```
@@ -69,9 +83,8 @@ Whitespace separates URLs, never commas: Telegram lists its `chats` with commas.
 These URLs embed a token, so keep them in a secret store rather than in a
 manifest.
 
-Notification HTTP traffic and its hostname lookup bypass the filter. The `smtp`
-and `mqtt` services do not use that HTTP client, so their destinations must be
-allowed by the policy.
+Notification traffic, including `smtp`, and its hostname lookup bypass the
+filter, so the policy does not need to allow it.
 
 `NOTIFICATION_IGNORE_DOMAINS` is a comma-separated list of blocks that should
 not alert. The block is still enforced and logged.
@@ -99,9 +112,12 @@ cap_drop: [ALL]
 cap_add: [NET_ADMIN]
 ```
 
-The image sets `NET_ADMIN` as a file capability on `/app/g0efilter` and `nft`.
-Both binaries need it because an executed child does not inherit the parent's
-effective capabilities.
+The image sets `NET_ADMIN` as a file capability on `/app/g0efilter`, which
+programs nftables directly over netlink. The image is built `FROM scratch` and
+holds only the agent and CA certificates, so it has no shell or `nft` binary.
+
+The host needs Linux 5.6 or later. Every ruleset declares sets that match an
+address, protocol and port range together, and older kernels reject them.
 
 The container must still receive `NET_ADMIN` in its bounding set. Without it the
 kernel fails closed with `exec /app/g0efilter: operation not permitted`.
@@ -124,7 +140,7 @@ docker run --rm --cap-drop=ALL --cap-add=NET_ADMIN docker.io/g0lab/g0efilter cap
 kubectl exec <pod> -c g0efilter -- /app/g0efilter caps
 ```
 
-It checks the capability state and `nft` netlink access, exiting non-zero with a
+It checks the capability state and nftables netlink access, exiting non-zero with a
 remediation hint on failure.
 
 The dashboard image runs as uid 65532; its `/app/data` volume must be writable by

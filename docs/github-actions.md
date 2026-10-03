@@ -86,7 +86,8 @@ and request bodies.
 ## Notifications
 
 Use `notification-urls` to alert on blocked egress while the job runs. It accepts
-one or more [shoutrrr](https://shoutrrr.nickfedor.com/) URLs.
+one or more [shoutrrr](https://shoutrrr.nickfedor.com/) URLs for the
+[supported services](configuration.md#notifications).
 
 ```yaml
 - uses: g0lab/g0efilter@v0

@@ -14,6 +14,7 @@ import (
 func gatedWorkflows() []string {
 	return []string{
 		".github/workflows/action-test.yaml",
+		".github/workflows/ci-go.yaml",
 		".github/workflows/test.yaml",
 	}
 }

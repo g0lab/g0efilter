@@ -2,6 +2,7 @@ package repo_test
 
 import (
 	"encoding/json"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -12,8 +13,8 @@ import (
 
 var (
 	workflowGoPattern = regexp.MustCompile(`(?m)^\s*go-version:\s*'?([^'\s]+)'?\s*$`)
-	builderPattern    = regexp.MustCompile(`(?m)^FROM golang:([^-\s]+)-`)
-	builderTagPattern = regexp.MustCompile(`(?m)^FROM golang:(\S+)`)
+	golangImageRef    = regexp.MustCompile(`golang:\d`)
+	builderPattern    = regexp.MustCompile(`(?m)^FROM (?:--platform=\S+ )?golang:(([^-\s]+)\S*)`)
 	exactPatch        = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 )
 
@@ -47,16 +48,72 @@ func globAll(t *testing.T, dir string, patterns ...string) []string {
 	return slices.Concat(sets...)
 }
 
-// builderFiles returns every Containerfile that pins a golang builder image.
-func builderFiles(t *testing.T) []string {
+// mayPinBuilder keeps the walk to build files, so binaries and artifacts are never read.
+func mayPinBuilder(name string) bool {
+	return slices.ContainsFunc([]string{"Containerfile*", "Dockerfile*", "*.yaml", "*.yml", "*.md", "*.sh"},
+		func(pattern string) bool {
+			matched, _ := filepath.Match(pattern, name)
+
+			return matched
+		})
+}
+
+type builderImage struct {
+	tag     string
+	version string
+}
+
+// builderImages walks the repository rather than a list of files, so a new golang
+// pin cannot escape these checks, and fails on any reference it cannot parse.
+func builderImages(t *testing.T) map[string][]builderImage {
 	t.Helper()
 
-	root := filepath.Join("..", "..")
+	images := make(map[string][]builderImage)
 
-	return slices.Concat(
-		globAll(t, filepath.Join(root, "tests", "e2e"), "Containerfile*"),
-		globAll(t, filepath.Join(root, "examples", "build"), "Containerfile*"),
-	)
+	err := filepath.WalkDir(filepath.Join("..", ".."), func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if entry.IsDir() {
+			if slices.Contains([]string{".git", ".claude", "node_modules", "dist"}, entry.Name()) {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		if !mayPinBuilder(entry.Name()) {
+			return nil
+		}
+
+		content := readFile(t, path)
+
+		refs := len(golangImageRef.FindAllStringIndex(content, -1))
+		if refs == 0 {
+			return nil
+		}
+
+		matches := builderPattern.FindAllStringSubmatch(content, -1)
+		if len(matches) != refs {
+			t.Errorf("%s references a golang image outside a FROM line these checks parse", path)
+		}
+
+		for _, match := range matches {
+			images[path] = append(images[path], builderImage{tag: match[1], version: match[2]})
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk repository: %v", err)
+	}
+
+	if len(images) < 2 {
+		t.Fatalf("expected at least two golang builders, found %d; the pattern no longer matches", len(images))
+	}
+
+	return images
 }
 
 // workflowGoVersions maps each workflow that pins a Go version to that version.
@@ -207,25 +264,13 @@ func TestBuilderImagesMatchTheReleaseToolchain(t *testing.T) {
 	t.Parallel()
 
 	want := releaseGoVersion(t)
-	builders := builderFiles(t)
 
-	found := 0
-
-	for _, builder := range builders {
-		match := builderPattern.FindStringSubmatch(readFile(t, builder))
-		if match == nil {
-			continue
+	for path, images := range builderImages(t) {
+		for _, image := range images {
+			if image.version != want {
+				t.Errorf("%s builds with golang:%s, want golang:%s", path, image.version, want)
+			}
 		}
-
-		found++
-
-		if match[1] != want {
-			t.Errorf("%s builds with golang:%s, want golang:%s", filepath.Base(builder), match[1], want)
-		}
-	}
-
-	if found == 0 {
-		t.Error("no Containerfile pins a golang builder image; the pattern no longer matches")
 	}
 }
 
@@ -281,34 +326,22 @@ func compareVersions(a, b string) int {
 func TestBuilderImagesUseTheSameTag(t *testing.T) {
 	t.Parallel()
 
-	builders := builderFiles(t)
+	images := builderImages(t)
 
-	tags := make(map[string]string)
-
-	for _, builder := range builders {
-		match := builderTagPattern.FindStringSubmatch(readFile(t, builder))
-		if match == nil {
-			continue
-		}
-
-		tags[builder] = match[1]
+	paths := make([]string, 0, len(images))
+	for path := range images {
+		paths = append(paths, path)
 	}
 
-	if len(tags) < 2 {
-		t.Fatalf("expected at least two golang builders, found %d", len(tags))
-	}
+	sort.Strings(paths)
 
-	names := make([]string, 0, len(tags))
-	for name := range tags {
-		names = append(names, name)
-	}
+	want := images[paths[0]][0].tag
 
-	sort.Strings(names)
-
-	want := tags[names[0]]
-	for _, name := range names[1:] {
-		if tags[name] != want {
-			t.Errorf("%s builds with golang:%s but %s uses golang:%s", name, tags[name], names[0], want)
+	for _, path := range paths {
+		for _, image := range images[path] {
+			if image.tag != want {
+				t.Errorf("%s builds with golang:%s but %s uses golang:%s", path, image.tag, paths[0], want)
+			}
 		}
 	}
 }

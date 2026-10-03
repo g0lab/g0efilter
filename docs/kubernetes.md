@@ -14,6 +14,7 @@ injection adds a controller and webhook. Filtering still runs inside each pod.
   `runAsNonRoot: true` the packaging here sets.
 - Kubernetes 1.29 or later. Native sidecars use `restartPolicy: Always` and are
   stable in Kubernetes 1.33 and later.
+- Linux 5.6 or later on the nodes, for the nftables sets every ruleset declares.
 - A namespace that permits `NET_ADMIN`, which means Pod Security `privileged`.
   See [privileges](configuration.md#privileges) for why, and why the sidecar is
   still unprivileged in every other respect.
@@ -390,10 +391,8 @@ denied verdict is blocked or only logged.
 | `resources` | - | Requests and limits. |
 | `extraEnv` | - | For agent options this API does not model yet. |
 
-Allow the API server when Kubernetes Events are enabled. Dashboard,
-remote-unblock, notification HTTP and upstream-DNS connections use marked
+Allow the API server when Kubernetes Events are enabled. Dashboard, remote-unblock, notification and upstream-DNS connections use marked
 sockets. Their hostname lookups are marked too, so they need no policy rule.
-The `smtp` and `mqtt` notification services dial unmarked and must be allowed.
 
 Credentials use Secret references because `EgressPolicy` is readable as a custom
 resource. Kubelet resolves them in the pod's namespace, and the controller never
@@ -783,7 +782,8 @@ Check a pod's privileges directly:
 kubectl -n <ns> exec <pod> -c g0efilter -- /app/g0efilter caps
 ```
 
-It checks capabilities and child `nft` netlink access.
+It checks capabilities and nftables netlink access. The image has no shell; use
+`kubectl debug` with a tools image to inspect the pod's ruleset.
 
 ### A pod is running but unfiltered
 

@@ -19,12 +19,12 @@ coverage means all three, which is how CI runs them:
 
 | Mode | Suites |
 | --- | --- |
-| `https` | shared phases, IPv6, learning, audit, resources, load, dashboard, images, IP port constraints |
-| `dns` | shared phases, learning, resources, load, IP allowlist |
-| `dns-strict` | dns-strict enforcement, IP allowlist, IP/domain port constraints, load |
+| `https` | shared phases, IPv6, learning, audit, resources, load, dashboard, images, production image, IP port constraints |
+| `dns` | shared phases, learning, resources, load, IP allowlist, production image |
+| `dns-strict` | dns-strict enforcement, IP allowlist, IP/domain port constraints, load, production image |
 
-The suite builds `g0efilter:test` and `g0efilter-dashboard:test` from the
-repository source when they are missing, so a fresh clone needs no separate
+The suite builds `g0efilter:test`, `g0efilter:production` and
+`g0efilter-dashboard:test` from the repository source when they are missing, so a fresh clone needs no separate
 step. It will not rebuild an existing image, so rebuild explicitly after
 changing agent or dashboard code:
 
@@ -43,6 +43,15 @@ Select individual suites with `-run`:
 E2E_FILTER_MODE=dns-strict go test -count=1 -v -run '^TestPhase09DNSStrict$' .
 E2E_FILTER_MODE=https      go test -count=1 -v -run '^TestPhase14Dashboard$' .
 ```
+
+## Production image
+
+`g0efilter:test` adds a shell and `nft` so phases can inspect the agent and its
+ruleset. `g0efilter:production` is the shipped scratch image: phase 15 checks its
+file capabilities, and phase 23 runs it as the sidecar in every mode. Phase 23
+asserts only through traffic, agent logs, the notification sink and
+`/app/g0efilter healthcheck`, because harness helpers that exec `sh`, `cat` or
+`nft` in the agent cannot run against it.
 
 ## Kubernetes phases
 
@@ -101,8 +110,10 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `E2E_TESTCONTAINERS_LOG` | `0` | `1` prints Testcontainers lifecycle logs |
 | `E2E_BROWSER` | `0` | `1` runs the Playwright smoke test |
 | `E2E_K8S` | `0` | `true` runs the Kubernetes phases against a k3s container |
-| `G0EFILTER_IMAGE` | `g0efilter:test` | Agent image under test |
+| `G0EFILTER_IMAGE` | `g0efilter:test` | Agent image under test, with inspection tools |
+| `G0EFILTER_PRODUCTION_IMAGE` | `g0efilter:production` | Agent built from the shipped Containerfile, for the image phases |
 | `G0EFILTER_DASHBOARD_IMAGE` | `g0efilter-dashboard:test` | Dashboard image under test |
+| `E2E_NOTIFY_SINK_IMAGE` | pinned `busybox:stable` | gotify and ntfy sink |
 | `E2E_MAX_MEMORY_MIB` | `256` | Memory ceiling |
 | `E2E_MAX_MEMORY_GROWTH_MIB` | `64` | Memory growth allowance |
 | `LOAD_TOTAL` | `500` | Blocked requests in the load phase |

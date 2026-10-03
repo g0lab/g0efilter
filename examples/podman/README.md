@@ -56,7 +56,7 @@ request and a `BLOCKED` one for the second.
   to preserve the Dockerfile health check:
 
   ```sh
-  podman build --format docker -f examples/build/Containerfile -t g0efilter:local .
+  podman build --format docker --build-arg BINARY=source -f agent/Containerfile -t g0efilter:local .
   ```
 
 - `Notify=healthy` keeps `g0efilter.service` in its starting state

@@ -9,62 +9,6 @@ import (
 	"github.com/g0lab/g0efilter/agent/policy"
 )
 
-func TestResolvedElementArgsV4(t *testing.T) {
-	t.Parallel()
-
-	args, err := resolvedElementArgs("add", "g0efilter", "140.82.112.3", 300*time.Second, policy.DomainRule{})
-	if err != nil {
-		t.Fatalf("resolvedElementArgs: %v", err)
-	}
-
-	got := strings.Join(args, " ")
-	want := "add element ip g0efilter_v4 resolved_allow_v4 { 140.82.112.3 timeout 300s }"
-
-	if got != want {
-		t.Errorf("args = %q, want %q", got, want)
-	}
-}
-
-func TestResolvedElementArgsV6(t *testing.T) {
-	t.Parallel()
-
-	args, err := resolvedElementArgs("add", "g0efilter", "2606:4700:4700::1111", 120*time.Second, policy.DomainRule{})
-	if err != nil {
-		t.Fatalf("resolvedElementArgs: %v", err)
-	}
-
-	got := strings.Join(args, " ")
-	if !strings.Contains(got, "ip6 g0efilter_v6 resolved_allow_v6") {
-		t.Errorf("IPv6 address must target the v6 set: %q", got)
-	}
-}
-
-func TestResolvedElementArgsDeleteHasNoTimeout(t *testing.T) {
-	t.Parallel()
-
-	args, err := resolvedElementArgs("delete", "g0efilter", "1.2.3.4", 0, policy.DomainRule{})
-	if err != nil {
-		t.Fatalf("resolvedElementArgs: %v", err)
-	}
-
-	if strings.Contains(strings.Join(args, " "), "timeout") {
-		t.Error("delete element must not carry a timeout")
-	}
-}
-
-func TestResolvedElementArgsRejectsInvalidIP(t *testing.T) {
-	t.Parallel()
-
-	// DNS answers are untrusted: anything that isn't a clean IP must be rejected
-	// before it reaches an nft invocation.
-	for _, bad := range []string{"", "not-an-ip", "1.2.3.4; drop table", "999.1.1.1", "github.com"} {
-		_, err := resolvedElementArgs("add", "g0efilter", bad, time.Minute, policy.DomainRule{})
-		if err == nil {
-			t.Errorf("resolvedElementArgs(%q) = nil error, want rejection", bad)
-		}
-	}
-}
-
 func TestClampTTL(t *testing.T) {
 	t.Parallel()
 
@@ -142,50 +86,33 @@ func TestGenerateRulesetDNSStrictDefaultAllowDegrades(t *testing.T) {
 	}
 }
 
-func TestResolvedElementArgsConstrained(t *testing.T) {
-	t.Parallel()
+// Untrusted DNS input is rejected before any netlink traffic, each problem once.
+//
+//nolint:paralleltest // t.Setenv rules out parallel subtests
+func TestAddResolvedIPsRejectsUntrustedInput(t *testing.T) {
+	t.Setenv("BRIDGE_INTERFACES", "br0")
 
-	args, err := resolvedElementArgs("add", "g0efilter", "140.82.112.3", 300*time.Second,
-		policy.DomainRule{Pattern: "example.com", Proto: "tcp", Port: 443})
-	if err != nil {
-		t.Fatalf("resolvedElementArgs: %v", err)
+	tests := []struct {
+		name  string
+		ips   []string
+		rules []policy.DomainRule
+		want  string
+	}{
+		{"not an address", []string{"not-an-ip"}, nil, `invalid resolved IP: "not-an-ip"`},
+		{"unknown protocol", []string{"1.2.3.4"}, []policy.DomainRule{{Proto: "sctp", Port: 443}}, "sctp"},
+		{"port out of range", []string{"1.2.3.4"}, []policy.DomainRule{{Proto: "tcp", Port: 70000}}, "70000"},
 	}
 
-	got := strings.Join(args, " ")
-	want := "add element ip g0efilter_v4 resolved_allow_v4_port { 140.82.112.3 . tcp . 443 timeout 300s }"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := AddResolvedIPs(t.Context(), tt.ips, time.Minute, tt.rules)
+			if err == nil {
+				t.Fatal("AddResolvedIPs accepted untrusted input")
+			}
 
-	if got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-func TestResolvedElementArgsConstrainedV6(t *testing.T) {
-	t.Parallel()
-
-	args, err := resolvedElementArgs("add", "g0efilter", "2606:4700:4700::1111", 120*time.Second,
-		policy.DomainRule{Pattern: "example.com", Proto: "udp", Port: 53})
-	if err != nil {
-		t.Fatalf("resolvedElementArgs: %v", err)
-	}
-
-	got := strings.Join(args, " ")
-	if !strings.Contains(got, "resolved_allow_v6_port") || !strings.Contains(got, ". udp . 53") {
-		t.Errorf("got %q, want the v6 concat set with a udp/53 element", got)
-	}
-}
-
-func TestResolvedElementArgsRejectsBadConstraint(t *testing.T) {
-	t.Parallel()
-
-	for _, bad := range []policy.DomainRule{
-		{Pattern: "example.com", Proto: "sctp", Port: 443},
-		{Pattern: "example.com", Proto: "tcp; drop", Port: 443},
-		{Pattern: "example.com", Proto: "tcp", Port: 70000},
-		{Pattern: "example.com", Proto: "tcp", Port: -1},
-	} {
-		_, err := resolvedElementArgs("add", "g0efilter", "1.2.3.4", time.Minute, bad)
-		if err == nil {
-			t.Errorf("resolvedElementArgs(%+v) = nil error, want rejection", bad)
-		}
+			if got := strings.Count(err.Error(), tt.want); got != 1 {
+				t.Errorf("%q reported %d times, want 1:\n%v", tt.want, got, err)
+			}
+		})
 	}
 }

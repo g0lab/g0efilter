@@ -64,8 +64,8 @@ inputs:
       example `ntfy://ntfy.sh/my-topic` or
       `telegram://BOT_TOKEN@telegram?chats=CHAT_ID`. Pass these from
       `secrets`: each URL is masked in the log and handed to the container
-      through the environment, never on the command line. Supports every
-      shoutrrr service (gotify, ntfy, telegram, slack, discord, ...).
+      through the environment, never on the command line. Supports discord,
+      generic, gotify, ntfy, pushover, slack, smtp, teams and telegram.
     required: false
     default: ''
 

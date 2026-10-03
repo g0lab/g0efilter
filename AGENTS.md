@@ -21,6 +21,7 @@ scripts/test-go.sh       # Go generation, migrations, tests, vet, lint
 scripts/test-action.sh   # GitHub Action
 scripts/test-ui.sh       # dashboard UI
 scripts/test-fuzz.sh     # every Go fuzz target, FUZZTIME per target
+scripts/test-kernel.sh   # nftables netlink against a real kernel, in Docker
 ```
 
 `scripts/test-go.sh` includes the controller's envtest suite, vet, lint, and a

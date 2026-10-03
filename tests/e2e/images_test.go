@@ -13,9 +13,8 @@ import (
 	"github.com/g0lab/g0efilter/tests/e2e/internal/harness"
 )
 
-// TestPhase15FileCapabilities covers the image's privilege model: the agent runs
-// unprivileged and gets CAP_NET_ADMIN from file capabilities on itself and on the
-// nft binary it execs. The `caps` subcommand exercises both halves.
+// TestPhase15FileCapabilities covers the shipped image's privilege model: the agent
+// runs unprivileged and gets CAP_NET_ADMIN from a file capability on its binary.
 func TestPhase15FileCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -24,7 +23,7 @@ func TestPhase15FileCapabilities(t *testing.T) {
 		t.Skipf("file-capabilities phase runs once, in the https lane (got %s)", mode)
 	}
 
-	image := harness.Env("G0EFILTER_IMAGE", "g0efilter:test")
+	image := harness.ProductionImage()
 
 	tests := []struct {
 		name       string
@@ -102,6 +101,58 @@ func TestPhase15FileCapabilities(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPhase23ProductionImage runs the shipped image, which has no shell or nft, so it
+// asserts only through traffic, logs, the notification sink and the binary itself.
+func TestPhase23ProductionImage(t *testing.T) {
+	t.Parallel()
+
+	mode := harness.ModeFromEnv(t)
+
+	cfg := harness.NotifyConfig(t, mode)
+	cfg.AgentImage = harness.ProductionImage()
+
+	s := harness.StartStack(t, cfg)
+
+	if image, _ := s.AgentContainerState(t); image != cfg.AgentImage {
+		t.Fatalf("agent runs %q, want the production image %q", image, cfg.AgentImage)
+	}
+
+	mark := s.AgentLogMark(t)
+
+	s.AssertAllowed(t, "https://github.com")
+	s.AssertBlocked(t, "https://google.com")
+
+	t.Run("a block alerts every notification service", func(t *testing.T) {
+		waitForAlertDeliveries(t, s, "google.com")
+
+		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{Event: "notification.target_failed"}, time.Second)
+	})
+
+	t.Run("a live policy reload takes effect", func(t *testing.T) {
+		s.WritePolicyAndWait(t, `---
+allowlist:
+  domains:
+    - 'google.com'
+`)
+
+		s.AssertAllowed(t, "https://google.com")
+		s.AssertBlocked(t, "https://github.com")
+	})
+
+	t.Run("the image's healthcheck passes", func(t *testing.T) {
+		res := s.ExecAgent(t, "/app/g0efilter", "healthcheck")
+		if res.ExitCode != 0 {
+			t.Errorf("healthcheck exit=%d output=%q", res.ExitCode, res.Output)
+		}
+
+		harness.Eventually(t, time.Minute, time.Second, func() (bool, string) {
+			_, health := s.AgentContainerState(t)
+
+			return health == "healthy", "Docker reports health=" + health
+		})
+	})
 }
 
 var (

@@ -41,6 +41,27 @@ func (s *Stack) AgentHealth(t *testing.T) (bool, int) {
 	return info.State.Running, info.RestartCount
 }
 
+// AgentContainerState reports the image the agent container runs and Docker's
+// verdict from that image's HEALTHCHECK, empty when the image declares none.
+func (s *Stack) AgentContainerState(t *testing.T) (string, string) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	info, err := s.Agent.Inspect(ctx)
+	if err != nil {
+		t.Fatalf("inspect agent: %v", err)
+	}
+
+	health := ""
+	if info.State.Health != nil {
+		health = string(info.State.Health.Status)
+	}
+
+	return info.Config.Image, health
+}
+
 // parseCgroupValue reads the last non-empty line as a single integer. Taking the
 // last line (rather than merging every digit in the output) keeps a stray warning
 // from silently fabricating a value.

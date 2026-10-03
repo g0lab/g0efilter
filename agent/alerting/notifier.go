@@ -38,18 +38,20 @@ func NewNotifier() *Notifier {
 		return nil
 	}
 
+	// SO_MARK bypass so notifications are not blocked by our own filter
+	dial := netutil.MarkedDialer(10 * time.Second).DialContext
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			// SO_MARK bypass so notifications are not blocked by our own filter
-			DialContext:        netutil.MarkedDialer(10 * time.Second).DialContext,
+			DialContext:        dial,
 			MaxIdleConns:       10,
 			IdleConnTimeout:    30 * time.Second,
 			DisableCompression: false,
 		},
 	}
 
-	backend, err := newSender(rawURLs, client)
+	backend, err := newSender(rawURLs, client, dial)
 	if err != nil {
 		slog.Error("notification.config_invalid", "targets", redactAll(rawURLs), "err", err)
 
@@ -294,7 +296,7 @@ func buildDestinationString(info BlockedConnectionInfo) string {
 	return destination
 }
 
-func (n *Notifier) sendNotification(_ context.Context, info BlockedConnectionInfo) {
+func (n *Notifier) sendNotification(ctx context.Context, info BlockedConnectionInfo) {
 	source := buildSourceString(info.SourceIP, info.SourcePort)
 	destination := buildDestinationString(info)
 
@@ -304,7 +306,8 @@ func (n *Notifier) sendNotification(_ context.Context, info BlockedConnectionInf
 
 	slog.Debug("notification.posting", "host", n.host, "destination", info.Destination, "component", info.Component)
 
-	err := n.sender.send(title, message)
+	// WithoutCancel: the alert should still go out if the caller's request finishes first.
+	err := n.sender.send(context.WithoutCancel(ctx), title, message)
 	if err != nil {
 		slog.Warn("notification.post_failed", "host", n.host, "err", err)
 
