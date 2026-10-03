@@ -48,6 +48,16 @@ func globAll(t *testing.T, dir string, patterns ...string) []string {
 	return slices.Concat(sets...)
 }
 
+// mayPinBuilder keeps the walk to build files, so binaries and artifacts are never read.
+func mayPinBuilder(name string) bool {
+	return slices.ContainsFunc([]string{"Containerfile*", "Dockerfile*", "*.yaml", "*.yml", "*.md", "*.sh"},
+		func(pattern string) bool {
+			matched, _ := filepath.Match(pattern, name)
+
+			return matched
+		})
+}
+
 type builderImage struct {
 	tag     string
 	version string
@@ -66,10 +76,14 @@ func builderImages(t *testing.T) map[string][]builderImage {
 		}
 
 		if entry.IsDir() {
-			if slices.Contains([]string{".git", "node_modules", "dist"}, entry.Name()) {
+			if slices.Contains([]string{".git", ".claude", "node_modules", "dist"}, entry.Name()) {
 				return filepath.SkipDir
 			}
 
+			return nil
+		}
+
+		if !mayPinBuilder(entry.Name()) {
 			return nil
 		}
 

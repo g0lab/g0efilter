@@ -100,6 +100,8 @@ func TestCompilerRejectsUnsupportedSyntax(t *testing.T) {
 		"bad element":          "table ip t {\n    set s {\n        type ipv4_addr\n        elements = {1.2.3}\n    }\n}\n",
 		"unclosed table":       "table ip t {\n",
 		"unknown family":       "table inet t {\n}\n",
+		"elements without interval flag": "table ip t {\n    set s {\n        type ipv4_addr\n" +
+			"        elements = {192.0.2.1}\n    }\n}\n",
 	}
 
 	for name, ruleset := range tests {

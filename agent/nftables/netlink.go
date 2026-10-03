@@ -593,6 +593,11 @@ func (s *setDecl) build(table *nft.Table) (*nft.Set, []nft.SetElement, error) {
 		set.KeyType = nft.MustConcatSetType(types...)
 	}
 
+	// Elements are encoded as ranges, which only an interval set reads as such.
+	if len(s.elements) > 0 && !s.interval {
+		return nil, nil, fmt.Errorf("%w: set %s has elements but no interval flag", errRulesetSyntax, s.name)
+	}
+
 	elements, err := encodeElements(s.elements, set.Concatenation)
 	if err != nil {
 		return nil, nil, fmt.Errorf("set %s: %w", s.name, err)
