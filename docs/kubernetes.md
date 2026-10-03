@@ -14,6 +14,7 @@ injection adds a controller and webhook. Filtering still runs inside each pod.
   `runAsNonRoot: true` the packaging here sets.
 - Kubernetes 1.29 or later. Native sidecars use `restartPolicy: Always` and are
   stable in Kubernetes 1.33 and later.
+- Linux 5.6 or later on the nodes, for the nftables sets every ruleset declares.
 - A namespace that permits `NET_ADMIN`, which means Pod Security `privileged`.
   See [privileges](configuration.md#privileges) for why, and why the sidecar is
   still unprivileged in every other respect.

@@ -116,6 +116,9 @@ The image sets `NET_ADMIN` as a file capability on `/app/g0efilter`, which
 programs nftables directly over netlink. The image is built `FROM scratch` and
 holds only the agent and CA certificates, so it has no shell or `nft` binary.
 
+The host needs Linux 5.6 or later. Every ruleset declares sets that match an
+address, protocol and port range together, and older kernels reject them.
+
 The container must still receive `NET_ADMIN` in its bounding set. Without it the
 kernel fails closed with `exec /app/g0efilter: operation not permitted`.
 
