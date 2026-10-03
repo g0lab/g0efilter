@@ -23,7 +23,8 @@ workload and applies IP and domain rules without decrypting TLS traffic.
 - Start with either a default-deny allowlist or a default-allow denylist.
 - Test and build policies with audit and learning modes.
 - Reload policies without restarting the container.
-- Use the optional dashboard, remote unblock, and alerts through shoutrrr.
+- Use the optional dashboard, remote unblock, and alerts to chat, push, email
+  or [webhook services](docs/configuration.md#notifications).
 - Manage Kubernetes policies and inject sidecars with the optional controller.
 
 ## Quick start
@@ -75,7 +76,8 @@ docker compose up -d
 
 See the [examples](examples/) for complete Compose files and policies. See
 [the privilege model](docs/configuration.md#privileges) for how the container
-runs unprivileged with only `NET_ADMIN`.
+runs unprivileged with only `NET_ADMIN`. The agent image is built `FROM scratch`
+and programs nftables over netlink, so it has no shell or `nft` binary.
 
 ## Filter modes
 

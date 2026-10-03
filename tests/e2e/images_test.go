@@ -13,9 +13,8 @@ import (
 	"github.com/g0lab/g0efilter/tests/e2e/internal/harness"
 )
 
-// TestPhase15FileCapabilities covers the image's privilege model: the agent runs
-// unprivileged and gets CAP_NET_ADMIN from file capabilities on itself and on the
-// nft binary it execs. The `caps` subcommand exercises both halves.
+// TestPhase15FileCapabilities covers the shipped image's privilege model: the agent
+// runs unprivileged and gets CAP_NET_ADMIN from a file capability on its binary.
 func TestPhase15FileCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -24,7 +23,7 @@ func TestPhase15FileCapabilities(t *testing.T) {
 		t.Skipf("file-capabilities phase runs once, in the https lane (got %s)", mode)
 	}
 
-	image := harness.Env("G0EFILTER_IMAGE", "g0efilter:test")
+	image := harness.ProductionImage()
 
 	tests := []struct {
 		name       string

@@ -149,6 +149,9 @@ jobs:
       - name: Test
         run: scripts/test-go.sh --skip-lint
 
+      - name: Test nftables against the kernel
+        run: scripts/test-kernel.sh
+
       - name: Upload coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:

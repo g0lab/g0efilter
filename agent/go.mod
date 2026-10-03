@@ -5,7 +5,8 @@ go 1.27.0
 require (
 	github.com/florianl/go-nflog/v2 v2.3.0
 	github.com/g0lab/g0efilter/shared v0.0.0
-	github.com/google/gopacket v1.1.19
+	github.com/google/nftables v0.3.0
+	github.com/mdlayher/netlink v1.9.1-0.20260312172110-2a932c0fc1ae
 	github.com/miekg/dns v1.1.73
 	github.com/nicholas-fedor/shoutrrr v0.21.1
 	github.com/rs/zerolog v1.35.1
@@ -16,23 +17,14 @@ require (
 )
 
 require (
-	github.com/eclipse/paho.golang v0.23.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mdlayher/netlink v1.9.1-0.20260312172110-2a932c0fc1ae // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
-	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	golang.org/x/tools v0.50.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	mellium.im/reader v0.1.0 // indirect
-	mellium.im/sasl v0.3.2 // indirect
-	mellium.im/xmlstream v0.15.4 // indirect
-	mellium.im/xmpp v0.23.0 // indirect
 )
 
 replace github.com/g0lab/g0efilter/shared => ../shared

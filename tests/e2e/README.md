@@ -23,8 +23,8 @@ coverage means all three, which is how CI runs them:
 | `dns` | shared phases, learning, resources, load, IP allowlist |
 | `dns-strict` | dns-strict enforcement, IP allowlist, IP/domain port constraints, load |
 
-The suite builds `g0efilter:test` and `g0efilter-dashboard:test` from the
-repository source when they are missing, so a fresh clone needs no separate
+The suite builds `g0efilter:test`, `g0efilter:production` and
+`g0efilter-dashboard:test` from the repository source when they are missing, so a fresh clone needs no separate
 step. It will not rebuild an existing image, so rebuild explicitly after
 changing agent or dashboard code:
 
@@ -101,7 +101,8 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `E2E_TESTCONTAINERS_LOG` | `0` | `1` prints Testcontainers lifecycle logs |
 | `E2E_BROWSER` | `0` | `1` runs the Playwright smoke test |
 | `E2E_K8S` | `0` | `true` runs the Kubernetes phases against a k3s container |
-| `G0EFILTER_IMAGE` | `g0efilter:test` | Agent image under test |
+| `G0EFILTER_IMAGE` | `g0efilter:test` | Agent image under test, with inspection tools |
+| `G0EFILTER_PRODUCTION_IMAGE` | `g0efilter:production` | Agent built from the shipped Containerfile, for the image phase |
 | `G0EFILTER_DASHBOARD_IMAGE` | `g0efilter-dashboard:test` | Dashboard image under test |
 | `E2E_MAX_MEMORY_MIB` | `256` | Memory ceiling |
 | `E2E_MAX_MEMORY_GROWTH_MIB` | `64` | Memory growth allowance |

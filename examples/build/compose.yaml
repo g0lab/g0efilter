@@ -2,7 +2,9 @@ services:
   g0efilter:
     build:
       context: ../..
-      dockerfile: examples/build/Containerfile
+      dockerfile: agent/Containerfile
+      args:
+        BINARY: source
     image: g0efilter:latest
     container_name: g0efilter
     ports:

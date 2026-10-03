@@ -67,8 +67,6 @@ func handleCapsWith(
 	err = probe(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "g0efilter: nftables unreachable: %v\n", err)
-		_, _ = fmt.Fprintf(errOut, "g0efilter: the nft binary lost its file capabilities "+
-			"(check `getcap $(command -v nft)`)\n")
 
 		return true, 1
 	}

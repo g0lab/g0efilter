@@ -50,24 +50,25 @@ func ensureImages() error {
 	}
 
 	agent := Env("G0EFILTER_IMAGE", defaultAgentImage)
+	production := ProductionImage()
 	dashboard := Env("G0EFILTER_DASHBOARD_IMAGE", defaultDashboardImage)
 
 	// A custom tag is the caller's to provide; building would overwrite the
 	// default tags instead, which is not what they asked for.
-	if agent != defaultAgentImage || dashboard != defaultDashboardImage {
+	if agent != defaultAgentImage || production != defaultProductionImage || dashboard != defaultDashboardImage {
 		if mode == buildModeForce {
-			return fmt.Errorf("%w: custom tags %s, %s", errCannotBuildCustomTags, agent, dashboard)
+			return fmt.Errorf("%w: custom tags %s, %s, %s", errCannotBuildCustomTags, agent, production, dashboard)
 		}
 
 		return nil
 	}
 
-	if mode != buildModeForce && imageExists(agent) && imageExists(dashboard) {
+	if mode != buildModeForce && imageExists(agent) && imageExists(production) && imageExists(dashboard) {
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "building %s and %s (E2E_BUILD=%s); set E2E_BUILD=never to skip\n",
-		agent, dashboard, mode)
+	fmt.Fprintf(os.Stderr, "building %s, %s and %s (E2E_BUILD=%s); set E2E_BUILD=never to skip\n",
+		agent, production, dashboard, mode)
 
 	ctx, cancel := context.WithTimeout(context.Background(), buildTimeout)
 	defer cancel()
@@ -79,7 +80,7 @@ func ensureImages() error {
 
 	//nolint:gosec // fixed argv; the compose file path is derived from this source file
 	cmd := exec.CommandContext(ctx, "docker", "compose",
-		"-f", composeFile, "build", "g0efilter", "g0efilter-dashboard")
+		"-f", composeFile, "build", "g0efilter", "g0efilter-production", "g0efilter-dashboard")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 
@@ -89,6 +90,12 @@ func ensureImages() error {
 	}
 
 	return nil
+}
+
+// ProductionImage is the agent built from the shipped Containerfile, without the
+// inspection tools the functional suites need.
+func ProductionImage() string {
+	return Env("G0EFILTER_PRODUCTION_IMAGE", defaultProductionImage)
 }
 
 func imageExists(ref string) bool {

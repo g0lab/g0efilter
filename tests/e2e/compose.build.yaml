@@ -5,6 +5,15 @@ services:
       dockerfile: tests/e2e/Containerfile.agent
     image: g0efilter:test
 
+  # The shipped Containerfile, so image tests cover exactly what releases publish.
+  g0efilter-production:
+    build:
+      context: ../..
+      dockerfile: agent/Containerfile
+      args:
+        BINARY: source
+    image: g0efilter:production
+
   g0efilter-dashboard:
     build:
       context: ../..

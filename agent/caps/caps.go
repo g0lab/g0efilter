@@ -1,9 +1,9 @@
 // Package caps verifies the Linux capabilities g0efilter needs to program nftables.
 //
-// The capability is carried by file capabilities on the binaries rather than
-// raised at runtime: capabilities are per-thread, and the Go runtime execs `nft`
-// from an arbitrary thread, so a capset or ambient raise done from one goroutine
-// does not reliably apply to the thread that spawns the child.
+// The capability is carried by a file capability on the binary rather than raised
+// at runtime: capabilities are per-thread, and the kernel checks the thread that
+// sends each netlink message, so a capset raise done from one goroutine does not
+// reliably apply to whichever thread the Go runtime later sends from.
 package caps
 
 import (

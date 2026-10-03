@@ -24,8 +24,9 @@ const (
 const DefaultAPIKey = "your-secure-api-key-here"
 
 const (
-	defaultAgentImage     = "g0efilter:test"
-	defaultDashboardImage = "g0efilter-dashboard:test"
+	defaultAgentImage      = "g0efilter:test"
+	defaultProductionImage = "g0efilter:production"
+	defaultDashboardImage  = "g0efilter-dashboard:test"
 )
 
 // StackConfig describes a test stack.

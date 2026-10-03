@@ -2,18 +2,15 @@
 package nftables
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/florianl/go-nflog/v2"
 	"github.com/g0lab/g0efilter/agent/flow"
@@ -21,8 +18,6 @@ import (
 	"github.com/g0lab/g0efilter/agent/policy"
 	"github.com/g0lab/g0efilter/agent/recovery"
 	"github.com/g0lab/g0efilter/shared/actions"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
 )
 
 const (
@@ -40,31 +35,6 @@ var (
 )
 
 var interfacePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]+\*?$`)
-
-// Version returns the nftables version string.
-func Version(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "nft", "--version").Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get nft version: %w", err)
-	}
-
-	// Output is typically "nftables v1.0.9 (Spark In The Dark)"
-	version := strings.TrimPrefix(strings.TrimSpace(string(out)), "nftables ")
-
-	return version, nil
-}
-
-// Probe runs a read-only nftables command to confirm a child `nft` process can
-// reach netlink. The parent's capabilities do not carry across execve, so this
-// exercises the file capabilities on the nft binary itself.
-func Probe(ctx context.Context) error {
-	out, err := exec.CommandContext(ctx, "nft", "list", "ruleset").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("nft list ruleset: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-
-	return nil
-}
 
 func parseProxyPorts(httpsStr, httpStr, dnsStr string) (int, int, int, error) {
 	httpsPort, err := parsePort(httpsStr, "HTTPS")
@@ -205,46 +175,6 @@ func ApplyNftRulesAuto(allowlist []string, httpsPortStr, httpPortStr string) err
 	return ApplyNftRules(allowlist, httpsPortStr, httpPortStr, dnsPortStr)
 }
 
-func validateAndParseRuleset(ctx context.Context, ruleset string) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "nft", "-c", "-f", "-")
-	cmd.Stdin = strings.NewReader(ruleset)
-
-	var out bytes.Buffer
-
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("nft dry-run failed: %w\nOutput:\n%s", err, out.String())
-	}
-
-	return nil
-}
-
-func applyRuleset(ctx context.Context, ruleset string) error {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "nft", "-f", "-")
-	cmd.Stdin = strings.NewReader(ruleset)
-
-	var out bytes.Buffer
-
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("nft apply failed: %w\nOutput:\n%s", err, out.String())
-	}
-
-	return nil
-}
-
 // atomicReplacePreamble removes all managed tables inside the replacement transaction.
 const atomicReplacePreamble = `table ip g0efilter_v4
 delete table ip g0efilter_v4
@@ -349,11 +279,6 @@ func ApplyPolicyRulesWithContext(
 
 	// Avoid a default-open gap during live reload.
 	ruleset = atomicReplacePreamble + ruleset
-
-	err = validateAndParseRuleset(ctx, ruleset)
-	if err != nil {
-		return err
-	}
 
 	return applyRuleset(ctx, ruleset)
 }
@@ -1432,86 +1357,6 @@ type PacketInfo struct {
 	DestinationIP   string
 	SourcePort      int
 	DestinationPort int
-}
-
-// parseIPLayer decodes the IP layer from a raw packet payload.
-// Returns the parsed packet, source/destination IPs, protocol number, and whether parsing succeeded.
-func parseIPLayer(payload []byte) (gopacket.Packet, string, string, uint8, bool) {
-	switch payload[0] >> 4 {
-	case 4:
-		packet := gopacket.NewPacket(payload, layers.LayerTypeIPv4, gopacket.Default)
-
-		ipLayer := packet.Layer(layers.LayerTypeIPv4)
-		if ipLayer == nil {
-			return nil, "", "", 0, false
-		}
-
-		ip := ipLayer.(*layers.IPv4) //nolint:forcetypeassert
-
-		return packet, ip.SrcIP.String(), ip.DstIP.String(), uint8(ip.Protocol), true
-	case 6:
-		packet := gopacket.NewPacket(payload, layers.LayerTypeIPv6, gopacket.Default)
-
-		ip6Layer := packet.Layer(layers.LayerTypeIPv6)
-		if ip6Layer == nil {
-			return nil, "", "", 0, false
-		}
-
-		ip6 := ip6Layer.(*layers.IPv6) //nolint:forcetypeassert
-
-		return packet, ip6.SrcIP.String(), ip6.DstIP.String(), uint8(ip6.NextHeader), true
-	default:
-		return nil, "", "", 0, false
-	}
-}
-
-// parsePacketInfo extracts network layer information from a raw packet payload.
-// Supports both IPv4 and IPv6 packets.
-func parsePacketInfo(payload []byte) PacketInfo {
-	if len(payload) < minPacketSize {
-		return PacketInfo{}
-	}
-
-	packet, srcIP, dstIP, protoNum, ok := parseIPLayer(payload)
-	if !ok {
-		return PacketInfo{}
-	}
-
-	if tcpLayer := packet.Layer(layers.LayerTypeTCP); tcpLayer != nil {
-		tcp := tcpLayer.(*layers.TCP) //nolint:forcetypeassert
-
-		return PacketInfo{
-			Src:             fmt.Sprintf("%s:%d", srcIP, tcp.SrcPort),
-			Dst:             fmt.Sprintf("%s:%d", dstIP, tcp.DstPort),
-			Protocol:        "TCP",
-			SourceIP:        srcIP,
-			DestinationIP:   dstIP,
-			SourcePort:      int(tcp.SrcPort),
-			DestinationPort: int(tcp.DstPort),
-		}
-	}
-
-	if udpLayer := packet.Layer(layers.LayerTypeUDP); udpLayer != nil {
-		udp := udpLayer.(*layers.UDP) //nolint:forcetypeassert
-
-		return PacketInfo{
-			Src:             fmt.Sprintf("%s:%d", srcIP, udp.SrcPort),
-			Dst:             fmt.Sprintf("%s:%d", dstIP, udp.DstPort),
-			Protocol:        "UDP",
-			SourceIP:        srcIP,
-			DestinationIP:   dstIP,
-			SourcePort:      int(udp.SrcPort),
-			DestinationPort: int(udp.DstPort),
-		}
-	}
-
-	return PacketInfo{
-		Src:           srcIP,
-		Dst:           dstIP,
-		Protocol:      strconv.Itoa(int(protoNum)),
-		SourceIP:      srcIP,
-		DestinationIP: dstIP,
-	}
 }
 
 // mapPrefixToAction maps nftables log prefix strings to action types.

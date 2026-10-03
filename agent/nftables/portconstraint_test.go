@@ -4,7 +4,6 @@ package nftables
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"strings"
 	"testing"
 )
@@ -110,30 +109,5 @@ func TestApplyPolicyRulesRejectsUnenforceablePortConstraint(t *testing.T) {
 				t.Fatalf("want errUnsupportedPortConstraint, got %v", err)
 			}
 		})
-	}
-}
-
-func TestGeneratedRulesetPassesNftCheck(t *testing.T) {
-	t.Parallel()
-
-	_, lookErr := exec.LookPath("nft")
-	if lookErr != nil {
-		t.Skip("nft not available")
-	}
-
-	for _, mode := range []string{"https", "dns-strict", "dns"} {
-		ruleset := GenerateRuleset(portConstraintConfig(mode))
-
-		cmd := exec.Command("nft", "-c", "-f", "-") //nolint:noctx // short-lived check
-		cmd.Stdin = strings.NewReader(ruleset)
-
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			if strings.Contains(string(out), "not permitted") || strings.Contains(string(out), "Operation not permitted") {
-				t.Skipf("nft -c needs privileges unavailable here: %s", strings.TrimSpace(string(out)))
-			}
-
-			t.Fatalf("nft -c rejected the %s ruleset: %v\n%s", mode, err, out)
-		}
 	}
 }
