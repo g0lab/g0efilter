@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@55823a90269e8e00308ee78b27cef2e3dd9137a8 # v0.9.9
+        uses: g0lab/g0efilter@8dfe96053faaad5abd7ae7cf3425e1dff4354b71 # v0.10.0
         with:
           egress-policy: audit
 
