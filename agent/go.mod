@@ -8,12 +8,12 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/mdlayher/netlink v1.11.2
 	github.com/miekg/dns v1.1.73
-	github.com/nicholas-fedor/shoutrrr v0.21.1
+	github.com/nicholas-fedor/shoutrrr v0.21.2
 	github.com/rs/zerolog v1.35.1
 	go.yaml.in/yaml/v4 v4.0.0-rc.6
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.59.0
-	golang.org/x/sys v0.48.0
+	golang.org/x/sys v0.49.0
 )
 
 require (
