@@ -6,7 +6,7 @@ const { execSync } = require("node:child_process");
 const path = require("node:path");
 
 // Must match the notification-ignore input the workflow starts g0efilter with.
-process.env["INPUT_NOTIFICATION-IGNORE"] = "local\nexample.com";
+process.env["INPUT_NOTIFICATION-IGNORE"] = "example.com";
 
 const { buildSummary } = require(path.resolve(__dirname, "post.js"));
 
@@ -24,6 +24,8 @@ function hosts(section) {
 
 const REACHED_HOSTS = ["api.github.com"];
 const IGNORED_HOSTS = ["example.com"];
+// Logged by address only, so it shows in the destination column.
+const DEFAULT_MUTED = /`10\.255\.255\.1(:\d+)?`/;
 
 const lists = (section, wanted) => hosts(section).some((host) => wanted.includes(host));
 
@@ -36,6 +38,8 @@ function problemsWith(md) {
     [/\| Blocked \| [1-9]/.test(md), "the overview stopped counting the ignored block"],
     [lists(folded, IGNORED_HOSTS), "the ignored block was not folded into the collapsible"],
     [!lists(table, IGNORED_HOSTS), "the ignored block is still in the blocked table"],
+    [DEFAULT_MUTED.test(folded), "the default group stopped muting local addresses"],
+    [!DEFAULT_MUTED.test(table), "a workflow rule replaced the default group"],
   ];
 
   return checks.filter(([ok]) => !ok).map(([, problem]) => problem);

@@ -37,6 +37,11 @@ case "$LOCKDOWN" in
   *) echo "::error::lockdown-runner must be 'true' or 'false' (got '$LOCKDOWN')"; exit 1 ;;
 esac
 
+case "${NOTIFICATION_IGNORE_DEFAULT:-true}" in
+  true|false) ;;
+  *) echo "::error::notification-ignore-default must be 'true' or 'false' (got '$NOTIFICATION_IGNORE_DEFAULT')"; exit 1 ;;
+esac
+
 # GitHub-hosted only: disable later sudo/Docker so a later step cannot undo the hardening.
 apply_lockdown() {
   [ "$LOCKDOWN" = "true" ] || return 0

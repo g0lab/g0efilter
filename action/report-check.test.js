@@ -25,7 +25,7 @@ const GOOD = [
   "<summary>2 destinations (2 decisions) matched notification-ignore</summary>",
   "",
   "| `example.com` | https | `93.184.215.14:443` | 1 |",
-  "| - | nflog | `224.0.0.22` | 1 |",
+  "| - | nflog | `10.255.255.1:9` | 1 |",
   "",
   "</details>",
   "",
@@ -62,6 +62,20 @@ test("it catches a report that parsed nothing", () => {
     "the allowed host is missing from the report",
     "the overview stopped counting the ignored block",
     "the ignored block was not folded into the collapsible",
+    "the default group stopped muting local addresses",
+  ]);
+});
+
+// The bug that made one extra rule bring the local noise back.
+test("it catches a workflow rule that replaced the default group", () => {
+  const replaced = GOOD.replace("| - | nflog | `10.255.255.1:9` | 1 |\n", "").replace(
+    "| - | nflog | `95.111.222.228:443` | 1 |",
+    "| - | nflog | `95.111.222.228:443` | 1 |\n| - | nflog | `10.255.255.1:9` | 1 |",
+  );
+
+  assert.deepEqual(problemsWith(replaced), [
+    "the default group stopped muting local addresses",
+    "a workflow rule replaced the default group",
   ]);
 });
 

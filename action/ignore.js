@@ -246,10 +246,17 @@ function compileIgnoreRules(patterns) {
   return (entry) => rules.some((rule) => rule(entry));
 }
 
-function ignoreRulesFromEnv(env = process.env) {
-  const raw = env["INPUT_NOTIFICATION-IGNORE"];
+const DEFAULT_IGNORE = ["local"];
 
-  return compileIgnoreRules(parseIgnoreList(raw === undefined || raw === "" ? "local" : raw));
+// Workflow rules add to the default group rather than replace it.
+function ignoreListFromEnv(env = process.env) {
+  const defaults = env["INPUT_NOTIFICATION-IGNORE-DEFAULT"] === "false" ? [] : DEFAULT_IGNORE;
+
+  return [...defaults, ...parseIgnoreList(env["INPUT_NOTIFICATION-IGNORE"])];
+}
+
+function ignoreRulesFromEnv(env = process.env) {
+  return compileIgnoreRules(ignoreListFromEnv(env));
 }
 
 module.exports = {
@@ -257,5 +264,6 @@ module.exports = {
   parseIgnoreList,
   parseIgnoreRule,
   compileIgnoreRules,
+  ignoreListFromEnv,
   ignoreRulesFromEnv,
 };

@@ -37,7 +37,8 @@ for a working example.
 | `lockdown-runner` | Disable later sudo and Docker access | `false` |
 | `identity` | Names this runner in alerts and logs | `<owner>/<repo>/<workflow>` |
 | `notification-urls` | Whitespace-separated shoutrrr URLs to alert on | empty |
-| `notification-ignore` | Newline-separated rules for blocks that should not alert or clutter the report | `local` |
+| `notification-ignore` | Newline-separated rules for blocks that should not alert or clutter the report, added to the default group | empty |
+| `notification-ignore-default` | Mute the default group, `local` | `true` |
 
 The Action always permits GitHub's
 [runner communication domains](https://docs.github.com/actions/reference/runners/self-hosted-runners)
@@ -103,14 +104,28 @@ command line where any process on the runner could read it.
 Alerts are titled with `identity`, which defaults to `<owner>/<repo>/<workflow>`.
 Set it when several workflows notify the same channel.
 
-`notification-ignore` defaults to `local`, which hides multicast, link-local and
-private-range traffic. It also controls which entries the job summary folds
-away, even when notifications are off. Add `ip-only` to keep only domain blocks:
+The default group, `local`, mutes multicast, loopback, link-local, private-range
+and unspecified addresses. `notification-ignore` adds to it, so a noisy domain is
+one line. The same rules control which entries the job summary folds away, even
+when notifications are off. Muting never changes enforcement: the connection is
+still blocked and logged.
 
 ```yaml
     notification-ignore: |
-      local
+      *.telemetry.example.com
       ip-only
+```
+
+Set `notification-ignore-default: false` to alert on local traffic too.
+
+To share one list across workflows, keep it in an organization or repository
+Actions variable and pass it in. GitHub resolves the variable before the job
+starts, so no checkout is needed:
+
+```yaml
+    notification-ignore: |
+      ${{ vars.G0EFILTER_IGNORE }}
+      extra.example.com
 ```
 
 See [configuration](configuration.md#notifications) for the full rule syntax.

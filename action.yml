@@ -83,11 +83,18 @@ inputs:
       job summary collapses into their own group. Accepts domains
       (`example.com`, `*.example.com`), addresses and CIDRs (`10.0.0.0/8`),
       address classes (`multicast`, `loopback`, `link-local`, `private`,
-      `local`), `component:<name>` and `ip-only`. Defaults to `local`, which
-      drops the multicast, link-local and private-range noise a runner always
-      produces.
+      `local`), `component:<name>` and `ip-only`. Added to the default group
+      unless `notification-ignore-default` is `false`.
     required: false
-    default: 'local'
+    default: ''
+
+  notification-ignore-default:
+    description: >-
+      Mute the default group, `local`: the multicast, loopback, link-local,
+      private-range and unspecified addresses a runner always produces. Set
+      to `false` to alert on them too.
+    required: false
+    default: 'true'
 
   image:
     description: >-

@@ -4,6 +4,7 @@
 
 const { spawnSync } = require("node:child_process");
 const path = require("node:path");
+const { ignoreListFromEnv } = require("./ignore.js");
 
 const input = (name, fallback = "") => {
   const v = process.env[`INPUT_${name.toUpperCase()}`];
@@ -29,7 +30,8 @@ const res = spawnSync("bash", [path.join(__dirname, "setup.sh")], {
     LOCKDOWN_RUNNER: input("lockdown-runner", "false"),
     IDENTITY: input("identity"),
     NOTIFICATION_URLS: notificationUrls,
-    NOTIFICATION_IGNORE: input("notification-ignore", "local"),
+    NOTIFICATION_IGNORE: ignoreListFromEnv().join("\n"),
+    NOTIFICATION_IGNORE_DEFAULT: input("notification-ignore-default", "true"),
   },
 });
 

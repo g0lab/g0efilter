@@ -458,15 +458,16 @@ jobs:
         with:
           image: g0efilter:action-test
           allowed-domains: api.github.com
-          notification-ignore: |
-            local
-            example.com
+          notification-ignore: example.com
 
       - name: Reach the allowed domain
         run: .github/scripts/egress-probe.sh reach https://api.github.com
 
       - name: Reach the ignored domain, which is still blocked
         run: .github/scripts/egress-probe.sh denied https://example.com
+
+      - name: Reach a private address, muted by the default group
+        run: .github/scripts/egress-probe.sh tcp-denied 10.255.255.1 9
 
       - name: The report renders real logs and folds the ignored block away
         run: node action/report-check.js

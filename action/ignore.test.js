@@ -148,11 +148,37 @@ test("any matching rule wins", () => {
   assert.ok(!ignore(entry({ host: "other.test", dest: "1.2.3.4:443" })));
 });
 
-test("ignoreRulesFromEnv defaults to local and honours the input", () => {
-  assert.ok(ignoreRulesFromEnv({})(entry({ dest: "224.0.0.22" })));
-  assert.ok(ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE": "" })(entry({ dest: "224.0.0.22" })));
-  assert.ok(!ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE": "public" })(entry({ dest: "224.0.0.22" })));
+const MULTICAST = entry({ dest: "224.0.0.22" });
+const TELEMETRY = entry({ host: "a.telemetry.example.com", dest: "9.9.9.9:443" });
+const OTHER = entry({ host: "other.test", dest: "1.2.3.4:443" });
 
-  const custom = ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE": "local\n*.telemetry.example.com" });
-  assert.ok(custom(entry({ host: "a.telemetry.example.com", dest: "9.9.9.9:443" })));
+test("the default group mutes local noise when nothing is configured", () => {
+  for (const env of [{}, { "INPUT_NOTIFICATION-IGNORE": "" }, { "INPUT_NOTIFICATION-IGNORE-DEFAULT": "true" }]) {
+    const ignore = ignoreRulesFromEnv(env);
+    assert.ok(ignore(MULTICAST));
+    assert.ok(!ignore(OTHER));
+  }
+});
+
+test("workflow rules add to the default group instead of replacing it", () => {
+  const ignore = ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE": "*.telemetry.example.com" });
+  assert.ok(ignore(TELEMETRY));
+  assert.ok(ignore(MULTICAST));
+  assert.ok(!ignore(OTHER));
+});
+
+test("repeating local alongside the default changes nothing", () => {
+  const ignore = ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE": "local\n*.telemetry.example.com" });
+  assert.ok(ignore(TELEMETRY));
+  assert.ok(ignore(MULTICAST));
+  assert.ok(!ignore(OTHER));
+});
+
+test("turning the default group off makes local noise alert", () => {
+  const off = { "INPUT_NOTIFICATION-IGNORE-DEFAULT": "false" };
+  assert.ok(!ignoreRulesFromEnv(off)(MULTICAST));
+
+  const custom = ignoreRulesFromEnv({ ...off, "INPUT_NOTIFICATION-IGNORE": "*.telemetry.example.com" });
+  assert.ok(custom(TELEMETRY));
+  assert.ok(!custom(MULTICAST));
 });

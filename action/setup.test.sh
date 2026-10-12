@@ -70,6 +70,7 @@ run_setup 1 "mode must be" "invalid mode rejected" FILTER_MODE=bogus
 run_setup 1 "egress-policy must be" "invalid egress-policy rejected" EGRESS_POLICY=bogus
 run_setup 1 "log-level must be" "invalid log-level rejected" LOG_LEVEL=verbose
 run_setup 1 "lockdown-runner must be" "invalid lockdown-runner rejected" LOCKDOWN_RUNNER=maybe
+run_setup 1 "notification-ignore-default must be" "invalid notification-ignore-default rejected" NOTIFICATION_IGNORE_DEFAULT=no
 
 # Accept paths run through to the stubbed container and exit 0.
 run_setup 0 "" "defaults accepted"
@@ -241,6 +242,33 @@ env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
   DOCKER_CALLS="$WORK/docker.log" bash "$SETUP" > /dev/null 2>&1
 ! grep -Fq -- 'NOTIFICATION_URLS' "$WORK/docker.log"
 check $? "no notification config when the input is unset"
+
+# run_main <input-env...>: runs the real entrypoint, so the test covers what the
+# workflow inputs become in the container, not just setup.sh.
+NODE="$(command -v node)"
+run_main() {
+  rm -rf "$WORK/tmp"
+  : > "$WORK/docker.log"
+  env -i PATH="$WORK/bin:/usr/bin:/bin" RUNNER_TEMP="$WORK/tmp" \
+    DOCKER_CALLS="$WORK/docker.log" "$@" \
+    "$NODE" "$HERE/main.js" > /dev/null 2>&1
+}
+
+run_main "INPUT_NOTIFICATION-IGNORE=*.telemetry.example.com" &&
+  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local,*.telemetry.example.com' "$WORK/docker.log"
+check $? "a workflow ignore rule is added to the default group"
+
+run_main &&
+  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local ' "$WORK/docker.log"
+check $? "the default group mutes local noise when no rules are set"
+
+run_main "INPUT_NOTIFICATION-IGNORE-DEFAULT=false" "INPUT_NOTIFICATION-IGNORE=*.telemetry.example.com" &&
+  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=*.telemetry.example.com ' "$WORK/docker.log"
+check $? "turning the default group off drops local"
+
+run_main "INPUT_NOTIFICATION-IGNORE-DEFAULT=false" &&
+  ! grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS' "$WORK/docker.log"
+check $? "no ignore rules reach the filter with the default off and none set"
 
 echo "---"
 echo "pass=$pass fail=$fail"
