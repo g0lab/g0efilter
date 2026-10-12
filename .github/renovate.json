@@ -137,6 +137,12 @@
       "groupName": "go toolchain"
     },
     {
+      "description": "Docker Hub refuses tag pages past 10, so golang's tag list comes back without timestamps and the default timestamp-required holds its builder images back forever. The golang-version pin in the same group still soaks.",
+      "matchPackageNames": ["golang"],
+      "matchDatasources": ["docker"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
       "description": "curl and k3s are throwaway test and demo peers, wanted at whatever latest is rather than at a recorded version. Un-ignoring examples/ would otherwise start pinning them.",
       "matchPackageNames": ["/curl/", "/k3s/"],
       "enabled": false
