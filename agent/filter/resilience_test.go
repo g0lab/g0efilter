@@ -429,7 +429,10 @@ func TestServeTCPSurvivesAPanickingHandler(t *testing.T) {
 	cancel()
 
 	select {
-	case <-serveErr:
+	case err := <-serveErr:
+		if err != nil {
+			t.Fatalf("serveTCP = %v, want nil on cancellation", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serveTCP did not return after cancellation")
 	}

@@ -90,7 +90,10 @@ func RunDashboard(args []string, version, date, commit string) error {
 		lg.Info("shutdown.graceful", "grace_period", shutdownGracePeriod.String())
 
 		select {
-		case <-errCh:
+		case err := <-errCh:
+			if err != nil {
+				lg.Warn("shutdown.error", "err", err)
+			}
 		case <-time.After(shutdownGracePeriod):
 			lg.Warn("shutdown.timeout", "timeout", shutdownGracePeriod.String())
 		}

@@ -549,7 +549,7 @@ func getsockoptDst(fd, level, opt uintptr, p unsafe.Pointer, optlen *uint32) err
 		uintptr(unsafe.Pointer(optlen)), // #nosec G103
 		0)
 	if errno != 0 {
-		return errno
+		return fmt.Errorf("level %d opt %d: %w", level, opt, errno)
 	}
 
 	return nil
