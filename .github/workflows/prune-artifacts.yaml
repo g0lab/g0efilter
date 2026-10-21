@@ -32,7 +32,7 @@ jobs:
       actions: write
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@54002a184fb2253b63175c0e592f6b1b477a726d # v0.10.1
+        uses: g0lab/g0efilter@f63e1c6bd8f5e2730aa37af077120f17f4f569a3 # v0.10.2
         with:
           egress-policy: audit
 
