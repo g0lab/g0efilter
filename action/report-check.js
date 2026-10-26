@@ -22,7 +22,7 @@ function hosts(section) {
   return [...section.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]);
 }
 
-const REACHED_HOSTS = ["api.github.com"];
+const REACHED_HOSTS = ["probe.g0lab.com"];
 const IGNORED_HOSTS = ["example.com"];
 // Logged by address only, so it shows in the destination column.
 const DEFAULT_MUTED = /`10\.255\.255\.1(:\d+)?`/;

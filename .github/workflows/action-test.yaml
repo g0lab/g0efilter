@@ -131,16 +131,16 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Allowed HTTPS domain works
-        run: .github/scripts/egress-probe.sh reach https://api.github.com
+        run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted HTTPS domain is blocked
         run: .github/scripts/egress-probe.sh denied https://example.com
 
       - name: Allowed HTTP host works
-        run: .github/scripts/egress-probe.sh reach-http http://api.github.com
+        run: .github/scripts/egress-probe.sh reach-http http://probe.g0lab.com
 
       - name: Non-allowlisted HTTP host is blocked
         run: .github/scripts/egress-probe.sh denied-http http://example.com
@@ -161,7 +161,7 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       # Its post hook runs before g0efilter tears down.
       - name: Register later action with a blocked post hook
@@ -213,10 +213,10 @@ jobs:
         with:
           image: g0efilter:action-test
           mode: dns
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Allowed domain resolves and connects
-        run: .github/scripts/egress-probe.sh reach https://api.github.com
+        run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked by dns mode
         run: .github/scripts/egress-probe.sh denied https://example.com
@@ -240,10 +240,10 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Allowed domain works over host network
-        run: .github/scripts/egress-probe.sh docker-reach host https://api.github.com
+        run: .github/scripts/egress-probe.sh docker-reach host https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked over host network
         run: .github/scripts/egress-probe.sh docker-denied host https://example.com
@@ -267,16 +267,16 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Bridge tables and future-network wildcard are installed
         run: .github/scripts/egress-probe.sh nft-bridge-tables
 
       - name: Default bridge filters allowed and blocked domains
-        run: .github/scripts/egress-probe.sh bridge-check default https://api.github.com https://example.com
+        run: .github/scripts/egress-probe.sh bridge-check default https://probe.g0lab.com https://example.com
 
       - name: A custom bridge created after startup is also filtered
-        run: .github/scripts/egress-probe.sh bridge-check g0efilter-e2e https://api.github.com https://example.com
+        run: .github/scripts/egress-probe.sh bridge-check g0efilter-e2e https://probe.g0lab.com https://example.com
 
       - name: Containers on one bridge still reach each other
         run: .github/scripts/egress-probe.sh peer-reach g0efilter-e2e-peers 8080
@@ -301,7 +301,7 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: IPv6 filter tables are installed
         run: .github/scripts/egress-probe.sh nft-ipv6-tables
@@ -325,7 +325,7 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: DNS-over-TCP to a non-allowlisted resolver is blocked
         run: .github/scripts/egress-probe.sh tcp-denied 8.8.8.8 53
@@ -346,7 +346,7 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Baseline - non-allowlisted domain is blocked
         run: .github/scripts/egress-probe.sh denied https://example.com
@@ -378,10 +378,10 @@ jobs:
         with:
           image: g0efilter:action-test
           mode: dns-strict
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       - name: Allowed domain resolves and connects
-        run: .github/scripts/egress-probe.sh reach https://api.github.com
+        run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked
         run: .github/scripts/egress-probe.sh denied https://example.com
@@ -392,7 +392,7 @@ jobs:
 
       - name: DNS strict resolved sets also protect bridge traffic
         run: |
-          .github/scripts/egress-probe.sh docker-reach default https://api.github.com
+          .github/scripts/egress-probe.sh docker-reach default https://probe.g0lab.com
           .github/scripts/egress-probe.sh docker-denied default https://1.1.1.1 --max-time 10
 
   lockdown:
@@ -412,7 +412,7 @@ jobs:
         with:
           image: g0efilter:action-test
           lockdown-runner: 'true'
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
 
       # Runs under lockdown and before g0efilter's final post hook.
       - name: Assert egress filtered and escalation blocked
@@ -457,11 +457,11 @@ jobs:
         uses: ./
         with:
           image: g0efilter:action-test
-          allowed-domains: api.github.com
+          allowed-domains: probe.g0lab.com
           notification-ignore: example.com
 
       - name: Reach the allowed domain
-        run: .github/scripts/egress-probe.sh reach https://api.github.com
+        run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Reach the ignored domain, which is still blocked
         run: .github/scripts/egress-probe.sh denied https://example.com

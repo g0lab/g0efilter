@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Egress probes for .github/workflows/action-test.yaml, one subcommand per step.
 #
-#   egress-probe.sh reach https://api.github.com        # must connect
+#   egress-probe.sh reach https://probe.g0lab.com       # must connect
 #   egress-probe.sh denied https://example.com          # must not connect
-#   egress-probe.sh reach-http http://api.github.com    # as above, status ignored
+#   egress-probe.sh reach-http http://probe.g0lab.com   # as above, status ignored
 #   egress-probe.sh denied-http http://example.com
-#   egress-probe.sh docker-reach host https://api.github.com
+#   egress-probe.sh docker-reach host https://probe.g0lab.com
 #   egress-probe.sh docker-denied default https://example.com --max-time 10
 #   egress-probe.sh bridge-check <network|default> <allowed-url> <blocked-url>
 #   egress-probe.sh peer-reach <network> <port>

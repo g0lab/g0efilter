@@ -34,7 +34,7 @@ const GOOD = [
   "<details>",
   "<summary>1 host reached</summary>",
   "",
-  "| `api.github.com` | https | 1 |",
+  "| `probe.g0lab.com` | https | 1 |",
   "",
   "</details>",
   "",
@@ -86,7 +86,7 @@ test("it catches an overview that stopped counting the folded blocks", () => {
 });
 
 test("it catches a missing allowed host", () => {
-  assert.deepEqual(problemsWith(GOOD.replace("`api.github.com`", "`other.test`")), [
+  assert.deepEqual(problemsWith(GOOD.replace("`probe.g0lab.com`", "`other.test`")), [
     "the allowed host is missing from the report",
   ]);
 });
@@ -94,8 +94,8 @@ test("it catches a missing allowed host", () => {
 // A subdomain must not stand in for the host each check names.
 test("it reads whole host cells rather than substrings", () => {
   const subdomain = GOOD.replace("| `example.com` |", "| `www.example.com` |").replace(
-    "| `api.github.com` |",
-    "| `cdn.api.github.com` |",
+    "| `probe.g0lab.com` |",
+    "| `cdn.probe.g0lab.com` |",
   );
 
   assert.deepEqual(problemsWith(subdomain), [

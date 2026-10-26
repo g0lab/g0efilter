@@ -22,10 +22,10 @@ function curlOK(target, retry) {
 
 const failures = [];
 
-if (curlOK("https://api.github.com", true)) {
-  console.log("OK: api.github.com reachable");
+if (curlOK("https://probe.g0lab.com", true)) {
+  console.log("OK: probe.g0lab.com reachable");
 } else {
-  failures.push("expected api.github.com to be reachable");
+  failures.push("expected probe.g0lab.com to be reachable");
 }
 
 if (curlOK("https://example.com", false)) {
