@@ -42,10 +42,10 @@ spec:
         - networks: ['%[2]s']
     - name: allowed-site
       to:
-        - domainNames: ['example.com']
+        - domainNames: ['probe.g0lab.com']
 `, webhookNamespace, clusterDNS, kubernetesAPI, harness.AgentImage))
 
-	cluster.WaitForConfigMapContains(t, webhookNamespace, "g0efilter-web", "policy.yaml", "example.com")
+	cluster.WaitForConfigMapContains(t, webhookNamespace, "g0efilter-web", "policy.yaml", "probe.g0lab.com")
 	cluster.Kubectl(t, "wait", "--for=condition=Ready", "-n", webhookNamespace,
 		"egresspolicy/web", "--timeout=3m")
 
@@ -96,19 +96,19 @@ func webhookSidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string
 func webhookInjectedPodFilters(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.CurlExternal(t, webhookNamespace, pod, "app", "https://example.com")
+	out, ok := cluster.CurlExternal(t, webhookNamespace, pod, "app", "https://probe.g0lab.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, webhookNamespace, pod, "g0efilter"))
 	}
 
 	out, ok = cluster.Exec(t, webhookNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://denied.g0lab.com")
 	if ok {
 		t.Fatalf("a destination outside the policy was allowed: %s", out)
 	}
 
-	cluster.WaitForPodLog(t, webhookNamespace, pod, "g0efilter", "github.com")
+	cluster.WaitForPodLog(t, webhookNamespace, pod, "g0efilter", "denied.g0lab.com")
 }
 
 // A pod no policy selects has to be admitted untouched, or the webhook would break

@@ -17,7 +17,7 @@ allowlist:
   ips:
     - '1.1.1.1'
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `
 
 // WritePolicy replaces the policy file atomically, so the agent never observes a

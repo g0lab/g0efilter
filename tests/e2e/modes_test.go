@@ -15,13 +15,13 @@ func TestPhase08Learning(t *testing.T) {
 	mode := harness.ModeFromEnv(t)
 	s := harness.StartStack(t, harness.LearningConfig(t, mode))
 
-	s.AssertReachable(t, "https://google.com")
+	s.AssertReachable(t, "https://denied.g0lab.com")
 
 	if mode == harness.FilterModeHTTPS {
 		s.AssertReachable(t, "https://1.0.0.1")
 	}
 
-	s.AssertPolicyContains(t, "google.com", 30*time.Second)
+	s.AssertPolicyContains(t, "denied.g0lab.com", 30*time.Second)
 
 	if mode == harness.FilterModeHTTPS {
 		s.AssertPolicyContains(t, "1.0.0.1", 30*time.Second)
@@ -52,7 +52,7 @@ func TestPhase08Learning(t *testing.T) {
 		}
 	})
 
-	s.AssertReachable(t, "https://github.com")
+	s.AssertReachable(t, "https://probe.g0lab.com")
 }
 
 func TestPhase09DNSStrict(t *testing.T) {
@@ -67,7 +67,7 @@ func TestPhase09DNSStrict(t *testing.T) {
 	s.WritePolicyAndWait(t, `---
 allowlist:
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `)
 
 	t.Run("ruleset is default-deny with a resolved set", func(t *testing.T) {
@@ -78,7 +78,7 @@ allowlist:
 	})
 
 	t.Run("resolving an allowed domain opens its addresses", func(t *testing.T) {
-		s.AssertAllowed(t, "https://github.com")
+		s.AssertAllowed(t, "https://probe.g0lab.com")
 
 		elems := s.NFTSetElements(t, "ip", "g0efilter_v4", "resolved_allow_v4")
 		if len(elems) == 0 {
@@ -93,7 +93,7 @@ allowlist:
 
 		// Re-resolution exercises replacement of an existing timeout element,
 		// rather than only the empty-set insertion path.
-		s.AssertAllowed(t, "https://github.com")
+		s.AssertAllowed(t, "https://probe.g0lab.com")
 	})
 
 	t.Run("an address never resolved through the proxy is dropped", func(t *testing.T) {
@@ -105,8 +105,8 @@ allowlist:
 		s.AssertIPVerdictSince(t, mark, "BLOCKED", "1.0.0.1", 443, "TCP")
 	})
 
-	t.Run("a blocked domain is sinkholed and its address stays out of the set", func(t *testing.T) {
-		s.AssertBlocked(t, "https://google.com")
+	t.Run("a blocked domain is sinkholed", func(t *testing.T) {
+		s.AssertBlocked(t, "https://denied.g0lab.com")
 	})
 
 	t.Run("unconstrained IP rules cover UDP without bypassing unknown addresses", func(t *testing.T) {
@@ -115,7 +115,7 @@ allowlist:
   ips:
     - '1.1.1.1'
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `)
 
 		mark := s.AgentLogMark(t)
@@ -142,18 +142,18 @@ func TestPhase10Audit(t *testing.T) {
 		s.AssertNFTLacks(t, "ip", "g0efilter_v4", "policy drop", "audit ruleset must not drop")
 	})
 
-	s.AssertAllowed(t, "https://github.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
 
 	mark := s.AgentLogMark(t)
 
-	s.AssertReachable(t, "https://google.com")
+	s.AssertReachable(t, "https://denied.g0lab.com")
 	s.AssertReachable(t, "https://1.0.0.1")
 
 	s.WaitForAgentEvent(t, mark, harness.EventMatcher{Action: "AUDIT"}, 20*time.Second)
 
 	t.Run("audit decisions reach the dashboard", func(t *testing.T) {
 		api := s.DashboardAPI(t)
-		entries := api.WaitForLog(t, "google.com", 20*time.Second)
+		entries := api.WaitForLog(t, "denied.g0lab.com", 20*time.Second)
 
 		for _, e := range entries {
 			if e.Action == "AUDIT" {
@@ -161,7 +161,7 @@ func TestPhase10Audit(t *testing.T) {
 			}
 		}
 
-		t.Errorf("no AUDIT entry for google.com in %d results", len(entries))
+		t.Errorf("no AUDIT entry for denied.g0lab.com in %d results", len(entries))
 	})
 }
 
@@ -180,7 +180,7 @@ allowlist:
   ips:
     - '1.1.1.1'
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `)
 
 	t.Run("a host pointing at an allow-listed IP resolves and connects", func(t *testing.T) {
@@ -203,13 +203,13 @@ allowlist:
 	t.Run("a host not resolving to an allow-listed IP stays blocked", func(t *testing.T) {
 		mark := s.AgentLogMark(t)
 
-		s.AssertBlocked(t, "https://example.com")
+		s.AssertBlocked(t, "https://denied.g0lab.com")
 
 		alert := true
 
 		s.WaitForAgentEvent(t, mark, harness.EventMatcher{
 			Event:  "dns.blocked",
-			Fields: map[string]string{"qname": "example.com"},
+			Fields: map[string]string{"qname": "denied.g0lab.com"},
 			Alert:  &alert,
 		}, 15*time.Second)
 	})
@@ -230,7 +230,7 @@ allowlist:
 		s.WritePolicyAndWait(t, `---
 allowlist:
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `)
 
 		s.AssertBlocked(t, "https://one.one.one.one")
@@ -248,17 +248,17 @@ func TestPhase20Notifications(t *testing.T) {
 	s.WritePolicyAndWait(t, `---
 allowlist:
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
 `)
 
 	mark := s.AgentLogMark(t)
 
-	s.AssertBlocked(t, "https://example.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
 
 	t.Run("every service reaches a server the policy does not allow-list", func(t *testing.T) {
 		s.WaitForAgentEvent(t, mark, harness.EventMatcher{Event: "notification.sent"}, 30*time.Second)
 
-		waitForAlertDeliveries(t, s, "example.com")
+		waitForAlertDeliveries(t, s, "denied.g0lab.com")
 	})
 
 	t.Run("no service reports a delivery failure", func(t *testing.T) {
@@ -376,24 +376,24 @@ func phase17DomainConstraints(t *testing.T, s *harness.Stack) {
 	s.WritePolicyAndWait(t, `---
 allowlist:
   domains:
-    - 'tcp/github.com:443'
+    - 'tcp/probe.g0lab.com:443'
 `)
 
-	s.AssertAllowed(t, "https://github.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
 
-	resolved := s.AssertUDPDNSAnswer(t, "1.1.1.1", "github.com")
-	t.Logf("github.com resolved to %s", resolved)
+	resolved := s.AssertUDPDNSAnswer(t, "1.1.1.1", "probe.g0lab.com")
+	t.Logf("probe.g0lab.com resolved to %s", resolved)
 
 	s.WaitForNFTSetElement(t, "ip", "g0efilter_v4", "resolved_allow_v4_port", resolved+" . tcp . 443")
 
 	mark := s.AgentLogMark(t)
 
-	s.AssertReachable(t, "https://github.com", "--resolve", "github.com:443:"+resolved)
+	s.AssertReachable(t, "https://probe.g0lab.com", "--resolve", "probe.g0lab.com:443:"+resolved)
 	s.AssertIPVerdictSince(t, mark, "ALLOWED", resolved, 443, "TCP")
 
 	mark = s.AgentLogMark(t)
 
-	s.AssertUnreachable(t, "http://github.com", "--resolve", "github.com:80:"+resolved)
+	s.AssertUnreachable(t, "http://probe.g0lab.com", "--resolve", "probe.g0lab.com:80:"+resolved)
 	s.AssertIPVerdictSince(t, mark, "BLOCKED", resolved, 80, "TCP")
 
 	t.Run("no unconstrained element leaks for a constrained domain", func(t *testing.T) {
@@ -429,7 +429,7 @@ allowlist:
 default_action: 'allow'
 allowlist:
   domains:
-    - 'tcp/github.com:443'
+    - 'tcp/probe.g0lab.com:443'
 `)
 
 		event := s.WaitForAgentEvent(t, mark,

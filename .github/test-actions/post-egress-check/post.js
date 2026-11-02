@@ -1,6 +1,6 @@
 const { spawnSync } = require("node:child_process");
 
-const target = "https://example.com";
+const target = "https://denied.g0lab.com";
 
 const result = spawnSync("curl", [
   "--fail",

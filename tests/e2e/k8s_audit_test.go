@@ -43,10 +43,10 @@ spec:
         - networks: ['%[2]s']
     - name: allowed-site
       to:
-        - domainNames: ['example.com']
+        - domainNames: ['probe.g0lab.com']
 `, auditNamespace, clusterDNS, harness.AgentImage))
 
-	cluster.WaitForConfigMapContains(t, auditNamespace, "g0efilter-web", "policy.yaml", "example.com")
+	cluster.WaitForConfigMapContains(t, auditNamespace, "g0efilter-web", "policy.yaml", "probe.g0lab.com")
 	cluster.Kubectl(t, "wait", "--for=condition=Ready", "-n", auditNamespace,
 		"egresspolicy/web", "--timeout=3m")
 
@@ -92,13 +92,13 @@ func auditModeSetsTheEnvironment(t *testing.T, cluster *harness.K3sCluster, pod 
 func auditModeAllowsUnmatchedTraffic(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.CurlExternal(t, auditNamespace, pod, "app", "https://github.com")
+	out, ok := cluster.CurlExternal(t, auditNamespace, pod, "app", "https://denied.g0lab.com")
 	if !ok {
 		t.Errorf("audit mode blocked a destination outside the policy: %s\n%s", out,
 			cluster.PodLogs(t, auditNamespace, pod, "g0efilter"))
 	}
 
-	out, ok = cluster.CurlExternal(t, auditNamespace, pod, "app", "https://example.com")
+	out, ok = cluster.CurlExternal(t, auditNamespace, pod, "app", "https://probe.g0lab.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s", out)
 	}
@@ -115,7 +115,7 @@ func auditModeLogsTheDecision(t *testing.T, cluster *harness.K3sCluster, pod str
 		t.Errorf("no audit decision was logged:\n%s", logs)
 	}
 
-	if !strings.Contains(logs, "github.com") {
+	if !strings.Contains(logs, "denied.g0lab.com") {
 		t.Errorf("the audited destination is not named in the logs:\n%s", logs)
 	}
 }
@@ -145,10 +145,10 @@ func auditModeSwitchesToBlock(t *testing.T, cluster *harness.K3sCluster, oldPod 
 	}
 
 	out, ok := cluster.Exec(t, auditNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://denied.g0lab.com")
 	if ok {
 		t.Fatalf("the destination audited earlier is still allowed once enforcing: %s", out)
 	}
 
-	cluster.WaitForPodLog(t, auditNamespace, pod, "g0efilter", "github.com")
+	cluster.WaitForPodLog(t, auditNamespace, pod, "g0efilter", "denied.g0lab.com")
 }

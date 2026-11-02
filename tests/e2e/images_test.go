@@ -121,11 +121,11 @@ func TestPhase23ProductionImage(t *testing.T) {
 
 	mark := s.AgentLogMark(t)
 
-	s.AssertAllowed(t, "https://github.com")
-	s.AssertBlocked(t, "https://google.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
 
 	t.Run("a block alerts every notification service", func(t *testing.T) {
-		waitForAlertDeliveries(t, s, "google.com")
+		waitForAlertDeliveries(t, s, "denied.g0lab.com")
 
 		s.AssertNoAgentEvent(t, mark, harness.EventMatcher{Event: "notification.target_failed"}, time.Second)
 	})
@@ -134,11 +134,11 @@ func TestPhase23ProductionImage(t *testing.T) {
 		s.WritePolicyAndWait(t, `---
 allowlist:
   domains:
-    - 'google.com'
+    - 'denied.g0lab.com'
 `)
 
-		s.AssertAllowed(t, "https://google.com")
-		s.AssertBlocked(t, "https://github.com")
+		s.AssertAllowed(t, "https://denied.g0lab.com")
+		s.AssertBlocked(t, "https://probe.g0lab.com")
 	})
 
 	t.Run("the image's healthcheck passes", func(t *testing.T) {

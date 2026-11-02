@@ -106,7 +106,7 @@ func TestFoundation(t *testing.T) {
 
 	t.Run("agent applied the baseline policy", func(t *testing.T) {
 		res := stack.ExecAgent(t, "cat", "/app/policy/policy.yaml")
-		if !strings.Contains(res.Output, "github.com") {
+		if !strings.Contains(res.Output, "probe.g0lab.com") {
 			t.Errorf("agent cannot see the seeded policy: %q", res.Output)
 		}
 	})

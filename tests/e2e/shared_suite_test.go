@@ -26,8 +26,8 @@ func TestSharedBehaviour(t *testing.T) {
 func phase01Baseline(t *testing.T, s *harness.Stack, mode harness.FilterMode) {
 	s.ResetPolicy(t)
 
-	s.AssertAllowed(t, "https://github.com")
-	s.AssertAllowed(t, "http://github.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
+	s.AssertAllowed(t, "http://probe.g0lab.com")
 
 	if mode != harness.FilterModeDNS {
 		s.AssertAllowed(t, "https://1.1.1.1")
@@ -38,8 +38,8 @@ func phase01Baseline(t *testing.T, s *harness.Stack, mode harness.FilterMode) {
 
 	mark := s.AgentLogMark(t)
 
-	s.AssertBlocked(t, "https://google.com")
-	s.AssertBlocked(t, "http://google.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
+	s.AssertBlocked(t, "http://denied.g0lab.com")
 
 	t.Run("blocks log at WARN and are alert-flagged", func(t *testing.T) {
 		alert := true
@@ -61,7 +61,7 @@ func phase01Baseline(t *testing.T, s *harness.Stack, mode harness.FilterMode) {
 
 	t.Run("DECISION_LOG_FILE records decisions as JSON Lines", func(t *testing.T) {
 		record := s.WaitForDecisionRecord(t, func(record map[string]any) bool {
-			return record["action"] == "BLOCKED" && strings.Contains(fmt.Sprint(record), "google.com")
+			return record["action"] == "BLOCKED" && strings.Contains(fmt.Sprint(record), "denied.g0lab.com")
 		}, 15*time.Second)
 
 		for _, key := range []string{"time", "level", "event"} {
@@ -81,10 +81,10 @@ func phase01Baseline(t *testing.T, s *harness.Stack, mode harness.FilterMode) {
 			// nothing at all to a blocked one.
 			mark := s.AgentLogMark(t)
 
-			s.AssertUDPDNSAnswer(t, "1.1.1.1", "github.com")
+			s.AssertUDPDNSAnswer(t, "1.1.1.1", "probe.g0lab.com")
 			s.AssertIPVerdictSince(t, mark, "ALLOWED", "1.1.1.1", 53, "UDP")
 
-			s.AssertUDPDNSUnreachable(t, "1.0.0.2", "github.com")
+			s.AssertUDPDNSUnreachable(t, "1.0.0.2", "probe.g0lab.com")
 			s.AssertIPVerdictSince(t, mark, "BLOCKED", "1.0.0.2", 53, "UDP")
 		})
 	}
@@ -106,7 +106,7 @@ func phase02IPv6Egress(t *testing.T, s *harness.Stack, mode harness.FilterMode) 
 		t.Skip("no IPv6 default route; nftables structure was verified but egress enforcement cannot be exercised")
 	}
 
-	s.AssertBlocked(t, "https://google.com", "-6")
+	s.AssertBlocked(t, "https://denied.g0lab.com", "-6")
 }
 
 func phase03UnblockReload(t *testing.T, s *harness.Stack) {
@@ -115,7 +115,7 @@ func phase03UnblockReload(t *testing.T, s *harness.Stack) {
 	api := s.DashboardAPI(t)
 
 	created := harness.Do[harness.UnblockResponse](t, api, http.MethodPost, harness.APIRoot+"/unblocks",
-		harness.UnblockRequest{Type: "domain", Value: "google.com", TargetHostname: "host-01"})
+		harness.UnblockRequest{Type: "domain", Value: "denied.g0lab.com", TargetHostname: "host-01"})
 	if created.StatusCode != http.StatusOK && created.StatusCode != http.StatusCreated {
 		t.Fatalf("create unblock: status=%d body=%s", created.StatusCode, created.RawBody)
 	}
@@ -135,13 +135,13 @@ func phase03UnblockReload(t *testing.T, s *harness.Stack) {
 		found := false
 
 		for _, p := range status.Body.Pending {
-			if p.Value == "google.com" && p.TargetHostname == "host-01" {
+			if p.Value == "denied.g0lab.com" && p.TargetHostname == "host-01" {
 				found = true
 			}
 		}
 
 		if !found {
-			t.Fatalf("google.com for host-01 not pending: %s", status.RawBody)
+			t.Fatalf("denied.g0lab.com for host-01 not pending: %s", status.RawBody)
 		}
 	})
 
@@ -159,7 +159,7 @@ func phase03UnblockReload(t *testing.T, s *harness.Stack) {
 		found := false
 
 		for _, c := range status.Body.Completed {
-			if c.Value == "google.com" && c.TargetHostname == "host-01" {
+			if c.Value == "denied.g0lab.com" && c.TargetHostname == "host-01" {
 				found = true
 			}
 		}
@@ -169,18 +169,18 @@ func phase03UnblockReload(t *testing.T, s *harness.Stack) {
 		}
 	})
 
-	s.AssertPolicyContains(t, "google.com", 30*time.Second)
+	s.AssertPolicyContains(t, "denied.g0lab.com", 30*time.Second)
 
 	// The agent rewrote the policy itself, so wait for its own reload rather than
 	// writing a new one.
 	harness.Eventually(t, 45*time.Second, time.Second, func() (bool, string) {
-		res := s.Curl(t, "https://google.com", 10*time.Second)
+		res := s.Curl(t, "https://denied.g0lab.com", 10*time.Second)
 
-		return res.ExitCode == 0, "google.com still blocked after unblock"
+		return res.ExitCode == 0, "denied.g0lab.com still blocked after unblock"
 	})
 
-	s.AssertAllowed(t, "https://google.com")
-	s.AssertAllowed(t, "http://google.com")
+	s.AssertAllowed(t, "https://denied.g0lab.com")
+	s.AssertAllowed(t, "http://denied.g0lab.com")
 
 	t.Run("input validation", func(t *testing.T) {
 		cases := []struct {
@@ -273,10 +273,10 @@ func phase05DashboardLogs(t *testing.T, s *harness.Stack) {
 
 	api := s.DashboardAPI(t)
 
-	s.AssertAllowed(t, "https://github.com")
-	s.AssertBlocked(t, "https://google.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
 
-	api.WaitForLog(t, "google.com", 20*time.Second)
+	api.WaitForLog(t, "denied.g0lab.com", 20*time.Second)
 
 	all := api.Logs(t, "")
 	if len(all) == 0 {
@@ -285,8 +285,8 @@ func phase05DashboardLogs(t *testing.T, s *harness.Stack) {
 
 	t.Logf("%d log entries shipped", len(all))
 
-	assertLogged(t, api.Logs(t, "github.com"), "github.com", "ALLOWED")
-	assertLogged(t, api.Logs(t, "google.com"), "google.com", "BLOCKED")
+	assertLogged(t, api.Logs(t, "probe.g0lab.com"), "probe.g0lab.com", "ALLOWED")
+	assertLogged(t, api.Logs(t, "denied.g0lab.com"), "denied.g0lab.com", "BLOCKED")
 
 	t.Run("entries carry the fields the UI needs", func(t *testing.T) {
 		var haveAction, haveSource, haveFlow, haveProto bool
@@ -326,12 +326,12 @@ func phase06Regex(t *testing.T, s *harness.Stack) {
 	t.Run("anchored regex", func(t *testing.T) {
 		s.WritePolicyAndWait(t, `allowlist:
   domains:
-    - '/^(www\.)?github\.com$/'`)
+    - '/^(www\.)?probe\.g0lab\.com$/'`)
 
-		s.AssertAllowed(t, "https://github.com")
-		s.AssertAllowed(t, "https://www.github.com")
-		s.AssertBlocked(t, "https://api.github.com")
-		s.AssertBlocked(t, "https://google.com")
+		s.AssertAllowed(t, "https://probe.g0lab.com")
+		s.AssertAllowed(t, "https://www.probe.g0lab.com")
+		s.AssertBlocked(t, "https://api.probe.g0lab.com")
+		s.AssertBlocked(t, "https://denied.g0lab.com")
 	})
 
 	t.Run("mid-name wildcard", func(t *testing.T) {
@@ -339,9 +339,9 @@ func phase06Regex(t *testing.T, s *harness.Stack) {
   domains:
     - 'www.*.com'`)
 
-		s.AssertAllowed(t, "https://www.github.com")
-		s.AssertBlocked(t, "https://github.com")
-		s.AssertBlocked(t, "https://api.github.com")
+		s.AssertAllowed(t, "https://www.probe.g0lab.com")
+		s.AssertBlocked(t, "https://probe.g0lab.com")
+		s.AssertBlocked(t, "https://api.probe.g0lab.com")
 	})
 }
 
@@ -349,23 +349,23 @@ func phase07DefaultAllow(t *testing.T, s *harness.Stack) {
 	s.WritePolicyAndWait(t, `default_action: 'allow'
 allowlist:
   domains:
-    - 'api.github.com'
+    - 'api.probe.g0lab.com'
 denylist:
   ips:
     - '1.0.0.1'
   domains:
-    - 'github.com'
-    - '*.github.com'
-    - 'google.com'
-    - '*.google.com'`)
+    - 'probe.g0lab.com'
+    - '*.probe.g0lab.com'
+    - 'denied.g0lab.com'
+    - '*.denied.g0lab.com'`)
 
-	s.AssertAllowed(t, "https://example.com")
+	s.AssertAllowed(t, "https://unlisted.g0lab.com")
 
-	s.AssertBlocked(t, "https://google.com")
-	s.AssertBlocked(t, "http://google.com")
-	s.AssertBlocked(t, "https://github.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
+	s.AssertBlocked(t, "http://denied.g0lab.com")
+	s.AssertBlocked(t, "https://probe.g0lab.com")
 
-	s.AssertAllowed(t, "https://api.github.com")
+	s.AssertAllowed(t, "https://api.probe.g0lab.com")
 
 	s.AssertBlocked(t, "https://1.0.0.1")
 }

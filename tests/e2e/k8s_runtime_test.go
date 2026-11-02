@@ -38,10 +38,10 @@ spec:
   egress:
     - name: allowed-site
       to:
-        - domainNames: ['example.com']
+        - domainNames: ['probe.g0lab.com']
 `, runtimeNamespace, harness.AgentImage))
 
-	cluster.WaitForConfigMapContains(t, runtimeNamespace, "g0efilter-web", "policy.yaml", "example.com")
+	cluster.WaitForConfigMapContains(t, runtimeNamespace, "g0efilter-web", "policy.yaml", "probe.g0lab.com")
 	cluster.Kubectl(t, "wait", "--for=condition=Ready", "-n", runtimeNamespace,
 		"egresspolicy/web", "--timeout=3m")
 
@@ -70,7 +70,7 @@ spec:
 	pod := cluster.WaitForPodReady(t, runtimeNamespace, "app=web")
 	cluster.WaitForPodLog(t, runtimeNamespace, pod, "g0efilter", "startup.ready")
 
-	out, ok := cluster.CurlExternal(t, runtimeNamespace, pod, "app", "https://example.com")
+	out, ok := cluster.CurlExternal(t, runtimeNamespace, pod, "app", "https://probe.g0lab.com")
 	if !ok {
 		t.Errorf("resolution failed with no cluster DNS rule in the policy: %s\n%s", out,
 			cluster.PodLogs(t, runtimeNamespace, pod, "g0efilter"))
@@ -127,7 +127,7 @@ func enforcementReloadsWithoutARestart(t *testing.T, cluster *harness.K3sCluster
 
 	// Audit allows what block refused, which is the observable proof it reloaded.
 	out, ok := cluster.Exec(t, runtimeNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://denied.g0lab.com")
 	if !ok {
 		t.Errorf("audit did not take effect in the running pod: %s\n%s", out,
 			cluster.PodLogs(t, runtimeNamespace, pod, "g0efilter"))
@@ -151,7 +151,7 @@ func enforcementReloadsWithoutARestart(t *testing.T, cluster *harness.K3sCluster
 
 	harness.Eventually(t, 90*time.Second, 2*time.Second, func() (bool, string) {
 		out, allowed := cluster.Exec(t, runtimeNamespace, pod, "app",
-			"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+			"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://denied.g0lab.com")
 
 		return !allowed, "the audited destination is still allowed: " + out
 	})

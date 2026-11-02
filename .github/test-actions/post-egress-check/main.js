@@ -28,10 +28,10 @@ if (curlOK("https://probe.g0lab.com", true)) {
   failures.push("expected probe.g0lab.com to be reachable");
 }
 
-if (curlOK("https://example.com", false)) {
-  failures.push("example.com should have been blocked");
+if (curlOK("https://denied.g0lab.com", false)) {
+  failures.push("denied.g0lab.com should have been blocked");
 } else {
-  console.log("OK: example.com blocked");
+  console.log("OK: denied.g0lab.com blocked");
 }
 
 if (process.env.INPUT_LOCKDOWN === "true") {
