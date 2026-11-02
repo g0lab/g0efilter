@@ -33,6 +33,7 @@ metadata:
 		"--set", "g0efilter.image.tag=e2e",
 		"--set", "g0efilter.metrics.enabled=true",
 		"--set", fmt.Sprintf("policy.ips={%s,%s}", clusterDNS, kubernetesAPI),
+		"--set", "policy.domains={probe.g0lab.com}",
 	)
 
 	t.Cleanup(func() { cluster.HelmUninstall(t, helmNamespace, "demo") })
