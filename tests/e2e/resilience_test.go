@@ -16,7 +16,7 @@ allowlist:
   ips:
     - '1.1.1.1'
   domains:
-    - 'github.com'
+    - 'probe.g0lab.com'
     - 'churn` + strconv.Itoa(round) + `.example.com'
 `
 }
@@ -32,8 +32,8 @@ func TestPhase21Resilience(t *testing.T) {
 	sendHostileInput(t, s)
 	churnPolicyReloads(t, s)
 
-	s.AssertAllowed(t, "https://github.com")
-	s.AssertBlocked(t, "https://google.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
+	s.AssertBlocked(t, "https://denied.g0lab.com")
 
 	assertProcessSurvived(t, s, mark)
 }
@@ -45,14 +45,14 @@ type hostilePayload struct {
 
 func hostilePayloads() []hostilePayload {
 	return []hostilePayload{
-		{"truncated TLS record", `printf '\x16\x03\x01\xff\xff\x01' | nc -w2 github.com 443`},
+		{"truncated TLS record", `printf '\x16\x03\x01\xff\xff\x01' | nc -w2 probe.g0lab.com 443`},
 		{
 			"TLS record with oversized extensions",
-			`printf '\x16\x03\x01\x00\x05\x01\x00\xff\xfa\x00' | nc -w2 github.com 443`,
+			`printf '\x16\x03\x01\x00\x05\x01\x00\xff\xfa\x00' | nc -w2 probe.g0lab.com 443`,
 		},
-		{"empty HTTP request line", `printf '\r\n\r\n' | nc -w2 github.com 80`},
-		{"unterminated HTTP header block", `printf 'GET / HTTP/1.1\r\nHost: ' | nc -w2 github.com 80`},
-		{"binary garbage as an HTTP request", `printf '\x00\x01\x02\x03\xff\xfe\xfd' | nc -w2 github.com 80`},
+		{"empty HTTP request line", `printf '\r\n\r\n' | nc -w2 probe.g0lab.com 80`},
+		{"unterminated HTTP header block", `printf 'GET / HTTP/1.1\r\nHost: ' | nc -w2 probe.g0lab.com 80`},
+		{"binary garbage as an HTTP request", `printf '\x00\x01\x02\x03\xff\xfe\xfd' | nc -w2 probe.g0lab.com 80`},
 		{
 			"DNS header with a missing question",
 			`printf '\xab\xcd\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00' | nc -u -w2 1.1.1.1 53`,
@@ -78,7 +78,7 @@ func sendHostileInput(t *testing.T, s *harness.Stack) {
 	}
 
 	s.ExecTester(t, "sh", "-lc",
-		"for i in $(seq 1 20); do nc -w1 -z github.com 443 >/dev/null 2>&1 || true; done")
+		"for i in $(seq 1 20); do nc -w1 -z probe.g0lab.com 443 >/dev/null 2>&1 || true; done")
 }
 
 func churnPolicyReloads(t *testing.T, s *harness.Stack) {
@@ -88,7 +88,7 @@ func churnPolicyReloads(t *testing.T, s *harness.Stack) {
 		s.WritePolicyAndWait(t, churnPolicy(round))
 
 		s.ExecTester(t, "sh", "-lc",
-			"for i in 1 2 3; do (nc -w1 -z github.com 443 >/dev/null 2>&1 || true) & done; wait")
+			"for i in 1 2 3; do (nc -w1 -z probe.g0lab.com 443 >/dev/null 2>&1 || true) & done; wait")
 	}
 
 	s.ResetPolicy(t)
@@ -123,7 +123,7 @@ func TestPhase22CleanShutdown(t *testing.T) {
 	mode := harness.ModeFromEnv(t)
 	s := harness.StartStack(t, harness.BaselineConfig(t, mode))
 
-	s.AssertAllowed(t, "https://github.com")
+	s.AssertAllowed(t, "https://probe.g0lab.com")
 
 	mark := s.AgentLogMark(t)
 

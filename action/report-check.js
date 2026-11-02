@@ -6,7 +6,7 @@ const { execSync } = require("node:child_process");
 const path = require("node:path");
 
 // Must match the notification-ignore input the workflow starts g0efilter with.
-process.env["INPUT_NOTIFICATION-IGNORE"] = "example.com";
+process.env["INPUT_NOTIFICATION-IGNORE"] = "denied.g0lab.com";
 
 const { buildSummary } = require(path.resolve(__dirname, "post.js"));
 
@@ -17,13 +17,13 @@ function containerLogs() {
   });
 }
 
-// Whole cells only, so www.example.com cannot satisfy a check meant for the apex.
+// Whole cells only, so a subdomain cannot satisfy a check meant for its parent.
 function hosts(section) {
   return [...section.matchAll(/^\| `([^`]+)` \|/gm)].map((m) => m[1]);
 }
 
 const REACHED_HOSTS = ["probe.g0lab.com"];
-const IGNORED_HOSTS = ["example.com"];
+const IGNORED_HOSTS = ["denied.g0lab.com"];
 // Logged by address only, so it shows in the destination column.
 const DEFAULT_MUTED = /`10\.255\.255\.1(:\d+)?`/;
 

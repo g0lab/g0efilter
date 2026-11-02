@@ -5,6 +5,20 @@ with the Compose plugin.
 
 This separate Go module keeps Testcontainers dependencies out of shipped modules.
 
+Traffic goes to hosts the project controls rather than third-party sites, so
+changes or rate limits on those sites do not affect the suite. It still needs
+Cloudflare and outbound internet access. Each host serves the same static page
+from a Cloudflare Worker:
+
+| Host | Role |
+| --- | --- |
+| `probe.g0lab.com` | the allowed domain in the baseline policy |
+| `www.probe.g0lab.com`, `api.probe.g0lab.com` | subdomains for the wildcard and regex phases |
+| `denied.g0lab.com` | the blocked domain; some phases unblock and fetch it |
+| `unlisted.g0lab.com` | a domain no policy names, for `default_action: allow` |
+
+IP phases use Cloudflare's resolvers (`1.1.1.1`, `1.0.0.1`, `one.one.one.one`).
+
 ## Running
 
 ```sh
@@ -124,9 +138,9 @@ Each suite sets the policy it needs rather than inheriting the previous one's.
 | `LOAD_MAX_LATENCY_MS` | `2000` | Median blocked-latency ceiling |
 | `LOAD_MIN_ALLOWED_PERCENT` | `100` | Minimum successful allowed requests during mixed load |
 | `LOAD_RECOVERY_PAUSE` | `4s` | Pause for DNS rate-limit recovery before mixed load |
-| `LOAD_ALLOWED_URLS` | `https://github.com https://1.1.1.1` | Round-robin allowed URLs |
-| `LOAD_BLOCKED_URL` | `https://google.com` | URL used for blocked HTTPS traffic |
-| `LOAD_BLOCKED_URL_HTTP` | `http://google.com` | URL used for blocked HTTP traffic |
+| `LOAD_ALLOWED_URLS` | `https://probe.g0lab.com https://1.1.1.1` | Round-robin allowed URLs |
+| `LOAD_BLOCKED_URL` | `https://denied.g0lab.com` | URL used for blocked HTTPS traffic |
+| `LOAD_BLOCKED_URL_HTTP` | `http://denied.g0lab.com` | URL used for blocked HTTP traffic |
 | `E2E_LOAD_MAX_MEMORY_MIB` | `384` | Memory ceiling after the load phase |
 
 For the browser smoke test:

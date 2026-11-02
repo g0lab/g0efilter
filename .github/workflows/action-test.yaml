@@ -137,13 +137,13 @@ jobs:
         run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted HTTPS domain is blocked
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
       - name: Allowed HTTP host works
         run: .github/scripts/egress-probe.sh reach-http http://probe.g0lab.com
 
       - name: Non-allowlisted HTTP host is blocked
-        run: .github/scripts/egress-probe.sh denied-http http://example.com
+        run: .github/scripts/egress-probe.sh denied-http http://denied.g0lab.com
 
   post-egress:
     name: Post hook filtering
@@ -184,17 +184,17 @@ jobs:
         with:
           image: g0efilter:action-test
           allowed-domains: |
-            *.example.com
-            /^example\.org$/
+            *.probe.g0lab.com
+            /^unlisted\.g0lab\.com$/
 
       - name: Wildcard matches a subdomain
-        run: .github/scripts/egress-probe.sh reach https://www.example.com
+        run: .github/scripts/egress-probe.sh reach https://www.probe.g0lab.com
 
       - name: Regex-allowed domain works
-        run: .github/scripts/egress-probe.sh reach https://example.org
+        run: .github/scripts/egress-probe.sh reach https://unlisted.g0lab.com
 
       - name: Wildcard does not match the apex
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://probe.g0lab.com
 
   dns:
     name: DNS mode
@@ -219,7 +219,7 @@ jobs:
         run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked by dns mode
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
   docker-host-network:
     name: Docker host network
@@ -246,7 +246,7 @@ jobs:
         run: .github/scripts/egress-probe.sh docker-reach host https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked over host network
-        run: .github/scripts/egress-probe.sh docker-denied host https://example.com
+        run: .github/scripts/egress-probe.sh docker-denied host https://denied.g0lab.com
 
   docker-bridges:
     name: Docker bridge networks
@@ -273,10 +273,10 @@ jobs:
         run: .github/scripts/egress-probe.sh nft-bridge-tables
 
       - name: Default bridge filters allowed and blocked domains
-        run: .github/scripts/egress-probe.sh bridge-check default https://probe.g0lab.com https://example.com
+        run: .github/scripts/egress-probe.sh bridge-check default https://probe.g0lab.com https://denied.g0lab.com
 
       - name: A custom bridge created after startup is also filtered
-        run: .github/scripts/egress-probe.sh bridge-check g0efilter-e2e https://probe.g0lab.com https://example.com
+        run: .github/scripts/egress-probe.sh bridge-check g0efilter-e2e https://probe.g0lab.com https://denied.g0lab.com
 
       - name: Containers on one bridge still reach each other
         run: .github/scripts/egress-probe.sh peer-reach g0efilter-e2e-peers 8080
@@ -307,7 +307,7 @@ jobs:
         run: .github/scripts/egress-probe.sh nft-ipv6-tables
 
       - name: IPv6 egress to a non-allowlisted domain is blocked
-        run: .github/scripts/egress-probe.sh denied https://google.com -6 --max-time 10
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com -6 --max-time 10
 
   non-web-ports:
     name: Non-web ports
@@ -349,14 +349,14 @@ jobs:
           allowed-domains: probe.g0lab.com
 
       - name: Baseline - non-allowlisted domain is blocked
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
       - name: Kill the filter container
         run: docker rm -f g0efilter
 
       # Host nftables rules must keep egress closed after the container dies.
       - name: Egress stays closed after the filter dies
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
   dns-strict:
     name: DNS strict mode
@@ -384,7 +384,7 @@ jobs:
         run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Non-allowlisted domain is blocked
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
       # Unlike dns mode, dns-strict drops unresolved, non-allowlisted IPs.
       - name: Hardcoded IP never resolved is dropped
@@ -439,7 +439,7 @@ jobs:
           egress-policy: audit
 
       - name: Non-allowlisted domain passes in audit mode
-        run: .github/scripts/egress-probe.sh reach https://example.com
+        run: .github/scripts/egress-probe.sh reach https://denied.g0lab.com
 
   egress-report:
     name: Egress report
@@ -458,13 +458,13 @@ jobs:
         with:
           image: g0efilter:action-test
           allowed-domains: probe.g0lab.com
-          notification-ignore: example.com
+          notification-ignore: denied.g0lab.com
 
       - name: Reach the allowed domain
         run: .github/scripts/egress-probe.sh reach https://probe.g0lab.com
 
       - name: Reach the ignored domain, which is still blocked
-        run: .github/scripts/egress-probe.sh denied https://example.com
+        run: .github/scripts/egress-probe.sh denied https://denied.g0lab.com
 
       - name: Reach a private address, muted by the default group
         run: .github/scripts/egress-probe.sh tcp-denied 10.255.255.1 9

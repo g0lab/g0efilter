@@ -186,10 +186,10 @@ spec:
         - networks: ['%[3]s']
     - name: allowed-site
       to:
-        - domainNames: ['example.com']
+        - domainNames: ['probe.g0lab.com']
 `, filteredNamespace, clusterDNS, kubernetesAPI))
 
-	cluster.WaitForConfigMapContains(t, filteredNamespace, "g0efilter-web", "policy.yaml", "example.com")
+	cluster.WaitForConfigMapContains(t, filteredNamespace, "g0efilter-web", "policy.yaml", "probe.g0lab.com")
 
 	cluster.ApplyManifest(t, fmt.Sprintf(`
 apiVersion: apps/v1
@@ -285,19 +285,19 @@ func sidecarIsFirst(t *testing.T, cluster *harness.K3sCluster, pod string) {
 func filtersRealEgress(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
-	out, ok := cluster.CurlExternal(t, filteredNamespace, pod, "app", "https://example.com")
+	out, ok := cluster.CurlExternal(t, filteredNamespace, pod, "app", "https://probe.g0lab.com")
 	if !ok {
 		t.Errorf("an allowed destination was blocked: %s\n%s", out,
 			cluster.PodLogs(t, filteredNamespace, pod, "g0efilter"))
 	}
 
 	out, ok = cluster.Exec(t, filteredNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://github.com")
+		"curl", "-fsS", "-o", "/dev/null", "--max-time", "20", "https://denied.g0lab.com")
 	if ok {
 		t.Errorf("a destination outside the policy was allowed: %s", out)
 	}
 
-	cluster.WaitForPodLog(t, filteredNamespace, pod, "g0efilter", "github.com")
+	cluster.WaitForPodLog(t, filteredNamespace, pod, "g0efilter", "denied.g0lab.com")
 }
 
 // Editing the EgressPolicy has to reach the running pod through the controller and
@@ -307,9 +307,9 @@ func reloadsOnPolicyChange(t *testing.T, cluster *harness.K3sCluster, pod string
 
 	cluster.Kubectl(t, "patch", "-n", filteredNamespace, "egresspolicy", "web",
 		"--type=json",
-		`-p=[{"op":"add","path":"/spec/egress/-","value":{"name":"late","to":[{"domainNames":["github.com"]}]}}]`)
+		`-p=[{"op":"add","path":"/spec/egress/-","value":{"name":"late","to":[{"domainNames":["denied.g0lab.com"]}]}}]`)
 
-	cluster.WaitForConfigMapContains(t, filteredNamespace, "g0efilter-web", "policy.yaml", "github.com")
+	cluster.WaitForConfigMapContains(t, filteredNamespace, "g0efilter-web", "policy.yaml", "denied.g0lab.com")
 
 	// kubelet refreshes a mounted ConfigMap on its own schedule, so this is the slow
 	// part; the sidecar then reloads without restarting.
@@ -323,7 +323,7 @@ func reloadsOnPolicyChange(t *testing.T, cluster *harness.K3sCluster, pod string
 }
 
 // Events are the deny-debugging path an operator actually looks at. This runs before
-// the reload subtest, which allows github.com and so removes the denial.
+// the reload subtest, which allows denied.g0lab.com and so removes the denial.
 func recordsDenialEvents(t *testing.T, cluster *harness.K3sCluster, pod string) {
 	t.Helper()
 
@@ -333,7 +333,7 @@ func recordsDenialEvents(t *testing.T, cluster *harness.K3sCluster, pod string) 
 	}
 
 	_, _ = cluster.Exec(t, filteredNamespace, pod, "app",
-		"curl", "-fsS", "-o", "/dev/null", "--max-time", "10", "https://github.com")
+		"curl", "-fsS", "-o", "/dev/null", "--max-time", "10", "https://denied.g0lab.com")
 
 	message := cluster.WaitForEvent(t, filteredNamespace, pod, "EgressBlocked")
 

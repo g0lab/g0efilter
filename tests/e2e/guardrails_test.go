@@ -23,8 +23,8 @@ func TestPhase11Resources(t *testing.T) {
 	t.Logf("baseline memory: %d MiB", harness.MiB(before))
 
 	for range 6 {
-		s.AssertAllowed(t, "https://github.com")
-		s.AssertBlocked(t, "https://google.com")
+		s.AssertAllowed(t, "https://probe.g0lab.com")
+		s.AssertBlocked(t, "https://denied.g0lab.com")
 	}
 
 	time.Sleep(3 * time.Second)
@@ -60,13 +60,12 @@ func TestPhase12Load(t *testing.T) {
 		maxLatency     = time.Duration(harness.EnvInt("LOAD_MAX_LATENCY_MS", 2000)) * time.Millisecond
 		maxMemoryMi    = int64(harness.EnvInt("E2E_LOAD_MAX_MEMORY_MIB", 384))
 		allowedMin     = harness.EnvInt("LOAD_MIN_ALLOWED_PERCENT", 100)
-		blockedURL     = harness.Env("LOAD_BLOCKED_URL", "https://google.com")
-		blockedHTTPURL = harness.Env("LOAD_BLOCKED_URL_HTTP", "http://google.com")
-		// Two independent providers, both already covered by BaselinePolicy
-		// (github.com by domain, 1.1.1.1 by IP), so one being degraded cannot sink
-		// the success rate on its own.
+		blockedURL     = harness.Env("LOAD_BLOCKED_URL", "https://denied.g0lab.com")
+		blockedHTTPURL = harness.Env("LOAD_BLOCKED_URL_HTTP", "http://denied.g0lab.com")
+		// Both covered by BaselinePolicy, so allowed load exercises the domain path
+		// (probe.g0lab.com) and the IP path (1.1.1.1).
 		allowedURLs = strings.Fields(harness.Env("LOAD_ALLOWED_URLS",
-			"https://github.com https://1.1.1.1"))
+			"https://probe.g0lab.com https://1.1.1.1"))
 	)
 
 	mode := harness.ModeFromEnv(t)

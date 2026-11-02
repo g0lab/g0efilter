@@ -24,7 +24,7 @@ const GOOD = [
   "<details>",
   "<summary>2 destinations (2 decisions) matched notification-ignore</summary>",
   "",
-  "| `example.com` | https | `93.184.215.14:443` | 1 |",
+  "| `denied.g0lab.com` | https | `104.21.65.75:443` | 1 |",
   "| - | nflog | `10.255.255.1:9` | 1 |",
   "",
   "</details>",
@@ -46,9 +46,9 @@ test("a correct report raises no problems", () => {
 
 // The regression this job exists to catch: the rule silently stops applying.
 test("it catches an ignored block left in the blocked table", () => {
-  const leaked = GOOD.replace("| `example.com` | https | `93.184.215.14:443` | 1 |\n", "").replace(
+  const leaked = GOOD.replace("| `denied.g0lab.com` | https | `104.21.65.75:443` | 1 |\n", "").replace(
     "| - | nflog | `95.111.222.228:443` | 1 |",
-    "| - | nflog | `95.111.222.228:443` | 1 |\n| `example.com` | https | `93.184.215.14:443` | 1 |",
+    "| - | nflog | `95.111.222.228:443` | 1 |\n| `denied.g0lab.com` | https | `104.21.65.75:443` | 1 |",
   );
 
   assert.deepEqual(problemsWith(leaked), [
@@ -93,7 +93,7 @@ test("it catches a missing allowed host", () => {
 
 // A subdomain must not stand in for the host each check names.
 test("it reads whole host cells rather than substrings", () => {
-  const subdomain = GOOD.replace("| `example.com` |", "| `www.example.com` |").replace(
+  const subdomain = GOOD.replace("| `denied.g0lab.com` |", "| `www.denied.g0lab.com` |").replace(
     "| `probe.g0lab.com` |",
     "| `cdn.probe.g0lab.com` |",
   );
