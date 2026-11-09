@@ -11,6 +11,20 @@ import (
 	"github.com/miekg/dns"
 )
 
+// UDP has no handshake to probe with, so only an answer shows the listener is up.
+func dnsAnswersUDP(t *testing.T, addr string) bool {
+	t.Helper()
+
+	client := &dns.Client{Net: "udp", Timeout: 100 * time.Millisecond}
+
+	msg := new(dns.Msg)
+	msg.SetQuestion("blocked.invalid.", dns.TypeA)
+
+	_, _, err := client.ExchangeContext(t.Context(), msg, addr)
+
+	return err == nil
+}
+
 type panicWriter struct {
 	mockDNSResponseWriter
 }
@@ -72,7 +86,7 @@ func TestRunDNSServersStopsSiblingWhenOneFails(t *testing.T) {
 	}()
 
 	waitForBind(t, returned, "both DNS listeners to bind "+addr, func() bool {
-		return tcpPortHeld(t, addr) && udpPortHeld(addr)
+		return tcpListening(t, addr) && dnsAnswersUDP(t, addr)
 	})
 
 	err := tcpSrv.Shutdown()
@@ -114,7 +128,7 @@ func TestRunDNSServersReturnsNilOnCancellation(t *testing.T) {
 	}()
 
 	waitForBind(t, returned, "both DNS listeners to bind "+addr, func() bool {
-		return tcpPortHeld(t, addr) && udpPortHeld(addr)
+		return tcpListening(t, addr) && dnsAnswersUDP(t, addr)
 	})
 
 	cancel()

@@ -82,6 +82,7 @@ Use `-run` to select a suite when appropriate. See `tests/e2e/README.md` for det
 
 * Always update README, `docs/`, and `examples/` when changing user-facing behavior, configuration, or Action inputs.
 * Always add E2E coverage for significant changes to runtime, networking, security, or cross-component behavior.
+* Never bind a port in a test to check whether a server is up; connect to it or wait for a signal it emits after binding. Prefer binding `127.0.0.1:0` and holding the listener over reserving a port and releasing it.
 * Always keep sidecar configuration identical in `deploy/kustomize`, `deploy/helm` and the controller's injecting webhook; `tests/manifests/` and `controller/internal/webhook/parity_test.go` check this.
 * Never narrate code, add section banners, or repeat a function's name back at it; comment only on non-obvious constraints, security decisions, or workarounds.
 * Never write a Go implementation comment longer than two lines. Exported declarations outside test files, CRD fields, generated files and tool directives are exempt. A block opening with `SECURITY:`, `CONCURRENCY:` or `COMPAT:` may use up to eight prose lines; `tests/repo/comments_test.go` checks the Go comments a change touches. Other languages follow the same preference but are left to review.

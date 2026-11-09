@@ -139,25 +139,21 @@ func TestStartMetricsServerStaysOffWhenNotConfigured(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			addr := freeAddr(t)
+			t.Setenv("METRICS_ADDR", tc.addr)
 
-			configured := tc.addr
-			if configured != "" {
-				configured = addr
-			}
-
-			t.Setenv("METRICS_ADDR", configured)
+			lg, buf := supervisorLogger()
 
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 
-			startMetricsServer(ctx, tc.registry, slog.New(slog.DiscardHandler))
+			startMetricsServer(ctx, tc.registry, lg)
 
+			// Scraping cannot see a server started on an address the test does not
+			// know, so check for the listen log, which is written off the caller's goroutine.
 			time.Sleep(100 * time.Millisecond)
 
-			_, err := scrape(t, addr)
-			if err == nil {
-				t.Error("a metrics server was started without being configured")
+			if strings.Contains(buf.String(), "metrics.listen") {
+				t.Errorf("a metrics server was started without being configured:\n%s", buf.String())
 			}
 		})
 	}

@@ -531,6 +531,23 @@ func tcpPortHeld(t *testing.T, addr string) bool {
 	return false
 }
 
+// Waits by connecting: a probe that binds can take the port in the moment the
+// server under test tries to bind it.
+func tcpListening(t *testing.T, addr string) bool {
+	t.Helper()
+
+	dialer := &net.Dialer{Timeout: 100 * time.Millisecond}
+
+	conn, err := dialer.DialContext(t.Context(), testTCPNetwork, addr)
+	if err != nil {
+		return false
+	}
+
+	_ = conn.Close()
+
+	return true
+}
+
 func udpPortHeld(addr string) bool {
 	udpAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
@@ -606,7 +623,7 @@ func TestServeTCPReleasesThePortBeforeReturning(t *testing.T) {
 			returned <- serveTCP(ctx, addr, lg, handler, newMatcher(nil), Options{Logger: lg}, "https")
 		}()
 
-		waitForBind(t, returned, "serveTCP to bind "+addr, func() bool { return tcpPortHeld(t, addr) })
+		waitForBind(t, returned, "serveTCP to bind "+addr, func() bool { return tcpListening(t, addr) })
 
 		cancel()
 
