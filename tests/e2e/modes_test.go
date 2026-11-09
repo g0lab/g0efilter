@@ -109,6 +109,17 @@ allowlist:
 		s.AssertBlocked(t, "https://denied.g0lab.com")
 	})
 
+	t.Run("a blocked domain's address stays out of the set", func(t *testing.T) {
+		// The g0lab.com hosts share the allowed domain's Cloudflare IPs, so use a
+		// host whose addresses are not already in the set.
+		s.AssertBlocked(t, "https://one.one.one.one")
+
+		mark := s.AgentLogMark(t)
+
+		s.AssertUnreachable(t, "https://1.0.0.1")
+		s.AssertIPVerdictSince(t, mark, "BLOCKED", "1.0.0.1", 443, "TCP")
+	})
+
 	t.Run("unconstrained IP rules cover UDP without bypassing unknown addresses", func(t *testing.T) {
 		s.WritePolicyAndWait(t, `---
 allowlist:
@@ -185,6 +196,20 @@ allowlist:
 
 	t.Run("a host pointing at an allow-listed IP resolves and connects", func(t *testing.T) {
 		s.AssertAllowed(t, "https://one.one.one.one")
+	})
+
+	t.Run("answer IPs the filter discards stay out of the resolved set", func(t *testing.T) {
+		if mode != harness.FilterModeDNSStrict {
+			t.Skip("plain dns mode accepts direct-IP traffic")
+		}
+
+		// one.one.one.one also answers 1.0.0.1, which is not allow-listed.
+		s.AssertAllowed(t, "https://one.one.one.one")
+
+		mark := s.AgentLogMark(t)
+
+		s.AssertUnreachable(t, "https://1.0.0.1")
+		s.AssertIPVerdictSince(t, mark, "BLOCKED", "1.0.0.1", 443, "TCP")
 	})
 
 	t.Run("a dual-stack host allow-listed by IPv4 only does not false-alert", func(t *testing.T) {
