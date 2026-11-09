@@ -4,6 +4,27 @@ entries:
   - annotations:
       org.opencontainers.image.source: https://github.com/g0lab/g0efilter
     apiVersion: v2
+    appVersion: 0.10.3
+    created: "2026-11-09T13:25:47.185132299Z"
+    description: Library chart that injects the g0efilter egress-filter sidecar into
+      a pod template.
+    digest: 708b7879730728793a8ab35c0e54a6cf141e9c4c2c211c02e6eff271872b53ed
+    home: https://github.com/g0lab/g0efilter
+    keywords:
+    - egress
+    - network
+    - security
+    - sidecar
+    name: g0efilter
+    sources:
+    - https://github.com/g0lab/g0efilter
+    type: library
+    urls:
+    - https://github.com/g0lab/g0efilter/releases/download/v0.10.3/g0efilter-0.10.3.tgz
+    version: 0.10.3
+  - annotations:
+      org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+    apiVersion: v2
     appVersion: 0.10.2
     created: "2026-10-20T10:19:13.932724144Z"
     description: Library chart that injects the g0efilter egress-filter sidecar into
@@ -404,6 +425,27 @@ entries:
   - annotations:
       org.opencontainers.image.source: https://github.com/g0lab/g0efilter
     apiVersion: v2
+    appVersion: 0.10.3
+    created: "2026-11-09T13:25:47.18588887Z"
+    description: Installs the g0efilter control plane - the EgressPolicy controller
+      and the sidecar-injecting mutating webhook.
+    digest: 516a8ba6e40eaa850e6feb2de9b511b256341886144bb6d2cc3147e483a90bed
+    home: https://github.com/g0lab/g0efilter
+    keywords:
+    - egress
+    - network
+    - security
+    - kubernetes-operator
+    name: g0efilter-controller
+    sources:
+    - https://github.com/g0lab/g0efilter
+    type: application
+    urls:
+    - https://github.com/g0lab/g0efilter/releases/download/v0.10.3/g0efilter-controller-0.10.3.tgz
+    version: 0.10.3
+  - annotations:
+      org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+    apiVersion: v2
     appVersion: 0.10.2
     created: "2026-10-20T10:19:13.933436875Z"
     description: Installs the g0efilter control plane - the EgressPolicy controller
@@ -783,6 +825,27 @@ entries:
   - annotations:
       org.opencontainers.image.source: https://github.com/g0lab/g0efilter
     apiVersion: v2
+    appVersion: 0.10.3
+    created: "2026-11-09T13:25:47.186362612Z"
+    description: Installs the g0efilter dashboard, which collects and displays the
+      egress logs its sidecars ship.
+    digest: aee912f7b724159c04582bcceade3cb9d68456c5b9e5171f3d5d769e5db0ae91
+    home: https://github.com/g0lab/g0efilter
+    keywords:
+    - egress
+    - network
+    - security
+    - dashboard
+    name: g0efilter-dashboard
+    sources:
+    - https://github.com/g0lab/g0efilter
+    type: application
+    urls:
+    - https://github.com/g0lab/g0efilter/releases/download/v0.10.3/g0efilter-dashboard-0.10.3.tgz
+    version: 0.10.3
+  - annotations:
+      org.opencontainers.image.source: https://github.com/g0lab/g0efilter
+    apiVersion: v2
     appVersion: 0.10.2
     created: "2026-10-20T10:19:13.93385278Z"
     description: Installs the g0efilter dashboard, which collects and displays the
@@ -1158,4 +1221,4 @@ entries:
     urls:
     - https://github.com/g0lab/g0efilter/releases/download/g0efilter-dashboard-0.8.1/g0efilter-dashboard-0.8.1.tgz
     version: 0.8.1
-generated: "2026-10-20T10:19:13.932199025Z"
+generated: "2026-11-09T13:25:47.1845933Z"
