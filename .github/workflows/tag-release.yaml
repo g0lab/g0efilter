@@ -28,7 +28,7 @@ jobs:
       GOWORK: 'off'
     steps:
       - name: Filter egress
-        uses: g0lab/g0efilter@f63e1c6bd8f5e2730aa37af077120f17f4f569a3 # v0.10.2
+        uses: g0lab/g0efilter@29486214dcc8344e3be50ff8026db9edae3c3df8 # v0.10.3
         with:
           egress-policy: audit
 
