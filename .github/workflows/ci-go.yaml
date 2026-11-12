@@ -140,7 +140,7 @@ jobs:
             --timeout=10m
             ./...
 
-      # Fails when a chart changed without a Chart.yaml version bump.
+      # Installs ct; scripts/test-go.sh lints the changed charts with it.
       - name: Lint charts
         uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
 

@@ -1,11 +1,13 @@
 ---
-# chart-testing (ct) config. check-version-increment is the point: it fails a PR that
-# changes a chart without bumping its Chart.yaml version.
+# chart-testing (ct) config: lints the charts a pull request changes.
 remote: origin
 target-branch: main
 chart-dirs:
   - deploy/helm
-check-version-increment: true
+
+# No per-PR bump: chart versions track VERSION (tests/repo/version_test.go) and charts
+# publish only from a new tag, which tag-release refuses to reuse.
+check-version-increment: false
 validate-maintainers: false
 
 # Both validators need an extra toolchain for little gain: `helm lint` plus
