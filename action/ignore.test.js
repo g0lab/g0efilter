@@ -162,6 +162,14 @@ test("ntp is UDP to port 123, never TCP or another port", () => {
   assert.ok(!matches("local", { dest: "91.189.91.113:123", protocol: "UDP" }), "local is addresses");
 });
 
+test("ntp never reads a bare IPv6 address's last group as the port", () => {
+  const v6 = { dest: "2001:db8::123", protocol: "UDP" };
+  assert.ok(!matches("ntp", { ...v6, port: "443" }), "the explicit port wins");
+  assert.ok(!matches("ntp", v6), "no port at all");
+  assert.ok(matches("ntp", { dest: "2001:db8::1:123", port: "123", protocol: "UDP" }), "nflog's unbracketed v6");
+  assert.ok(matches("ntp", { dest: "[2001:db8::1]:123", protocol: "UDP" }), "bracketed v6");
+});
+
 test("the default group mutes a runner's clock sync as well as local noise", () => {
   const ignore = ignoreRulesFromEnv({});
   assert.ok(ignore(NTP));

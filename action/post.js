@@ -76,6 +76,7 @@ function parseLine(rawLine) {
     component: field(line, "component"),
     host: field(line, "https") || field(line, "host") || field(line, "qname"),
     dest: field(line, "dst") || field(line, "destination_ip"),
+    port: field(line, "destination_port"),
     protocol: field(line, "protocol"),
   };
 }

@@ -47,6 +47,7 @@ test("parseLine extracts a blocked HTTPS decision", () => {
     component: "https",
     host: "example.com",
     dest: "1.2.3.4:443",
+    port: "",
     protocol: "",
   });
 });
@@ -59,14 +60,16 @@ test("parseLine reads AUDIT and DNS qname/destination_ip fields", () => {
     component: "dns",
     host: "blocked.example.com",
     dest: "9.9.9.9",
+    port: "",
     protocol: "",
   });
 });
 
-test("parseLine reads an nflog block's protocol, which the ntp rule needs", () => {
+test("parseLine reads an nflog block's protocol and port, which the ntp rule needs", () => {
   const line =
-    "2026-11-12T01:34:00Z WRN nflog.blocked action=BLOCKED component=nflog protocol=UDP dst=185.125.190.123:123";
+    "2026-11-12T01:34:00Z WRN nflog.blocked action=BLOCKED component=nflog protocol=UDP dst=185.125.190.123:123 destination_port=123";
   assert.equal(parseLine(line).protocol, "UDP");
+  assert.equal(parseLine(line).port, "123");
 });
 
 test("parseLine keeps ALLOWED decisions", () => {
