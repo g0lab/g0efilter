@@ -22,4 +22,4 @@ g0efilter:
   #   urlsSecret:
   #     name: g0efilter-notifications
   #     key: urls
-  #   ignoreDomains: [local]
+  #   ignoreDomains: [default]

@@ -152,6 +152,24 @@ const MULTICAST = entry({ dest: "224.0.0.22" });
 const TELEMETRY = entry({ host: "a.telemetry.example.com", dest: "9.9.9.9:443" });
 const OTHER = entry({ host: "other.test", dest: "1.2.3.4:443" });
 
+const NTP = entry({ component: "nflog", dest: "185.125.190.123:123", protocol: "UDP" });
+
+test("ntp is UDP to port 123, never TCP or another port", () => {
+  assert.ok(matches("ntp", { dest: "91.189.91.113:123", protocol: "udp" }));
+  assert.ok(!matches("ntp", { dest: "91.189.91.113:123", protocol: "TCP" }));
+  assert.ok(!matches("ntp", { dest: "91.189.91.113:443", protocol: "UDP" }));
+  assert.ok(!matches("ntp", { dest: "91.189.91.113:123" }), "no protocol: not ntp");
+  assert.ok(!matches("local", { dest: "91.189.91.113:123", protocol: "UDP" }), "local is addresses");
+});
+
+test("the default group mutes a runner's clock sync as well as local noise", () => {
+  const ignore = ignoreRulesFromEnv({});
+  assert.ok(ignore(NTP));
+  assert.ok(ignore(MULTICAST));
+  assert.ok(!ignore(OTHER));
+  assert.ok(!ignoreRulesFromEnv({ "INPUT_NOTIFICATION-IGNORE-DEFAULT": "false" })(NTP));
+});
+
 test("the default group mutes local noise when nothing is configured", () => {
   for (const env of [{}, { "INPUT_NOTIFICATION-IGNORE": "" }, { "INPUT_NOTIFICATION-IGNORE-DEFAULT": "true" }]) {
     const ignore = ignoreRulesFromEnv(env);

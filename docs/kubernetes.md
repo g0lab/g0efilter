@@ -417,7 +417,7 @@ spec:
       urlsSecretRef:
         name: g0efilter-notifications
         key: urls
-      ignoreDomains: [local]
+      ignoreDomains: [default]
 ```
 
 `extraEnv` cannot override derived settings or replace the rendered policy with

@@ -97,11 +97,14 @@ not alert. The block is still enforced and logged.
 | `multicast`, `loopback`, `link-local`, `private`, `unspecified` | destinations in that address class |
 | `local` | any of the five classes above |
 | `public` | anything `local` does not match |
+| `ntp` | a host's clock sync: UDP to port 123 (TCP to 123 still alerts) |
+| `default` | `local` and `ntp`: the noise every host makes |
 | `component:dns` | every block reported by that component |
 | `ip-only` | blocks with no hostname, such as raw nflog verdicts |
 
-`local` and `ip-only` can hide routine local traffic such as IPv6 neighbour
-discovery on `ff02::` addresses.
+`default` hides the routine noise every host makes, such as IPv6 neighbour
+discovery on `ff02::` addresses and NTP retries. `ip-only` hides both, along
+with every other block that has no hostname.
 
 #### Privileges
 

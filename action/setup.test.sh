@@ -255,12 +255,12 @@ run_main() {
 }
 
 run_main "INPUT_NOTIFICATION-IGNORE=*.telemetry.example.com" &&
-  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local,*.telemetry.example.com' "$WORK/docker.log"
+  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=default,*.telemetry.example.com' "$WORK/docker.log"
 check $? "a workflow ignore rule is added to the default group"
 
 run_main &&
-  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=local ' "$WORK/docker.log"
-check $? "the default group mutes local noise when no rules are set"
+  grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=default ' "$WORK/docker.log"
+check $? "the default group (local and ntp) is on when no rules are set"
 
 run_main "INPUT_NOTIFICATION-IGNORE-DEFAULT=false" "INPUT_NOTIFICATION-IGNORE=*.telemetry.example.com" &&
   grep -Fq -- 'NOTIFICATION_IGNORE_DOMAINS=*.telemetry.example.com ' "$WORK/docker.log"

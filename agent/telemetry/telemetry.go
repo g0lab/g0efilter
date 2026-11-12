@@ -314,6 +314,7 @@ func handleBlockedAlert(ctx context.Context, notifier *alerting.Notifier, attrs 
 		DestinationIP:   extractStringAttr(attrs, "destination_ip"),
 		DestinationPort: extractStringAttr(attrs, keyDestinationPort),
 		Destination:     buildDestinationString(attrs),
+		Protocol:        extractStringAttr(attrs, "protocol"),
 		Component:       extractStringAttr(attrs, keyComponent),
 	}
 

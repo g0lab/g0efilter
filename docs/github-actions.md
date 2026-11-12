@@ -38,7 +38,7 @@ for a working example.
 | `identity` | Names this runner in alerts and logs | `<owner>/<repo>/<workflow>` |
 | `notification-urls` | Whitespace-separated shoutrrr URLs to alert on | empty |
 | `notification-ignore` | Newline-separated rules for blocks that should not alert or clutter the report, added to the default group | empty |
-| `notification-ignore-default` | Mute the default group, `local` | `true` |
+| `notification-ignore-default` | Mute the default group, `default` (local addresses and NTP) | `true` |
 
 The Action always permits GitHub's
 [runner communication domains](https://docs.github.com/actions/reference/runners/self-hosted-runners)
@@ -104,8 +104,9 @@ command line where any process on the runner could read it.
 Alerts are titled with `identity`, which defaults to `<owner>/<repo>/<workflow>`.
 Set it when several workflows notify the same channel.
 
-The default group, `local`, mutes multicast, loopback, link-local, private-range
-and unspecified addresses. `notification-ignore` adds to it, so a noisy domain is
+The default group, `default`, mutes multicast, loopback, link-local, private-range
+and unspecified addresses (`local`), and the runner's clock sync (`ntp`: UDP to port
+123, which a GitHub-hosted runner retries all job long). `notification-ignore` adds to it, so a noisy domain is
 one line. The same rules control which entries the job summary folds away, even
 when notifications are off. Muting never changes enforcement: the connection is
 still blocked and logged.
@@ -116,7 +117,7 @@ still blocked and logged.
       ip-only
 ```
 
-Set `notification-ignore-default: false` to alert on local traffic too.
+Set `notification-ignore-default: false` to alert on local traffic and NTP too.
 
 To share one list across workflows, keep it in an organization or repository
 Actions variable and pass it in. GitHub resolves the variable before the job
