@@ -101,8 +101,7 @@ while IFS= read -r file; do
     "$file"
 done < <(git ls-files 'deploy/**' 'docs/**' 'examples/**' 'controller/**' README.md)
 
-# Keep the charts and application release aligned. ct still verifies that a chart
-# change is accompanied by a version change.
+# Keep the charts and application release aligned.
 for chart in "${CHARTS[@]}"; do
   chart_old="$(sed -n 's|^version: *||p' "$chart")"
   sed -i "s|^version: $chart_old\$|version: $NEW|" "$chart"

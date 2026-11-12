@@ -9,7 +9,7 @@
 image:
   repository: docker.io/g0lab/g0efilter
   # Must be v0.8.0 or later: earlier images start as root and need more capabilities.
-  tag: v0.10.3
+  tag: v0.10.4
   pullPolicy: IfNotPresent
 
 # https, dns or dns-strict. Selects the data path, not how strictly a verdict is
@@ -80,7 +80,8 @@ notifications:
   backoffSeconds: null
   # Blocks that never raise an alert, even when enforced. Accepts domains and
   # wildcards, addresses and CIDRs, the address classes multicast, loopback,
-  # link-local, private, unspecified and local, component:<name>, and ip-only.
+  # link-local, private, unspecified and local, ntp (UDP to port 123), default
+  # (local and ntp), component:<name>, and ip-only.
   ignoreDomains: []
 
 # The sidecar's DNS proxy. Only has an effect in dns and dns-strict mode.

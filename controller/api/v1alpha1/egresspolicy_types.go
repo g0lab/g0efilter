@@ -206,7 +206,8 @@ type NotificationsSpec struct {
 	// IgnoreDomains are blocks that never raise an alert, even when enforced. It
 	// accepts domains and wildcards such as `*.telemetry.example.com`, addresses and
 	// CIDRs, the address classes `multicast`, `loopback`, `link-local`, `private`,
-	// `unspecified` and `local`, `component:<name>`, and `ip-only`.
+	// `unspecified` and `local`, `ntp` (UDP to port 123), `default` (`local` and
+	// `ntp`), `component:<name>`, and `ip-only`.
 	// +optional
 	// +listType=atomic
 	IgnoreDomains []string `json:"ignoreDomains,omitempty"`

@@ -19,6 +19,14 @@ func gatedWorkflows() []string {
 	}
 }
 
+// advisoryJobs report on a pull request without blocking it, so they stay out of the result
+// job's needs. Listing one here is the only way out of the required check.
+func advisoryJobs() map[string]bool {
+	return map[string]bool{
+		".github/workflows/test.yaml:browser": true,
+	}
+}
+
 type workflow struct {
 	Jobs map[string]struct {
 		Name  string    `yaml:"name"`
@@ -87,16 +95,26 @@ func TestGatedWorkflowsFanEveryJobIntoTheResultJob(t *testing.T) {
 			t.Errorf("%s result job must be if: always(), got %q", name, result.If)
 		}
 
-		needed := make(map[string]bool, len(result.Needs))
-		for _, job := range result.Needs {
-			needed[job] = true
-		}
+		checkResultNeeds(t, name, parsed, result.Needs)
+	}
+}
 
-		for id := range parsed.Jobs {
-			if id == "result" || needed[id] {
-				continue
-			}
+func checkResultNeeds(t *testing.T, name string, parsed workflow, needs needsList) {
+	t.Helper()
 
+	needed := make(map[string]bool, len(needs))
+	for _, job := range needs {
+		needed[job] = true
+	}
+
+	for id := range parsed.Jobs {
+		advisory := advisoryJobs()[name+":"+id]
+
+		switch {
+		case id == "result":
+		case advisory && needed[id]:
+			t.Errorf("%s job %q is advisory, yet the result job needs it, so it blocks a merge", name, id)
+		case !advisory && !needed[id]:
 			t.Errorf("%s job %q is not in the result job's needs, so it cannot block a merge", name, id)
 		}
 	}

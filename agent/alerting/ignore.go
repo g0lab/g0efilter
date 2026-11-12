@@ -3,6 +3,7 @@ package alerting
 import (
 	"log/slog"
 	"net/netip"
+	"strconv"
 	"strings"
 )
 
@@ -48,8 +49,8 @@ func parseIgnoreRule(pattern string) (ignoreRule, bool) {
 		return nil, false
 	}
 
-	if pattern == "ip-only" {
-		return ipOnlyRule{}, true
+	if rule, ok := namedRules[pattern]; ok {
+		return rule, true
 	}
 
 	if class, ok := addrClasses[pattern]; ok {
@@ -102,6 +103,15 @@ func (p prefixRule) matches(info BlockedConnectionInfo) bool {
 	return ok && p.prefix.Contains(addr)
 }
 
+// namedRules are the keyword rules; default is local addresses plus a host's clock sync.
+//
+//nolint:gochecknoglobals // A fixed lookup table, keyed by the documented names.
+var namedRules = map[string]ignoreRule{
+	"ip-only": ipOnlyRule{},
+	"ntp":     ntpRule{},
+	"default": ignoreRules{addrClassRule{class: isLocal}, ntpRule{}},
+}
+
 // addrClasses name the noisy ranges; IPv6 neighbor discovery alone floods ff02:: blocks.
 //
 //nolint:gochecknoglobals // A fixed lookup table, keyed by the documented names.
@@ -150,6 +160,28 @@ func destinationAddr(info BlockedConnectionInfo) (netip.Addr, bool) {
 	}
 
 	return netip.Addr{}, false
+}
+
+// ntpRule suppresses a host's clock sync: UDP to port 123, which a runner or VM retries all
+// job long. TCP to 123 is not NTP and still alerts.
+type ntpRule struct{}
+
+func (ntpRule) matches(info BlockedConnectionInfo) bool {
+	return strings.EqualFold(info.Protocol, "udp") && destinationPort(info) == "123"
+}
+
+// destinationPort checks both fields, as destinationAddr does.
+func destinationPort(info BlockedConnectionInfo) string {
+	if info.DestinationPort != "" {
+		return info.DestinationPort
+	}
+
+	addrPort, err := netip.ParseAddrPort(info.Destination)
+	if err != nil {
+		return ""
+	}
+
+	return strconv.Itoa(int(addrPort.Port()))
 }
 
 // ipOnlyRule suppresses blocks with no hostname, leaving the domain-aware components to alert.

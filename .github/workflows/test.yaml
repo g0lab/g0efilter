@@ -135,27 +135,6 @@ jobs:
       - name: Load images
         run: docker load -i e2e-images.tar.gz
 
-      - name: Set up pnpm
-        if: matrix.mode == 'https'
-        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
-        with:
-          package_json_file: dashboard/ui/package.json
-
-      - name: Set up Node
-        if: matrix.mode == 'https'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
-
-      - name: Install browser dependencies
-        if: matrix.mode == 'https'
-        working-directory: dashboard/ui
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps chromium
-
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -166,12 +145,73 @@ jobs:
         working-directory: tests/e2e
         env:
           E2E_FILTER_MODE: ${{ matrix.mode }}
-          E2E_BROWSER: ${{ matrix.mode == 'https' && '1' || '0' }}
           E2E_BUILD: never
         run: go test -count=1 -v -p 1 -parallel=1 -timeout=35m ./...
 
+  # Advisory, so outside the result job: a browser or runner flake shows on the pull
+  # request without blocking the merge. tests/repo lists it as advisory.
+  browser:
+    name: E2E (browser)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Filter egress
+        uses: g0lab/g0efilter@f63e1c6bd8f5e2730aa37af077120f17f4f569a3 # v0.10.2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Compose
+        uses: docker/setup-compose-action@54042514f505b273907334ae2b9cdbb9a0213c1a # v2
+
+      - name: Download images
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: e2e-images
+
+      - name: Load images
+        run: docker load -i e2e-images.tar.gz
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+        with:
+          package_json_file: dashboard/ui/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: dashboard/ui/pnpm-lock.yaml
+
+      - name: Install Chromium
+        working-directory: dashboard/ui
+        # The runner image ships Chromium's libraries; --with-deps only added apt, and with
+        # it Ubuntu mirror outages, for fonts no test renders.
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: tests/e2e/go.mod
+          cache-dependency-path: tests/e2e/go.sum
+
+      - name: Test dashboard
+        working-directory: tests/e2e
+        env:
+          E2E_FILTER_MODE: https
+          E2E_BROWSER: '1'
+          E2E_BUILD: never
+        run: go test -count=1 -v -timeout=15m -run '^TestPhase14Dashboard$/^Browser$' .
+
       - name: Test demo dashboard
-        if: matrix.mode == 'https'
+        if: ${{ !cancelled() }}
         working-directory: dashboard/ui
         env:
           DASHBOARD_E2E_DEMO: '1'

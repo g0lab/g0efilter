@@ -112,6 +112,27 @@ func TestIgnoreComponentAndShapeRules(t *testing.T) {
 	})
 }
 
+func TestIgnoreNTPAndDefaultRules(t *testing.T) {
+	t.Parallel()
+
+	ntp := BlockedConnectionInfo{DestinationIP: "185.125.190.123", DestinationPort: "123", Protocol: "UDP"}
+	tcp := BlockedConnectionInfo{DestinationIP: "185.125.190.123", DestinationPort: "123", Protocol: "TCP"}
+	viaDestination := BlockedConnectionInfo{Destination: "91.189.91.113:123", Protocol: "udp"}
+	https := BlockedConnectionInfo{DestinationIP: "185.125.190.123", DestinationPort: "443", Protocol: "TCP"}
+	multicast := BlockedConnectionInfo{DestinationIP: "ff02::1"}
+
+	runIgnoreCases(t, []ignoreCase{
+		{"udp to 123 is ntp", "ntp", ntp, true},
+		{"tcp to 123 is not ntp", "ntp", tcp, false},
+		{"ntp reads a host:port destination", "ntp", viaDestination, true},
+		{"no protocol is not ntp", "ntp", BlockedConnectionInfo{DestinationPort: "123"}, false},
+		{"default mutes ntp", "default", ntp, true},
+		{"default mutes local addresses", "default", multicast, true},
+		{"default leaves public traffic alerting", "default", https, false},
+		{"local alone is addresses only", "local", ntp, false},
+	})
+}
+
 func TestCompileIgnoreRulesSkipsUnusable(t *testing.T) {
 	t.Parallel()
 

@@ -132,6 +132,7 @@ type BlockedConnectionInfo struct {
 	DestinationIP   string
 	DestinationPort string
 	Destination     string // Human-readable destination (hostname, HTTPS, etc.)
+	Protocol        string // TCP or UDP, where the component knows it (nflog does)
 	Reason          string
 	Component       string // dns, http, https, etc.
 }

@@ -152,3 +152,6 @@ pnpm exec playwright install --with-deps chromium
 cd ../../tests/e2e
 E2E_FILTER_MODE=https E2E_BROWSER=1 go test -count=1 -v -run '^TestPhase14Dashboard$' .
 ```
+
+CI runs it, with the demo dashboard spec, in its own `E2E (browser)` job. That job
+is advisory: a failure shows on the pull request but does not block the merge.

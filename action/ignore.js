@@ -1,5 +1,5 @@
 // Port of agent/alerting/ignore.go, which post.js cannot call into.
-// Rules run against the entries parseLine produces: { component, host, dest }.
+// Rules run against the entries parseLine produces: { component, host, dest, port, protocol }.
 "use strict";
 
 const V4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
@@ -165,11 +165,36 @@ function isIPOnly(entry) {
   return colon !== -1 && host === entry.dest.slice(0, colon);
 }
 
+// As netip.ParseAddrPort: nflog writes IPv6 unbracketed, so a bare v6 address ends in a group.
+const ADDR_PORT = /^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[^\]]+\]):(\d+)$/;
+
+function destinationPort(entry) {
+  if (entry.port) return entry.port;
+
+  const m = (entry.dest || "").match(ADDR_PORT);
+
+  return m ? m[1] : "";
+}
+
+// A host's clock sync: UDP to port 123, retried all job long. TCP to 123 is not NTP.
+function isNTP(entry) {
+  return String(entry.protocol || "").toLowerCase() === "udp" && destinationPort(entry) === "123";
+}
+
+// The default group: the noise every host makes, local addresses and its clock's sync.
+function isDefaultNoise(entry) {
+  const addr = destinationAddr(entry);
+
+  return (addr !== null && isLocal(unmap(addr))) || isNTP(entry);
+}
+
 function parseIgnoreRule(pattern) {
   pattern = pattern.trim().toLowerCase();
   if (pattern === "") return null;
 
   if (pattern === "ip-only") return isIPOnly;
+  if (pattern === "ntp") return isNTP;
+  if (pattern === "default") return isDefaultNoise;
 
   const addrClass = ADDR_CLASSES[pattern];
   if (addrClass) {
@@ -246,7 +271,7 @@ function compileIgnoreRules(patterns) {
   return (entry) => rules.some((rule) => rule(entry));
 }
 
-const DEFAULT_IGNORE = ["local"];
+const DEFAULT_IGNORE = ["default"];
 
 // Workflow rules add to the default group rather than replace it.
 function ignoreListFromEnv(env = process.env) {

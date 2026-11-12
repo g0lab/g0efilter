@@ -96,5 +96,5 @@ if command -v ct > /dev/null 2>&1; then
     echo "no chart changes"
   fi
 else
-  echo "SKIPPED: ct is not installed, so a missing Chart.yaml version bump will only fail in CI"
+  echo "SKIPPED: ct is not installed, so changed charts are only linted in CI"
 fi
