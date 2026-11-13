@@ -8,7 +8,7 @@ require (
 	github.com/google/nftables v0.3.0
 	github.com/mdlayher/netlink v1.11.2
 	github.com/miekg/dns v1.1.73
-	github.com/nicholas-fedor/shoutrrr v0.23.0
+	github.com/nicholas-fedor/shoutrrr v0.24.0
 	github.com/rs/zerolog v1.35.1
 	go.yaml.in/yaml/v4 v4.0.0
 	golang.org/x/crypto v0.59.0
@@ -21,7 +21,7 @@ require (
 	github.com/mattn/go-colorable v0.1.16 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mdlayher/socket v0.6.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
+	golang.org/x/oauth2 v0.38.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/term v0.48.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
