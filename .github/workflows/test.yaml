@@ -136,7 +136,7 @@ jobs:
         run: docker load -i e2e-images.tar.gz
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: tests/e2e/go.mod
           cache-dependency-path: tests/e2e/go.sum
@@ -197,7 +197,7 @@ jobs:
           pnpm exec playwright install chromium
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: tests/e2e/go.mod
           cache-dependency-path: tests/e2e/go.sum
@@ -247,7 +247,7 @@ jobs:
         uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7
         with:
           go-version-file: tests/e2e/go.mod
           cache-dependency-path: tests/e2e/go.sum
