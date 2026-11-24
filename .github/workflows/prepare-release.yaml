@@ -11,7 +11,7 @@ on:
         type: string
 
 permissions:
-  contents: write  # Push the version bump branch.
+  contents: write  # Create the signed version bump commit and its branch.
   pull-requests: write  # Open the release preparation PR.
 
 concurrency:
@@ -81,17 +81,14 @@ jobs:
             exit 1
           fi
 
-      - name: Commit and push version bump
+      - name: Commit version bump
         env:
           BRANCH: ${{ steps.version.outputs.branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.target }}
         run: |
-          git switch -c "$BRANCH"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add --all
-          git commit -m "chore: prepare release v$VERSION"
-          git push origin "$BRANCH"
+          .github/scripts/signed-commit.sh "$BRANCH" "chore: prepare release v$VERSION"
 
       - name: Open pull request
         env:
